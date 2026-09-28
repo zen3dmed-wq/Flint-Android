@@ -41,6 +41,9 @@ gradle = root / "client/android/build.gradle.kts"
 gs = gradle.read_text(encoding="utf-8")
 if 'applicationId = "org.amnezia.vpn"' in gs:
     gs = gs.replace('applicationId = "org.amnezia.vpn"', 'applicationId = "app.flint.vpn"')
+# CI builds an unsigned release APK; it is signed with Flint's private key
+# only after the artifact is downloaded into the private build environment.
+gs = gs.replace('signingConfig = signingConfigs["release"]', 'signingConfig = null')
 gradle.write_text(gs, encoding="utf-8")
 
 # Russian services: keep the list deliberately small. Android split tunneling
