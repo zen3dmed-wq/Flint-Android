@@ -1,0 +1,111 @@
+name: Build Flint Android 8.9.5
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'build_flint.py'
+      - 'flint/**'
+      - '.github/workflows/build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  android-arm64:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      QT_VERSION: '6.10.3'
+      ANDROID_PLATFORM: android-30
+      APP_ANDROID_MIN_SDK: 30
+      NDK_VERSION: 27.0.11718014
+
+    steps:
+      - name: Checkout Flint
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+
+      - name: Go / gomobile
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: false
+
+      - name: Install build Python tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install "conan==2.28.0" "aqtinstall==3.3.0" "py7zr==0.22.*"
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          gomobile init
+
+      - name: Android SDK / NDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platforms;android-30 build-tools;35.0.0 ndk;27.0.11718014"
+
+      - name: Install Qt desktop host
+        uses: jurplel/install-qt-action@v4.3.1
+        with:
+          version: '${{ env.QT_VERSION }}'
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          modules: 'qtremoteobjects qt5compat qtimageformats qtshadertools'
+          dir: '${{ runner.temp }}'
+          set-env: true
+
+      - name: Install Qt Android arm64
+        shell: bash
+        run: |
+          aqt install-qt all_os android "$QT_VERSION" android_arm64_v8a \
+            -O "${{ runner.temp }}/Qt" \
+            -m qtremoteobjects qt5compat qtimageformats qtshadertools
+
+      - name: Clone stable Amnezia engine
+        shell: bash
+        run: |
+          git clone --recursive --branch 5.0.3.0 \
+            https://github.com/amnezia-vpn/amnezia-client.git amnezia-client
+
+      - name: Apply Flint Android 8.9.5
+        shell: bash
+        run: |
+          python3 build_flint.py amnezia-client
+
+      - name: Build Flint Android arm64 APK
+        shell: bash
+        env:
+          QT_INSTALL_DIR: '${{ runner.temp }}'
+          ANDROID_HOME: '${{ env.ANDROID_HOME }}'
+          ANDROID_NDK_VERSION: '${{ env.NDK_VERSION }}'
+          APP_ANDROID_MIN_SDK: '30'
+        run: |
+          cd amnezia-client
+          deploy/build.sh -t android --abi arm64-v8a
+          cd ..
+          mkdir -p dist
+          find amnezia-client/deploy -type f -name '*.apk' -print -exec cp -f {} dist/ \;
+          APK=$(find dist -maxdepth 1 -name '*.apk' | head -n 1)
+          test -n "$APK"
+          mv "$APK" dist/Flint-v8.9.5-Android-arm64.apk
+          sha256sum dist/Flint-v8.9.5-Android-arm64.apk > dist/Flint-v8.9.5-Android-arm64.apk.sha256
+
+      - name: Upload Flint APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Flint-v8.9.5-Android-arm64
+          path: |
+            dist/Flint-v8.9.5-Android-arm64.apk
+            dist/Flint-v8.9.5-Android-arm64.apk.sha256
+          retention-days: 14
