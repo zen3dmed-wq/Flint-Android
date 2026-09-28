@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<defs>
+ <radialGradient id="bg" cx="50%" cy="42%" r="60%"><stop offset="0" stop-color="#153b57"/><stop offset="1" stop-color="#061522"/></radialGradient>
+ <linearGradient id="fur" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#697789"/><stop offset=".55" stop-color="#434f60"/><stop offset="1" stop-color="#283443"/></linearGradient>
+ <linearGradient id="mint" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#77ffd1"/><stop offset="1" stop-color="#18d986"/></linearGradient>
+ <filter id="glow"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+</defs>
+<circle cx="256" cy="256" r="238" fill="url(#bg)" stroke="url(#mint)" stroke-width="12" filter="url(#glow)"/>
+<path d="M132 186L151 61l92 90z" fill="url(#fur)" stroke="#121c28" stroke-width="8"/>
+<path d="M380 186L361 61l-92 90z" fill="url(#fur)" stroke="#121c28" stroke-width="8"/>
+<path d="M159 150L169 92l42 63zM353 150l-10-58-42 63z" fill="#f4b5a6"/>
+<path d="M109 251c0-100 65-157 147-157s147 57 147 157c0 114-61 192-147 192S109 365 109 251z" fill="url(#fur)" stroke="#101923" stroke-width="8"/>
+<path d="M256 118c-32 5-65 17-87 48l40 77 47-19 47 19 40-77c-22-31-55-43-87-48z" fill="#d9d7d2"/>
+<path d="M161 236c14-38 42-58 72-61-5 31-20 58-47 78zM351 236c-14-38-42-58-72-61 5 31 20 58 47 78z" fill="#f7f5ef"/>
+<ellipse cx="197" cy="231" rx="18" ry="22" fill="#09111a"/><ellipse cx="315" cy="231" rx="18" ry="22" fill="#09111a"/>
+<circle cx="202" cy="224" r="5" fill="#fff"/><circle cx="310" cy="224" r="5" fill="#fff"/>
+<path d="M180 282c19-31 48-47 76-47s57 16 76 47c-6 65-33 105-76 105s-70-40-76-105z" fill="#faf7ef"/>
+<path d="M228 276q28-23 56 0-4 30-28 30t-28-30z" fill="#111922"/>
+<path d="M256 306c-2 36-27 46-48 31M256 306c2 36 27 46 48 31" fill="none" stroke="#18222d" stroke-width="8" stroke-linecap="round"/>
+<path d="M218 344q38 32 76 0c-5 35-21 51-38 51s-33-16-38-51z" fill="#ee7e77"/>
+<path d="M151 360q36 62 105 66 69-4 105-66c-20 30-51 45-105 45s-85-15-105-45z" fill="#ece9e1"/>
+<circle cx="256" cy="409" r="24" fill="#34e6a0" stroke="#0f6c50" stroke-width="5"/>
+<path d="M244 409h24M256 397v24" stroke="#06241b" stroke-width="5" stroke-linecap="round"/>
+<path d="M116 213q-22 18-28 45M396 213q22 18 28 45" fill="none" stroke="#63f8c4" stroke-width="7" stroke-linecap="round" opacity=".9"/>
+</svg>
