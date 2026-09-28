@@ -138,6 +138,63 @@ shutil.copy2(flint / "flintController.cpp",
              root / "client/ui/controllers/flintController.cpp")
 shutil.copy2(flint / "PageHome.qml",
              root / "client/ui/qml/Pages2/PageHome.qml")
+shutil.copy2(flint / "PageStart.qml",
+             root / "client/ui/qml/Pages2/PageStart.qml")
+
+# Flint's user-visible assets. The Amnezia engine remains internal only.
+qml_assets = root / "client/ui/qml/Assets"
+qml_assets.mkdir(parents=True, exist_ok=True)
+for asset in ["flint-dog.svg", "flint-background.svg", "flint-logo.svg"]:
+    shutil.copy2(flint / asset, qml_assets / asset)
+
+qml_qrc = root / "client/ui/qml/qml.qrc"
+qrc = qml_qrc.read_text(encoding="utf-8")
+for asset in ["flint-dog.svg", "flint-background.svg", "flint-logo.svg"]:
+    entry = f"        <file>Assets/{asset}</file>\n"
+    if entry.strip() not in qrc:
+        qrc = qrc.replace("    </qresource>", entry + "    </qresource>", 1)
+qml_qrc.write_text(qrc, encoding="utf-8")
+
+# Android launcher/quick-settings icon uses Flint's own vector.
+flint_drawable = root / "client/android/res/drawable/ic_flint_round.xml"
+shutil.copy2(flint / "ic_flint_round.xml", flint_drawable)
+
+for rel in ["client/android/res/mipmap-anydpi-v26/icon.xml",
+            "client/android/res/mipmap-anydpi-v26/icon_round.xml"]:
+    p = root / rel
+    text = p.read_text(encoding="utf-8")
+    text = text.replace('@mipmap/ic_launcher_foreground', '@drawable/ic_flint_round')
+    text = text.replace('@drawable/ic_launcher_monochrome', '@drawable/ic_flint_round')
+    p.write_text(text, encoding="utf-8")
+
+launcher_bg = root / "client/android/res/drawable/ic_launcher_background.xml"
+launcher_bg.write_text("""<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient android:type="linear" android:angle="135"
+        android:startColor="#0B3146" android:centerColor="#071A29" android:endColor="#06111D" />
+</shape>
+""", encoding="utf-8")
+
+manifest = root / "client/android/AndroidManifest.xml"
+mt = manifest.read_text(encoding="utf-8")
+mt = mt.replace('android:icon="@drawable/ic_amnezia_round"', 'android:icon="@drawable/ic_flint_round"')
+mt = mt.replace('android:authorities="org.amnezia.vpn.qtprovider"',
+                'android:authorities="app.flint.vpn.qtprovider"')
+manifest.write_text(mt, encoding="utf-8")
+
+# Remove remaining user-visible Amnezia naming from Android system dialogs.
+for rel in ["client/android/res/values/strings.xml",
+            "client/android/res/values-ru/strings.xml"]:
+    p = root / rel
+    text = p.read_text(encoding="utf-8")
+    text = text.replace("AmneziaVPN", "Flint").replace("Amnezia VPN", "Flint")
+    p.write_text(text, encoding="utf-8")
+
+main_qml = root / "client/ui/qml/main2.qml"
+text = main_qml.read_text(encoding="utf-8")
+text = text.replace('title: "AmneziaVPN"', 'title: "Flint"')
+text = text.replace("This legacy Amnezia subscription type", "This legacy subscription type")
+main_qml.write_text(text, encoding="utf-8")
 
 # Expose FlintController to QML and feed the cached subscription URL into
 # Amnezia's proven profile importer.
@@ -180,4 +237,4 @@ if 'setQmlContextProperty("FlintController"' not in s:
     s = s.replace(anchor, block, 1)
 cpp.write_text(s, encoding="utf-8")
 
-print("Flint Android 8.9.5 patch applied")
+print("Flint Android 8.9.6 full-brand patch applied")
