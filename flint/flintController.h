@@ -1,3 +1,4 @@
+// Flint Android 8.9.5 - stable cached-subscription connection path
 #ifndef FLINTCONTROLLER_H
 #define FLINTCONTROLLER_H
 
