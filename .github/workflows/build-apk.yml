@@ -79,6 +79,8 @@ jobs:
           export QT_INSTALL_DIR="$RUNNER_TEMP"
           export QT_VERSION="6.10.3"
           export ANDROID_NDK_VERSION="27.0.11718014"
+          export ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/27.0.11718014"
+          export ANDROID_NDK_HOME="$ANDROID_NDK_ROOT"
           export APP_ANDROID_MIN_SDK="30"
           export APP_ANDROID_VERSION_CODE_OFFSET="894"
           export QT_ANDROID_KEYSTORE_PATH="$KEYSTORE"
