@@ -706,7 +706,7 @@ void FlintController::importSubscription()
         return;
     }
 
-    QNetworkRequest req(QUrl(sub));
+    QNetworkRequest req{QUrl(sub)};
     req.setRawHeader("User-Agent", QByteArray("Flint/") + kVersion.toUtf8());
     req.setRawHeader("X-Client", QByteArray("android/") + kVersion.toUtf8());
     req.setTransferTimeout(9000);
