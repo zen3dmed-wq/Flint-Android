@@ -98,6 +98,9 @@ jobs:
           grep -q 'parseSubscriptionProfiles' amnezia-client/client/ui/controllers/flintController.cpp
           ! grep -q 'PageSetupWizardStart' amnezia-client/client/ui/qml/Pages2/PageStart.qml
           ! grep -q 'Flickable' amnezia-client/client/ui/qml/Pages2/PageHome.qml
+          ! grep -q 'anchors.centerIn: Overlay.overlay' amnezia-client/client/ui/qml/Pages2/PageHome.qml
+          grep -q 'android:name="org.amnezia.vpn.AmneziaApplication"' amnezia-client/client/android/AndroidManifest.xml
+          grep -q 'android:name="org.amnezia.vpn.AmneziaActivity"' amnezia-client/client/android/AndroidManifest.xml
           if command -v qmlformat >/dev/null 2>&1; then
             qmlformat amnezia-client/client/ui/qml/Pages2/PageHome.qml >/dev/null
             qmlformat amnezia-client/client/ui/qml/Pages2/PageStart.qml >/dev/null
@@ -144,9 +147,12 @@ jobs:
           APK=dist/Flint-v8.9.7-Android-arm64.apk
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           "$AAPT" dump badging "$APK" | tee dist/aapt-badging.txt
+          "$AAPT" dump xmltree "$APK" AndroidManifest.xml | tee dist/aapt-manifest.txt
           grep -F "package: name='app.flint.vpn'" dist/aapt-badging.txt
           grep -F "application-label:'Flint'" dist/aapt-badging.txt
           grep -F "versionName='8.9.7'" dist/aapt-badging.txt
+          grep -F "org.amnezia.vpn.AmneziaApplication" dist/aapt-manifest.txt
+          grep -F "org.amnezia.vpn.AmneziaActivity" dist/aapt-manifest.txt
           unzip -t "$APK"
           test $(stat -c%s "$APK") -gt 10000000
 
@@ -158,4 +164,5 @@ jobs:
             dist/Flint-v8.9.7-Android-arm64.apk
             dist/Flint-v8.9.7-Android-arm64.apk.sha256
             dist/aapt-badging.txt
+            dist/aapt-manifest.txt
           retention-days: 14
