@@ -50,7 +50,7 @@ jobs:
 
       - uses: android-actions/setup-android@v4
         with:
-          packages: "platforms;android-30 build-tools;35.0.0 ndk;27.0.11718014 emulator system-images;android-34;google_apis;x86_64"
+          packages: "platforms;android-30 build-tools;35.0.0 ndk;27.0.11718014 emulator system-images;android-30;default;x86_64"
 
       - uses: jurplel/install-qt-action@v4.3.1
         with:
@@ -96,12 +96,12 @@ jobs:
       - name: Boot emulator and launch Flint
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
-          target: google_apis
+          api-level: 30
+          target: default
           arch: x86_64
-          profile: pixel_2
+          profile: Nexus 5X
           disable-animations: true
-          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-snapshot -no-window -gpu swiftshader -noaudio -no-boot-anim -camera-back none
           script: |
             set -euo pipefail
             adb start-server
