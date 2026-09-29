@@ -308,6 +308,8 @@ assert 'android:name="org.amnezia.vpn.AmneziaApplication"' in manifest.read_text
 assert 'android:name="org.amnezia.vpn.AmneziaActivity"' in manifest.read_text(encoding="utf-8")
 assert 'applicationId = "org.amnezia.vpn"' in gradle.read_text(encoding="utf-8")
 assert 'PageSetupWizardStart' not in (root / "client/ui/qml/Pages2/PageStart.qml").read_text(encoding="utf-8")
+assert 'source: "PageHome.qml"' in (root / "client/ui/qml/Pages2/PageStart.qml").read_text(encoding="utf-8")
+assert 'Loader {' in (root / "client/ui/qml/Pages2/PageStart.qml").read_text(encoding="utf-8")
 assert 'Flickable' not in (root / "client/ui/qml/Pages2/PageHome.qml").read_text(encoding="utf-8")
 assert 'zakupki.gov.ru' in repo.read_text(encoding="utf-8")
 assert '/auth/telegram/bot/start' in (root / "client/ui/controllers/flintController.cpp").read_text(encoding="utf-8")
