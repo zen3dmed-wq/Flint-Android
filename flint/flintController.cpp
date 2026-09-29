@@ -689,6 +689,9 @@ void FlintController::importSubscription()
 
     if (isProfileUri(sub)) {
         m_settings->setValue("Conf/flintLastProfile", sub);
+        const QString directCode = countryCodeForName(profileName(sub));
+        m_settings->setValue("Conf/flintLastProfileCountry",
+                             directCode.isEmpty() ? QStringLiteral("AUTO") : directCode);
         emit profileReady(sub);
         setAssist(QStringLiteral("Подписка Flint"),
                   QStringLiteral("Профиль готов. Можно подключаться."));
@@ -716,6 +719,11 @@ void FlintController::importSubscription()
             if (!selected.isEmpty()) {
                 m_settings->setValue("Conf/flintLastProfile", selected);
                 m_settings->setValue("Conf/flintLastProfileName", profileName(selected));
+                const QString selectedCode = countryCodeForName(profileName(selected));
+                m_settings->setValue("Conf/flintLastProfileCountry",
+                                     selectedCountry() == "AUTO"
+                                         ? QStringLiteral("AUTO")
+                                         : (selectedCode.isEmpty() ? selectedCountry() : selectedCode));
                 setError(QString());
                 emit profileReady(selected);
                 setAssist(QStringLiteral("Подписка Flint"),
@@ -730,10 +738,16 @@ void FlintController::importSubscription()
         }
 
         const QString cached = m_settings->value("Conf/flintLastProfile").toString().trimmed();
-        if (isProfileUri(cached)) {
+        const QString cachedCountry =
+            m_settings->value("Conf/flintLastProfileCountry", "AUTO").toString().toUpper();
+        const QString wanted = selectedCountry().toUpper();
+        const bool cacheMatches = (wanted == "AUTO") || (cachedCountry == wanted);
+        if (isProfileUri(cached) && cacheMatches) {
             emit profileReady(cached);
             setAssist(QStringLiteral("Резервный профиль"),
                       QStringLiteral("Сервер подписки отвечает медленно. Использую последний рабочий профиль."));
+        } else if (wanted != "AUTO") {
+            setError(QStringLiteral("Не удалось загрузить выбранную локацию. Повторите позже."));
         }
     });
 }
