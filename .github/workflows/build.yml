@@ -1,4 +1,4 @@
-name: Build Flint Android 8.9.5
+name: Build Flint Android 8.9.7
 
 on:
   workflow_dispatch:
@@ -78,10 +78,26 @@ jobs:
           git clone --recursive --branch 5.0.3.0 \
             https://github.com/amnezia-vpn/amnezia-client.git amnezia-client
 
-      - name: Apply Flint Android 8.9.5
+      - name: Apply Flint Android 8.9.7
         shell: bash
         run: |
           python3 build_flint.py amnezia-client
+
+      - name: Verify Flint source before build
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'android:label="Flint"' amnezia-client/client/android/AndroidManifest.xml
+          grep -q 'applicationId = "app.flint.vpn"' amnezia-client/client/android/build.gradle.kts
+          grep -q 'zakupki.gov.ru' amnezia-client/client/core/repositories/secureAppSettingsRepository.cpp
+          grep -q '/auth/telegram/bot/start' amnezia-client/client/ui/controllers/flintController.cpp
+          grep -q 'parseSubscriptionProfiles' amnezia-client/client/ui/controllers/flintController.cpp
+          ! grep -q 'PageSetupWizardStart' amnezia-client/client/ui/qml/Pages2/PageStart.qml
+          ! grep -q 'Flickable' amnezia-client/client/ui/qml/Pages2/PageHome.qml
+          if command -v qmlformat >/dev/null 2>&1; then
+            qmlformat --check amnezia-client/client/ui/qml/Pages2/PageHome.qml
+            qmlformat --check amnezia-client/client/ui/qml/Pages2/PageStart.qml
+          fi
 
       - name: Build Flint Android arm64 APK
         shell: bash
@@ -98,14 +114,28 @@ jobs:
           find amnezia-client/deploy -type f -name '*.apk' -print -exec cp -f {} dist/ \;
           APK=$(find dist -maxdepth 1 -name '*.apk' | head -n 1)
           test -n "$APK"
-          mv "$APK" dist/Flint-v8.9.5-Android-arm64.apk
-          sha256sum dist/Flint-v8.9.5-Android-arm64.apk > dist/Flint-v8.9.5-Android-arm64.apk.sha256
+          mv "$APK" dist/Flint-v8.9.7-Android-arm64.apk
+          sha256sum dist/Flint-v8.9.7-Android-arm64.apk > dist/Flint-v8.9.7-Android-arm64.apk.sha256
+
+      - name: Verify APK identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=dist/Flint-v8.9.7-Android-arm64.apk
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          "$AAPT" dump badging "$APK" | tee dist/aapt-badging.txt
+          grep -F "package: name='app.flint.vpn'" dist/aapt-badging.txt
+          grep -F "application-label:'Flint'" dist/aapt-badging.txt
+          grep -F "versionName='8.9.7'" dist/aapt-badging.txt
+          unzip -t "$APK"
+          test $(stat -c%s "$APK") -gt 10000000
 
       - name: Upload Flint APK
         uses: actions/upload-artifact@v4
         with:
-          name: Flint-v8.9.5-Android-arm64
+          name: Flint-v8.9.7-Android-arm64
           path: |
-            dist/Flint-v8.9.5-Android-arm64.apk
-            dist/Flint-v8.9.5-Android-arm64.apk.sha256
+            dist/Flint-v8.9.7-Android-arm64.apk
+            dist/Flint-v8.9.7-Android-arm64.apk.sha256
+            dist/aapt-badging.txt
           retention-days: 14
