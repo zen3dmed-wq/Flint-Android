@@ -1,0 +1,112 @@
+name: Flint Android launch smoke
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/launch-smoke.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  launch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      QT_VERSION: '6.10.3'
+      NDK_VERSION: 27.0.11718014
+      APP_ANDROID_MIN_SDK: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: false
+
+      - name: Build prerequisites
+        run: |
+          python -m pip install --upgrade pip
+          pip install "conan==2.28.0" "aqtinstall==3.3.0" "py7zr==0.22.*"
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          gomobile init
+
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: "platforms;android-30 build-tools;35.0.0 ndk;27.0.11718014 emulator system-images;android-30;google_apis;x86_64"
+
+      - uses: jurplel/install-qt-action@v4.3.1
+        with:
+          version: '${{ env.QT_VERSION }}'
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          modules: 'qtremoteobjects qt5compat qtimageformats qtshadertools'
+          dir: '${{ runner.temp }}'
+          set-env: true
+
+      - name: Install Qt Android x86_64
+        run: |
+          aqt install-qt all_os android "$QT_VERSION" android_x86_64 \
+            -O "${{ runner.temp }}/Qt" \
+            -m qtremoteobjects qt5compat qtimageformats qtshadertools
+
+      - name: Prepare Flint source
+        run: |
+          git clone --recursive --branch 5.0.3.0 https://github.com/amnezia-vpn/amnezia-client.git amnezia-client
+          python3 build_flint.py amnezia-client
+
+      - name: Build x86_64 smoke APK
+        env:
+          QT_INSTALL_DIR: '${{ runner.temp }}'
+          ANDROID_HOME: '${{ env.ANDROID_HOME }}'
+          ANDROID_NDK_VERSION: '${{ env.NDK_VERSION }}'
+        run: |
+          cd amnezia-client
+          deploy/build.sh -t android --abi x86_64
+          cd ..
+          APK=$(find amnezia-client/deploy -type f -name '*.apk' | head -n 1)
+          test -n "$APK"
+          cp "$APK" /tmp/flint-unsigned.apk
+          keytool -genkeypair -v -keystore /tmp/smoke.jks -storepass android -keypass android \
+            -alias smoke -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Flint Smoke" >/dev/null 2>&1
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign \
+            --ks /tmp/smoke.jks --ks-pass pass:android --key-pass pass:android \
+            --out /tmp/flint-smoke.apk /tmp/flint-unsigned.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify /tmp/flint-smoke.apk
+
+      - name: Boot emulator and launch Flint
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          script: |
+            set -e
+            adb install -r /tmp/flint-smoke.apk
+            adb logcat -c
+            adb shell am start -W -n app.flint.vpn/org.amnezia.vpn.AmneziaActivity | tee /tmp/am-start.txt
+            sleep 8
+            adb shell pidof app.flint.vpn | tee /tmp/pid.txt
+            test -s /tmp/pid.txt
+            adb logcat -d > /tmp/logcat.txt
+            if grep -A20 -B5 -E "FATAL EXCEPTION|Process: app\.flint\.vpn.*has died|Unable to instantiate application|Unable to start activity" /tmp/logcat.txt; then
+              echo "Flint crashed during launch"
+              exit 1
+            fi
+            grep -E "Status: ok|Activity:" /tmp/am-start.txt || true
+            echo "Flint launch smoke: OK"
