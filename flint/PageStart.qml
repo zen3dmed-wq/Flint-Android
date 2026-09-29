@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import PageEnum 1.0
 import "./"
 import "../Controls2"
 
@@ -9,101 +8,96 @@ PageType {
     id: root
     property bool isControlsDisabled: false
 
-    // Keep a tiny, known-good shell alive even if the custom Home QML has an
-    // error. A broken Home must never terminate the Android process.
     Rectangle {
         anchors.fill: parent
-        color: "#061522"
+        color: "#06111D"
+    }
 
-        Column {
-            anchors.centerIn: parent
-            width: Math.min(parent.width - 48, 340)
-            spacing: 12
-            visible: flintLoader.status !== Loader.Ready
-
-            Text {
-                width: parent.width
-                text: "FLINT"
-                horizontalAlignment: Text.AlignHCenter
-                color: "#F8FBFF"
-                font.pixelSize: 34
-                font.bold: true
-                font.letterSpacing: 2
-            }
-
-            Text {
-                width: parent.width
-                text: flintLoader.status === Loader.Error
-                      ? "Не удалось загрузить интерфейс Flint"
-                      : "Запуск Flint…"
-                horizontalAlignment: Text.AlignHCenter
-                color: flintLoader.status === Loader.Error ? "#FF9A9A" : "#B7C9DA"
-                wrapMode: Text.Wrap
-            }
-
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
-                visible: flintLoader.status === Loader.Error
-                text: "Повторить"
-                onClicked: {
-                    flintLoader.source = ""
-                    loadTimer.restart()
-                }
-            }
-        }
+    Image {
+        anchors.fill: parent
+        source: "qrc:/ui/qml/Assets/flint-background.jpg"
+        fillMode: Image.PreserveAspectCrop
+        opacity: 0.72
     }
 
     Loader {
         id: flintLoader
         anchors.fill: parent
-        asynchronous: true
+        asynchronous: false
+        source: "PageHome.qml"
         enabled: !root.isControlsDisabled
-        source: ""
 
         onStatusChanged: {
             if (status === Loader.Error)
-                console.error("Flint Home loader error:", source)
+                console.error("FLINT_STARTUP_UI_ERROR:", source)
         }
     }
 
-    Timer {
-        id: loadTimer
-        interval: 100
-        repeat: false
-        running: true
-        onTriggered: flintLoader.source = "PageHome.qml"
+    Column {
+        anchors.centerIn: parent
+        width: Math.min(parent.width - 48, 330)
+        spacing: 14
+        visible: flintLoader.status === Loader.Error
+
+        Image {
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: 84
+            height: 84
+            source: "qrc:/ui/qml/Assets/flint-logo.png"
+            fillMode: Image.PreserveAspectFit
+        }
+
+        Text {
+            width: parent.width
+            text: "FLINT"
+            color: "white"
+            font.pixelSize: 28
+            font.bold: true
+            horizontalAlignment: Text.AlignHCenter
+        }
+
+        Text {
+            width: parent.width
+            text: "Не удалось загрузить интерфейс Flint. Приложение не закрыто — можно отправить диагностику разработчику."
+            color: "#B7C9DA"
+            font.pixelSize: 13
+            wrapMode: Text.Wrap
+            horizontalAlignment: Text.AlignHCenter
+        }
+
+        Button {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "Повторить"
+            onClicked: {
+                flintLoader.source = ""
+                Qt.callLater(function() { flintLoader.source = "PageHome.qml" })
+            }
+        }
+    }
+
+    BusyIndicator {
+        anchors.centerIn: parent
+        visible: flintLoader.status === Loader.Loading
+        running: visible
     }
 
     Connections {
         target: PageController
         function onDisableControls(disabled) { root.isControlsDisabled = disabled }
         function onGoToPageHome() {
-            if (flintLoader.item)
-                FlintController.refresh()
-        }
-        function onGoToStartPage() {
-            if (flintLoader.item)
-                FlintController.refresh()
+            if (flintLoader.item && flintLoader.item.openSettings)
+                return
         }
         function onGoToPageSettings() {
             if (flintLoader.item && flintLoader.item.openSettings)
                 flintLoader.item.openSettings()
         }
+        function onGoToStartPage() {
+            if (flintLoader.status === Loader.Error) {
+                flintLoader.source = ""
+                Qt.callLater(function() { flintLoader.source = "PageHome.qml" })
+            }
+        }
         function onEscapePressed() { PageController.hideWindow() }
-    }
-
-    Connections {
-        target: ImportController
-        function onImportErrorOccurred(error, goToPageHome) {
-            PageController.showErrorMessage(error)
-        }
-    }
-
-    Connections {
-        target: ConnectionController
-        function onNoInstalledContainers() {
-            PageController.showNotificationMessage("Профиль Flint ещё не готов. Обновите аккаунт и повторите подключение.")
-            FlintController.refresh()
-        }
     }
 }
