@@ -15,7 +15,12 @@ def replace(path, old, new, required=True):
         return
     p.write_text(s.replace(old, new, 1), encoding="utf-8")
 
-# Branding: keep upstream build target, change user-facing identity/package.
+# Branding: the VPN engine stays upstream internally; every user-visible Android identity is Flint.
+replace(
+    "CMakeLists.txt",
+    'set(AMNEZIAVPN_VERSION 5.0.3.0 CACHE STRING "Client app version")',
+    'set(AMNEZIAVPN_VERSION 8.9.7 CACHE STRING "Client app version")'
+)
 replace(
     "client/cmake/branding/common.cmake",
     'set(CLIENT_APPLICATION_NAME "AmneziaVPN" CACHE STRING "Application display and executable name")',
@@ -177,6 +182,8 @@ launcher_bg.write_text("""<?xml version="1.0" encoding="utf-8"?>
 
 manifest = root / "client/android/AndroidManifest.xml"
 mt = manifest.read_text(encoding="utf-8")
+# Hard-code the Android launcher/task label. Do not rely on Qt's generated placeholder.
+mt = mt.replace('android:label="-- %%INSERT_APP_NAME%% --"', 'android:label="Flint"')
 mt = mt.replace('android:icon="@drawable/ic_amnezia_round"', 'android:icon="@drawable/ic_flint_round"')
 mt = mt.replace('android:authorities="org.amnezia.vpn.qtprovider"',
                 'android:authorities="app.flint.vpn.qtprovider"')
@@ -237,4 +244,13 @@ if 'setQmlContextProperty("FlintController"' not in s:
     s = s.replace(anchor, block, 1)
 cpp.write_text(s, encoding="utf-8")
 
-print("Flint Android 8.9.6 full-brand patch applied")
+# Build-time guardrails: fail instead of shipping an Amnezia-looking client.
+assert 'android:label="Flint"' in manifest.read_text(encoding="utf-8")
+assert 'app.flint.vpn' in gradle.read_text(encoding="utf-8")
+assert 'PageSetupWizardStart' not in (root / "client/ui/qml/Pages2/PageStart.qml").read_text(encoding="utf-8")
+assert 'Flickable' not in (root / "client/ui/qml/Pages2/PageHome.qml").read_text(encoding="utf-8")
+assert 'zakupki.gov.ru' in repo.read_text(encoding="utf-8")
+assert '/auth/telegram/bot/start' in (root / "client/ui/controllers/flintController.cpp").read_text(encoding="utf-8")
+assert 'parseSubscriptionProfiles' in (root / "client/ui/controllers/flintController.cpp").read_text(encoding="utf-8")
+
+print("Flint Android 8.9.7 one-screen patch applied and statically verified")
