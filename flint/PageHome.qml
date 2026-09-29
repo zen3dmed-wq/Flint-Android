@@ -108,7 +108,7 @@ PageType {
             spacing: 9
 
             Image {
-                source: "qrc:/ui/qml/Assets/flint-logo.svg"
+                source: "qrc:/ui/qml/Assets/flint-logo.png"
                 Layout.preferredWidth: 43 * root.u
                 Layout.preferredHeight: 43 * root.u
                 fillMode: Image.PreserveAspectFit
@@ -450,7 +450,7 @@ PageType {
                         Image {
                             width: 29 * root.u
                             height: 29 * root.u
-                            source: "qrc:/ui/qml/Assets/flint-logo.svg"
+                            source: "qrc:/ui/qml/Assets/flint-logo.png"
                             fillMode: Image.PreserveAspectFit
                         }
                         Text {
@@ -509,7 +509,7 @@ PageType {
             RowLayout {
                 Layout.fillWidth: true
                 Image {
-                    source: "qrc:/ui/qml/Assets/flint-logo.svg"
+                    source: "qrc:/ui/qml/Assets/flint-logo.png"
                     Layout.preferredWidth: 45
                     Layout.preferredHeight: 45
                 }
@@ -713,7 +713,7 @@ PageType {
             RowLayout {
                 Layout.fillWidth: true
                 Image {
-                    source: "qrc:/ui/qml/Assets/flint-logo.svg"
+                    source: "qrc:/ui/qml/Assets/flint-logo.png"
                     Layout.preferredWidth: 44
                     Layout.preferredHeight: 44
                 }
