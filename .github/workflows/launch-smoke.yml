@@ -5,6 +5,8 @@ on:
   push:
     paths:
       - '.github/workflows/launch-smoke.yml'
+      - 'flint/**'
+      - 'build_flint.py'
 
 permissions:
   contents: read
@@ -134,6 +136,8 @@ jobs:
             echo "=== Flint/Qt startup log excerpt ==="
             grep -E "AndroidRuntime|FATAL EXCEPTION|QQml|qml|Qt|AmneziaQt|flint|Unable to instantiate|Unable to start activity" /tmp/logcat.txt | tail -n 300 || true
 
+            adb exec-out screencap -p > /tmp/flint-launch.png || true
+
             if [ -z "$pid" ]; then
               echo "Flint process exited after launch"
               exit 1
@@ -145,3 +149,15 @@ jobs:
             fi
 
             echo "Flint launch smoke: OK"
+
+      - name: Upload smoke diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Flint-launch-smoke-diagnostics
+          path: |
+            /tmp/am-start.txt
+            /tmp/logcat.txt
+            /tmp/flint-launch.png
+          if-no-files-found: ignore
+          retention-days: 3
