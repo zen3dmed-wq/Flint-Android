@@ -281,6 +281,21 @@ if 'setQmlContextProperty("FlintController"' not in s:
     s = s.replace(anchor, block, 1)
 cpp.write_text(s, encoding="utf-8")
 
+# Startup resilience: never terminate the whole Android process merely because
+# the JNI/logging bridge is unavailable. Flint Home must remain visible so the
+# problem can be diagnosed instead of looking like an instant app close.
+core_cpp = root / "client/core/controllers/coreController.cpp"
+core_text = core_cpp.read_text(encoding="utf-8")
+core_text = core_text.replace(
+    '    if (!AndroidController::initLogging()) {\n        qFatal("Android logging initialization failed");\n    }',
+    '    if (!AndroidController::initLogging()) {\n        qCritical() << "Android logging initialization failed; continuing in UI safe mode";\n    }'
+)
+core_text = core_text.replace(
+    '    if (!AndroidController::instance()->initialize()) {\n        qFatal("Android controller initialization failed");\n    }',
+    '    if (!AndroidController::instance()->initialize()) {\n        qCritical() << "Android controller initialization failed; continuing in UI safe mode";\n    }'
+)
+core_cpp.write_text(core_text, encoding="utf-8")
+
 # Build-time guardrails: fail instead of shipping an Amnezia-looking client.
 assert 'android:label="Flint"' in manifest.read_text(encoding="utf-8")
 assert 'android:name="org.amnezia.vpn.AmneziaApplication"' in manifest.read_text(encoding="utf-8")
