@@ -618,6 +618,13 @@ PageType {
 
                 Button {
                     Layout.fillWidth: true
+                    text: "Добавить устройство по QR"
+                    enabled: FlintController.subscriptionActive && FlintController.subscriptionUrl.length > 0
+                    onClicked: familyQrPopup.open()
+                }
+
+                Button {
+                    Layout.fillWidth: true
                     text: "Выйти"
                     onClicked: FlintController.logout()
                 }
@@ -764,6 +771,89 @@ PageType {
                 text: "Закрыть"
                 Layout.alignment: Qt.AlignRight
                 onClicked: assistPopup.close()
+            }
+        }
+    }
+
+    Popup {
+        id: familyQrPopup
+        anchors.centerIn: Overlay.overlay
+        width: Math.min(root.width - 28, 430)
+        height: Math.min(root.height * 0.72, 560)
+        modal: true
+        focus: true
+
+        background: Rectangle {
+            radius: 23
+            color: "#FC081827"
+            border.width: 1
+            border.color: root.line
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 9
+
+            Text {
+                Layout.fillWidth: true
+                text: "Добавить устройство"
+                color: root.ink
+                font.pixelSize: 21
+                font.bold: true
+                horizontalAlignment: Text.AlignHCenter
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: "Отсканируйте QR на своём телефоне, планшете или телевизоре."
+                color: root.muted
+                font.pixelSize: 11
+                wrapMode: Text.Wrap
+                horizontalAlignment: Text.AlignHCenter
+            }
+
+            Rectangle {
+                Layout.preferredWidth: Math.min(familyQrPopup.width - 70, 310)
+                Layout.preferredHeight: Layout.preferredWidth
+                Layout.alignment: Qt.AlignHCenter
+                radius: 18
+                color: "white"
+                visible: FlintController.subscriptionUrl.length > 0
+
+                Image {
+                    anchors.fill: parent
+                    anchors.margins: 12
+                    source: FlintController.subscriptionUrl.length > 0
+                          ? MtProxyConfigModel.generateQrCode(FlintController.subscriptionUrl)
+                          : ""
+                    fillMode: Image.PreserveAspectFit
+                    cache: false
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: "QR содержит секретную ссылку подписки Flint. Не отправляйте его посторонним."
+                color: root.warning
+                font.pixelSize: 10.5
+                wrapMode: Text.Wrap
+                horizontalAlignment: Text.AlignHCenter
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: "После добавления устройство появится в семейной подписке автоматически."
+                color: root.muted
+                font.pixelSize: 10.5
+                wrapMode: Text.Wrap
+                horizontalAlignment: Text.AlignHCenter
+            }
+
+            Item { Layout.fillHeight: true }
+
+            Button {
+                text: "Закрыть"
+                Layout.alignment: Qt.AlignHCenter
+                onClicked: familyQrPopup.close()
             }
         }
     }
