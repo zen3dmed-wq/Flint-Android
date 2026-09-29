@@ -80,7 +80,7 @@ PageType {
 
     Image {
         anchors.fill: parent
-        source: "qrc:/ui/qml/Assets/flint-background.svg"
+        source: "qrc:/ui/qml/Assets/flint-background.jpg"
         fillMode: Image.PreserveAspectCrop
         cache: true
     }
@@ -156,7 +156,7 @@ PageType {
                 anchors.centerIn: parent
                 width: Math.min(parent.height, parent.width * 0.58)
                 height: width
-                source: "qrc:/ui/qml/Assets/flint-dog.svg"
+                source: "qrc:/ui/qml/Assets/flint-main.png"
                 fillMode: Image.PreserveAspectFit
                 cache: true
             }
