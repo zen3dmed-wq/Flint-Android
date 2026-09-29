@@ -877,7 +877,7 @@ PageType {
             spacing: 10
 
             Text { text: "Настройки Flint"; color: root.ink; font.pixelSize: 21; font.bold: true }
-            Text { text: "Flint Android 8.9.7"; color: root.muted }
+            Text { text: "Flint Android 8.9.8"; color: root.muted }
 
             Text {
                 Layout.fillWidth: true
