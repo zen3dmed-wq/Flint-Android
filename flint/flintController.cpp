@@ -27,34 +27,37 @@ bool isProfileUri(const QString &s)
 QString countryCodeForName(const QString &name)
 {
     const QString n = name.toLower();
-    struct C { const char *code; const char *name; const char *keys; };
-    static const C table[] = {
-        {"DE", "Германия", "de germany germany frankfurt германия франкфурт"},
-        {"NL", "Нидерланды", "nl netherlands holland нидерланды голландия"},
-        {"FI", "Финляндия", "fi finland финляндия helsinki хельсинки"},
-        {"FR", "Франция", "fr france франция paris париж"},
-        {"SE", "Швеция", "se sweden швеция stockholm стокгольм"},
-        {"PL", "Польша", "pl poland польша warsaw варшава"},
-        {"UK", "Великобритания", "uk gb united kingdom london британ лондон"},
-        {"US", "США", "us usa united states америка сша"},
-        {"TR", "Турция", "tr turkey türkiye турция"},
-        {"KZ", "Казахстан", "kz kazakhstan казахстан"},
-        {"AM", "Армения", "am armenia армения yerevan ереван"},
-        {"GE", "Грузия", "ge georgia грузия tbilisi тбилиси"}
+    struct CountryHint { QString code; QString displayName; QStringList keys; };
+    const QList<CountryHint> table = {
+        {QStringLiteral("FI"), QStringLiteral("Финляндия"),
+         {QStringLiteral("финлянд"), QStringLiteral("finland"), QStringLiteral("helsinki"), QStringLiteral("🇫🇮")}},
+        {QStringLiteral("DE"), QStringLiteral("Германия"),
+         {QStringLiteral("герман"), QStringLiteral("germany"), QStringLiteral("deutsch"), QStringLiteral("frankfurt"), QStringLiteral("🇩🇪")}},
+        {QStringLiteral("NL"), QStringLiteral("Нидерланды"),
+         {QStringLiteral("нидерланд"), QStringLiteral("netherlands"), QStringLiteral("holland"), QStringLiteral("amsterdam"), QStringLiteral("🇳🇱")}},
+        {QStringLiteral("FR"), QStringLiteral("Франция"),
+         {QStringLiteral("франц"), QStringLiteral("france"), QStringLiteral("paris"), QStringLiteral("🇫🇷")}},
+        {QStringLiteral("SE"), QStringLiteral("Швеция"),
+         {QStringLiteral("швец"), QStringLiteral("sweden"), QStringLiteral("stockholm"), QStringLiteral("🇸🇪")}},
+        {QStringLiteral("CH"), QStringLiteral("Швейцария"),
+         {QStringLiteral("швейцар"), QStringLiteral("switzerland"), QStringLiteral("zurich"), QStringLiteral("🇨🇭")}},
+        {QStringLiteral("GB"), QStringLiteral("Великобритания"),
+         {QStringLiteral("британ"), QStringLiteral("united kingdom"), QStringLiteral("london"), QStringLiteral(" uk "), QStringLiteral("🇬🇧")}},
+        {QStringLiteral("US"), QStringLiteral("США"),
+         {QStringLiteral("сша"), QStringLiteral("usa"), QStringLiteral("united states"), QStringLiteral("new york"), QStringLiteral("🇺🇸")}},
+        {QStringLiteral("TR"), QStringLiteral("Турция"),
+         {QStringLiteral("турц"), QStringLiteral("turkey"), QStringLiteral("türkiye"), QStringLiteral("istanbul"), QStringLiteral("🇹🇷")}},
+        {QStringLiteral("KZ"), QStringLiteral("Казахстан"),
+         {QStringLiteral("казахстан"), QStringLiteral("kazakhstan"), QStringLiteral("almaty"), QStringLiteral("astana"), QStringLiteral("🇰🇿")}},
+        {QStringLiteral("AM"), QStringLiteral("Армения"),
+         {QStringLiteral("армени"), QStringLiteral("armenia"), QStringLiteral("yerevan"), QStringLiteral("ереван"), QStringLiteral("🇦🇲")}},
+        {QStringLiteral("GE"), QStringLiteral("Грузия"),
+         {QStringLiteral("грузи"), QStringLiteral("georgia"), QStringLiteral("tbilisi"), QStringLiteral("тбилиси"), QStringLiteral("🇬🇪")}}
     };
-    for (const auto &x : table) {
-        const QStringList keys = QString::fromLatin1(x.keys).split(' ', Qt::SkipEmptyParts);
-        for (const QString &k : keys) {
-            if (k.size() <= 2) {
-                const QRegularExpression re(
-                    QStringLiteral("(^|[^a-z0-9])%1([^a-z0-9]|$)")
-                        .arg(QRegularExpression::escape(k)),
-                    QRegularExpression::CaseInsensitiveOption);
-                if (re.match(n).hasMatch())
-                    return QString::fromLatin1(x.code);
-            } else if (n.contains(k)) {
-                return QString::fromLatin1(x.code);
-            }
+    for (const CountryHint &country : table) {
+        for (const QString &key : country.keys) {
+            if (n.contains(key))
+                return country.code;
         }
     }
     return QString();
@@ -63,13 +66,13 @@ QString countryCodeForName(const QString &name)
 QString countryNameForCode(const QString &code)
 {
     const QString c = code.toUpper();
+    if (c == "FI") return QStringLiteral("Финляндия");
     if (c == "DE") return QStringLiteral("Германия");
     if (c == "NL") return QStringLiteral("Нидерланды");
-    if (c == "FI") return QStringLiteral("Финляндия");
     if (c == "FR") return QStringLiteral("Франция");
     if (c == "SE") return QStringLiteral("Швеция");
-    if (c == "PL") return QStringLiteral("Польша");
-    if (c == "UK") return QStringLiteral("Великобритания");
+    if (c == "CH") return QStringLiteral("Швейцария");
+    if (c == "GB" || c == "UK") return QStringLiteral("Великобритания");
     if (c == "US") return QStringLiteral("США");
     if (c == "TR") return QStringLiteral("Турция");
     if (c == "KZ") return QStringLiteral("Казахстан");
