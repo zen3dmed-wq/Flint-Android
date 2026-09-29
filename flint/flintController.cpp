@@ -320,7 +320,7 @@ void FlintController::refreshAccessToken(std::function<void(bool)> done)
 
     const QString rt = m_settings->value("Conf/flintRefreshToken").toString();
     if (rt.isEmpty()) {
-        const auto waiters = std::exchange(m_refreshWaiters, {});
+        auto waiters = std::move(m_refreshWaiters);\n        m_refreshWaiters.clear();
         for (const auto &cb : waiters) cb(false);
         return;
     }
@@ -348,7 +348,7 @@ void FlintController::refreshAccessToken(std::function<void(bool)> done)
             }
 
             m_refreshInFlight = false;
-            const auto waiters = std::exchange(m_refreshWaiters, {});
+            auto waiters = std::move(m_refreshWaiters);\n        m_refreshWaiters.clear();
             for (const auto &cb : waiters) cb(ok);
         });
 }
