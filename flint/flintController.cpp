@@ -6,13 +6,68 @@
 #include <QJsonObject>
 #include <QNetworkReply>
 #include <QRandomGenerator>
+#include <QRegularExpression>
 #include <QSysInfo>
 #include <QUrl>
+#include <QUrlQuery>
 #include <QUuid>
 
 namespace {
 const QString kApiBase = QStringLiteral("https://flintmain.ru/api/v1");
-const QString kVersion = QStringLiteral("8.9.5");
+const QString kVersion = QStringLiteral("8.9.7");
+
+bool isProfileUri(const QString &s)
+{
+    const QString v = s.trimmed().toLower();
+    return v.startsWith("vless://") || v.startsWith("vmess://") ||
+           v.startsWith("trojan://") || v.startsWith("ss://");
+}
+
+QString countryCodeForName(const QString &name)
+{
+    const QString n = name.toLower();
+    struct C { const char *code; const char *name; const char *keys; };
+    static const C table[] = {
+        {"DE", "Германия", "de germany germany frankfurt германия франкфурт"},
+        {"NL", "Нидерланды", "nl netherlands holland нидерланды голландия"},
+        {"FI", "Финляндия", "fi finland финляндия helsinki хельсинки"},
+        {"FR", "Франция", "fr france франция paris париж"},
+        {"SE", "Швеция", "se sweden швеция stockholm стокгольм"},
+        {"PL", "Польша", "pl poland польша warsaw варшава"},
+        {"UK", "Великобритания", "uk gb united kingdom london британ лондон"},
+        {"US", "США", "us usa united states америка сша"},
+        {"TR", "Турция", "tr turkey türkiye турция"},
+        {"KZ", "Казахстан", "kz kazakhstan казахстан"},
+        {"AM", "Армения", "am armenia армения yerevan ереван"},
+        {"GE", "Грузия", "ge georgia грузия tbilisi тбилиси"}
+    };
+    for (const auto &x : table) {
+        const QStringList keys = QString::fromLatin1(x.keys).split(' ', Qt::SkipEmptyParts);
+        for (const QString &k : keys) {
+            if (n.contains(k))
+                return QString::fromLatin1(x.code);
+        }
+    }
+    return QString();
+}
+
+QString countryNameForCode(const QString &code)
+{
+    const QString c = code.toUpper();
+    if (c == "DE") return QStringLiteral("Германия");
+    if (c == "NL") return QStringLiteral("Нидерланды");
+    if (c == "FI") return QStringLiteral("Финляндия");
+    if (c == "FR") return QStringLiteral("Франция");
+    if (c == "SE") return QStringLiteral("Швеция");
+    if (c == "PL") return QStringLiteral("Польша");
+    if (c == "UK") return QStringLiteral("Великобритания");
+    if (c == "US") return QStringLiteral("США");
+    if (c == "TR") return QStringLiteral("Турция");
+    if (c == "KZ") return QStringLiteral("Казахстан");
+    if (c == "AM") return QStringLiteral("Армения");
+    if (c == "GE") return QStringLiteral("Грузия");
+    return c;
+}
 }
 
 FlintController::FlintController(SecureQSettings *settings, QObject *parent)
@@ -126,6 +181,85 @@ bool FlintController::validSubscriptionUrl(const QString &value) const
     const QString s = u.scheme().toLower();
     return u.isValid() && (s == "https" || s == "http" || s == "vless" ||
                            s == "vmess" || s == "trojan" || s == "ss");
+}
+
+QString FlintController::profileName(const QString &uri)
+{
+    const QUrl u(uri);
+    const QString fragment = QUrl::fromPercentEncoding(u.fragment(QUrl::FullyEncoded).toUtf8()).trimmed();
+    return fragment.isEmpty() ? u.host() : fragment;
+}
+
+QStringList FlintController::parseSubscriptionProfiles(const QByteArray &raw) const
+{
+    QList<QByteArray> candidates;
+    const QByteArray trimmed = raw.trimmed();
+    candidates << raw;
+    const QByteArray stdDecoded = QByteArray::fromBase64(trimmed, QByteArray::Base64Encoding);
+    const QByteArray urlDecoded = QByteArray::fromBase64(trimmed, QByteArray::Base64UrlEncoding);
+    if (!stdDecoded.isEmpty()) candidates << stdDecoded;
+    if (!urlDecoded.isEmpty() && urlDecoded != stdDecoded) candidates << urlDecoded;
+
+    QStringList profiles;
+    const QRegularExpression ws(QStringLiteral("[\\r\\n\\t ]+"));
+    for (const QByteArray &candidate : candidates) {
+        const QString text = QString::fromUtf8(candidate);
+        const QStringList parts = text.split(ws, Qt::SkipEmptyParts);
+        for (const QString &part : parts) {
+            const QString p = part.trimmed();
+            if (isProfileUri(p) && !profiles.contains(p))
+                profiles << p;
+        }
+        if (!profiles.isEmpty())
+            break;
+    }
+    return profiles;
+}
+
+void FlintController::updateCountriesFromProfiles(const QStringList &profiles)
+{
+    QVariantList out;
+    QVariantMap autoItem;
+    autoItem["code"] = "AUTO";
+    autoItem["name"] = QStringLiteral("Автоматически");
+    out << autoItem;
+
+    QStringList seen;
+    for (const QString &p : profiles) {
+        const QString name = profileName(p);
+        const QString code = countryCodeForName(name);
+        if (code.isEmpty() || seen.contains(code))
+            continue;
+        seen << code;
+        QVariantMap m;
+        m["code"] = code;
+        m["name"] = countryNameForCode(code);
+        out << m;
+    }
+
+    m_countries = out;
+    emit countriesChanged();
+}
+
+QString FlintController::chooseProfile(const QStringList &profiles)
+{
+    if (profiles.isEmpty())
+        return QString();
+
+    updateCountriesFromProfiles(profiles);
+
+    const QString wanted = selectedCountry().trimmed().toUpper();
+    if (wanted.isEmpty() || wanted == "AUTO")
+        return profiles.first();
+
+    for (const QString &p : profiles) {
+        const QString name = profileName(p);
+        if (countryCodeForName(name) == wanted ||
+            name.contains(wanted, Qt::CaseInsensitive))
+            return p;
+    }
+
+    return profiles.first();
 }
 
 void FlintController::saveTokens(const QJsonObject &obj)
@@ -277,8 +411,8 @@ void FlintController::refreshAccount()
             }
         });
 
-    // Важно: обновление подписки выполняется в фоне. Подключение VPN не
-    // блокируется ожиданием /subscriptions — используется сохранённая ссылка.
+    // /subscriptions only refreshes the cache. A working VPN connection never
+    // waits for this endpoint; importSubscription() can use the cached URL.
     authorizedGet("/subscriptions",
         [this](int status, const QByteArray &raw, const QString &err) {
             if (status >= 200 && status < 300) {
@@ -299,7 +433,8 @@ void FlintController::refreshAccount()
                     m_settings->setValue("Conf/flintSubscriptionUrl", found);
                     m_subscriptionActive = true;
                     emit subscriptionChanged();
-                    if (changed) emit profileReady(found);
+                    if (changed)
+                        importSubscription();
                 }
                 setError(QString());
             } else if (!validSubscriptionUrl(subscriptionUrl()) && !err.isEmpty()) {
@@ -510,7 +645,7 @@ void FlintController::checkTelegramLogin()
 void FlintController::setSelectedCountry(const QString &value)
 {
     const QString v =
-        value.trimmed().isEmpty() ? QStringLiteral("AUTO") : value.trimmed();
+        value.trimmed().isEmpty() ? QStringLiteral("AUTO") : value.trimmed().toUpper();
     if (selectedCountry() == v) return;
     m_settings->setValue("Conf/flintSelectedCountry", v);
     emit selectedCountryChanged();
@@ -525,14 +660,61 @@ void FlintController::setRuDirectEnabled(bool enabled)
 
 void FlintController::importSubscription()
 {
-    const QString url = subscriptionUrl();
-    if (!validSubscriptionUrl(url)) {
+    const QString sub = subscriptionUrl();
+    if (!validSubscriptionUrl(sub)) {
         setError(QStringLiteral("Активная подписка не найдена."));
         return;
     }
-    emit profileReady(url);
-    setAssist(QStringLiteral("Подписка Flint"),
-              QStringLiteral("Профили переданы ядру. Можно подключаться."));
+
+    if (isProfileUri(sub)) {
+        m_settings->setValue("Conf/flintLastProfile", sub);
+        emit profileReady(sub);
+        setAssist(QStringLiteral("Подписка Flint"),
+                  QStringLiteral("Профиль готов. Можно подключаться."));
+        return;
+    }
+
+    QNetworkRequest req(QUrl(sub));
+    req.setRawHeader("User-Agent", QByteArray("Flint/") + kVersion.toUtf8());
+    req.setRawHeader("X-Client", QByteArray("android/") + kVersion.toUtf8());
+    req.setTransferTimeout(9000);
+
+    setBusy(true);
+    QNetworkReply *reply = m_net.get(req);
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const QByteArray raw = reply->readAll();
+        const QString networkError =
+            reply->error() == QNetworkReply::NoError ? QString() : reply->errorString();
+        reply->deleteLater();
+        setBusy(false);
+
+        if (status >= 200 && status < 300) {
+            const QStringList profiles = parseSubscriptionProfiles(raw);
+            const QString selected = chooseProfile(profiles);
+            if (!selected.isEmpty()) {
+                m_settings->setValue("Conf/flintLastProfile", selected);
+                m_settings->setValue("Conf/flintLastProfileName", profileName(selected));
+                setError(QString());
+                emit profileReady(selected);
+                setAssist(QStringLiteral("Подписка Flint"),
+                          QStringLiteral("Профиль загружен. Можно подключаться."));
+                return;
+            }
+            setError(QStringLiteral("В подписке Flint не найден поддерживаемый профиль."));
+        } else {
+            setError(networkError.isEmpty()
+                ? QStringLiteral("Не удалось загрузить профиль Flint.")
+                : networkError);
+        }
+
+        const QString cached = m_settings->value("Conf/flintLastProfile").toString().trimmed();
+        if (isProfileUri(cached)) {
+            emit profileReady(cached);
+            setAssist(QStringLiteral("Резервный профиль"),
+                      QStringLiteral("Сервер подписки отвечает медленно. Использую последний рабочий профиль."));
+        }
+    });
 }
 
 void FlintController::askAssist(const QString &message)
@@ -540,11 +722,11 @@ void FlintController::askAssist(const QString &message)
     const QString m = message.toLower();
     if (m.contains(QStringLiteral("подключ"))) {
         setAssist(QStringLiteral("Подключение"),
-                  QStringLiteral("Flint использует сохранённую подписку даже если API временно отвечает медленно."));
+                  QStringLiteral("Flint использует последний рабочий профиль, даже если API или сервер подписки временно отвечает медленно."));
     } else if (m.contains(QStringLiteral("росс")) ||
                m.contains(QStringLiteral("закуп"))) {
         setAssist(QStringLiteral("Российские сервисы"),
-                  QStringLiteral("Включите переключатель. zakupki.gov.ru добавлен в прямой маршрут."));
+                  QStringLiteral("zakupki.gov.ru, ЕИС и другие выбранные российские сервисы идут напрямую."));
     } else {
         setAssist(QStringLiteral("Flint Assist"),
                   QStringLiteral("Обновите аккаунт или повторите подключение."));
