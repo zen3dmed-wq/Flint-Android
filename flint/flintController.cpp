@@ -11,6 +11,7 @@
 #include <QUrl>
 #include <QUrlQuery>
 #include <QUuid>
+#include <utility>
 
 namespace {
 const QString kApiBase = QStringLiteral("https://flintmain.ru/api/v1");
@@ -311,26 +312,44 @@ void FlintController::postPublic(
 
 void FlintController::refreshAccessToken(std::function<void(bool)> done)
 {
+    // Flint refresh tokens rotate. Only one refresh request may use the current
+    // token; all concurrent 401 handlers wait for the same result.
+    m_refreshWaiters.append(std::move(done));
+    if (m_refreshInFlight)
+        return;
+
     const QString rt = m_settings->value("Conf/flintRefreshToken").toString();
     if (rt.isEmpty()) {
-        done(false);
+        const auto waiters = std::exchange(m_refreshWaiters, {});
+        for (const auto &cb : waiters) cb(false);
         return;
     }
+
+    m_refreshInFlight = true;
     QJsonObject body;
     body["refreshToken"] = rt;
     postPublic("/auth/refresh", body,
-        [this, done](int status, const QByteArray &raw, const QString &) {
-            if (status < 200 || status >= 300) {
-                done(false);
-                return;
+        [this](int status, const QByteArray &raw, const QString &err) {
+            bool ok = false;
+            if (status >= 200 && status < 300) {
+                const QJsonObject o = QJsonDocument::fromJson(raw).object();
+                if (!o.value("accessToken").toString().isEmpty() &&
+                    !o.value("refreshToken").toString().isEmpty()) {
+                    saveTokens(o);
+                    ok = true;
+                }
             }
-            const QJsonObject o = QJsonDocument::fromJson(raw).object();
-            if (o.value("accessToken").toString().isEmpty()) {
-                done(false);
-                return;
+
+            if (!ok && status == 401) {
+                clearAuthState();
+                setError(QStringLiteral("Сессия Flint истекла. Войдите снова."));
+            } else if (!ok && !err.isEmpty()) {
+                setError(QStringLiteral("Не удалось обновить сессию: ") + err);
             }
-            saveTokens(o);
-            done(true);
+
+            m_refreshInFlight = false;
+            const auto waiters = std::exchange(m_refreshWaiters, {});
+            for (const auto &cb : waiters) cb(ok);
         });
 }
 
@@ -501,8 +520,8 @@ void FlintController::login(const QString &email, const QString &password)
 
 void FlintController::registerAccount(const QString &email, const QString &password)
 {
-    if (email.trimmed().isEmpty() || password.length() < 6) {
-        setError(QStringLiteral("Введите Email и пароль не короче 6 символов."));
+    if (email.trimmed().isEmpty() || password.length() < 8) {
+        setError(QStringLiteral("Введите Email и пароль не короче 8 символов."));
         return;
     }
 
