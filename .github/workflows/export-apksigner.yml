@@ -36,4 +36,4 @@ jobs:
         with:
           name: android-apksigner-35
           path: dist/*
-          retention-days: 2
+          retention-days: 1
