@@ -189,6 +189,16 @@ manifest = root / "client/android/AndroidManifest.xml"
 mt = manifest.read_text(encoding="utf-8")
 # Hard-code the Android launcher/task label. Do not rely on Qt's generated placeholder.
 mt = mt.replace('android:label="-- %%INSERT_APP_NAME%% --"', 'android:label="Flint"')
+# applicationId is Flint, while the native Qt/Android bridge classes remain in
+# org.amnezia.vpn. Fully qualify every relative Android component so Android
+# never tries to resolve them under app.flint.vpn at process startup.
+for component in [
+    "AmneziaApplication", "AmneziaActivity", "CameraActivity", "VpnRequestActivity",
+    "AuthActivity", "TvFilePicker", "ImportConfigActivity", "AwgService",
+    "OpenVpnService", "XrayService", "AmneziaTileService"
+]:
+    mt = mt.replace(f'android:name=".{component}"',
+                    f'android:name="org.amnezia.vpn.{component}"')
 mt = mt.replace('android:icon="@drawable/ic_amnezia_round"', 'android:icon="@drawable/ic_flint_round"')
 mt = mt.replace('android:authorities="org.amnezia.vpn.qtprovider"',
                 'android:authorities="app.flint.vpn.qtprovider"')
@@ -273,6 +283,8 @@ cpp.write_text(s, encoding="utf-8")
 
 # Build-time guardrails: fail instead of shipping an Amnezia-looking client.
 assert 'android:label="Flint"' in manifest.read_text(encoding="utf-8")
+assert 'android:name="org.amnezia.vpn.AmneziaApplication"' in manifest.read_text(encoding="utf-8")
+assert 'android:name="org.amnezia.vpn.AmneziaActivity"' in manifest.read_text(encoding="utf-8")
 assert 'app.flint.vpn' in gradle.read_text(encoding="utf-8")
 assert 'PageSetupWizardStart' not in (root / "client/ui/qml/Pages2/PageStart.qml").read_text(encoding="utf-8")
 assert 'Flickable' not in (root / "client/ui/qml/Pages2/PageHome.qml").read_text(encoding="utf-8")
