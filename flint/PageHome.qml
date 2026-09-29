@@ -80,10 +80,16 @@ PageType {
         }
     }
 
+    Timer {
+        id: safeStartup
+        interval: 900
+        repeat: false
+        running: true
+        onTriggered: FlintController.refresh()
+    }
+
     Component.onCompleted: {
-        IpSplitTunnelingController.setRouteMode(2)
-        IpSplitTunnelingController.toggleSplitTunneling(FlintController.ruDirectEnabled)
-        FlintController.refresh()
+        // Keep first frame side-effect free. Routing defaults are prepared in C++.
     }
 
     Image {
@@ -823,14 +829,16 @@ PageType {
                 color: "white"
                 visible: FlintController.subscriptionUrl.length > 0
 
-                Image {
+                Loader {
                     anchors.fill: parent
                     anchors.margins: 12
-                    source: FlintController.subscriptionUrl.length > 0
-                          ? MtProxyConfigModel.generateQrCode(FlintController.subscriptionUrl)
-                          : ""
-                    fillMode: Image.PreserveAspectFit
-                    cache: false
+                    active: familyQrPopup.opened && FlintController.subscriptionUrl.length > 0
+
+                    sourceComponent: Image {
+                        source: MtProxyConfigModel.generateQrCode(FlintController.subscriptionUrl)
+                        fillMode: Image.PreserveAspectFit
+                        cache: false
+                    }
                 }
             }
 
