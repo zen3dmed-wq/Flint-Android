@@ -109,24 +109,29 @@ jobs:
 
             echo "Waiting for Android framework/package manager..."
             ready=0
-            for i in $(seq 1 180); do
+            for i in $(seq 1 240); do
               boot="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
-              pkg="$(adb shell service check package 2>/dev/null | tr -d '\r' || true)"
-              if [ "$boot" = "1" ] && echo "$pkg" | grep -qi "found"; then
+              devboot="$(adb shell getprop dev.bootcomplete 2>/dev/null | tr -d '\r' || true)"
+              if [ "$boot" = "1" ] && [ "$devboot" = "1" ] && \
+                 adb shell cmd package list packages >/dev/null 2>&1 && \
+                 adb shell pm path android >/dev/null 2>&1; then
                 ready=1
                 break
               fi
               sleep 2
             done
             if [ "$ready" != "1" ]; then
-              echo "Android framework did not become ready"
+              echo "Android package manager did not become ready"
               adb shell getprop || true
               adb shell service list || true
+              adb shell dumpsys package 2>&1 | head -n 100 || true
               exit 1
             fi
 
+            echo "Package manager ready; waiting 15s for user/system services"
+            sleep 15
             adb shell input keyevent 82 || true
-            adb install -r /tmp/flint-smoke.apk
+            adb install --no-streaming -r /tmp/flint-smoke.apk
             adb logcat -c
 
             adb shell am force-stop app.flint.vpn || true
