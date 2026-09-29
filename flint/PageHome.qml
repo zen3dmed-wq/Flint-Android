@@ -497,7 +497,7 @@ PageType {
 
     Popup {
         id: accountPopup
-        anchors.centerIn: Overlay.overlay
+        x: Math.round((root.width - width) / 2)\n        y: Math.round((root.height - height) / 2)
         width: Math.min(root.width - 28, 470)
         height: Math.min(root.height - PageController.safeAreaTopMargin - PageController.safeAreaBottomMargin - 30, 510)
         modal: true
@@ -650,7 +650,7 @@ PageType {
 
     Popup {
         id: countryPopup
-        anchors.centerIn: Overlay.overlay
+        x: Math.round((root.width - width) / 2)\n        y: Math.round((root.height - height) / 2)
         width: Math.min(root.width - 28, 430)
         height: Math.min(root.height * 0.66, 430)
         modal: true
@@ -709,7 +709,7 @@ PageType {
 
     Popup {
         id: assistPopup
-        anchors.centerIn: Overlay.overlay
+        x: Math.round((root.width - width) / 2)\n        y: Math.round((root.height - height) / 2)
         width: Math.min(root.width - 28, 460)
         height: Math.min(root.height * 0.56, 380)
         modal: true
@@ -777,7 +777,7 @@ PageType {
 
     Popup {
         id: familyQrPopup
-        anchors.centerIn: Overlay.overlay
+        x: Math.round((root.width - width) / 2)\n        y: Math.round((root.height - height) / 2)
         width: Math.min(root.width - 28, 430)
         height: Math.min(root.height * 0.72, 560)
         modal: true
@@ -860,7 +860,7 @@ PageType {
 
     Popup {
         id: settingsPopup
-        anchors.centerIn: Overlay.overlay
+        x: Math.round((root.width - width) / 2)\n        y: Math.round((root.height - height) / 2)
         width: Math.min(root.width - 28, 440)
         height: Math.min(root.height * 0.50, 340)
         modal: true
