@@ -15,7 +15,7 @@
 
 namespace {
 const QString kApiBase = QStringLiteral("https://flintmain.ru/api/v1");
-const QString kVersion = QStringLiteral("8.9.7");
+const QString kVersion = QStringLiteral("8.9.8");
 
 bool isProfileUri(const QString &s)
 {
