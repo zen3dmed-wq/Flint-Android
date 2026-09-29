@@ -9,6 +9,7 @@
 #include <QJsonObject>
 #include <QTimer>
 #include <functional>
+#include <QList>
 #include "secureQSettings.h"
 
 class FlintController : public QObject
@@ -113,6 +114,8 @@ private:
     bool m_busy = false;
     QString m_lastError;
     bool m_apiOnline = true;
+    bool m_refreshInFlight = false;
+    QList<std::function<void(bool)>> m_refreshWaiters;
 };
 
 #endif
