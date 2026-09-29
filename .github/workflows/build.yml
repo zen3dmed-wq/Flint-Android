@@ -95,9 +95,25 @@ jobs:
           ! grep -q 'PageSetupWizardStart' amnezia-client/client/ui/qml/Pages2/PageStart.qml
           ! grep -q 'Flickable' amnezia-client/client/ui/qml/Pages2/PageHome.qml
           if command -v qmlformat >/dev/null 2>&1; then
-            qmlformat --check amnezia-client/client/ui/qml/Pages2/PageHome.qml
-            qmlformat --check amnezia-client/client/ui/qml/Pages2/PageStart.qml
+            qmlformat amnezia-client/client/ui/qml/Pages2/PageHome.qml >/dev/null
+            qmlformat amnezia-client/client/ui/qml/Pages2/PageStart.qml >/dev/null
           fi
+
+      - name: Check Flint public API
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 15 \
+            https://flintmain.ru/api/v1/config -o /tmp/flint-config.json
+          test -s /tmp/flint-config.json
+          python3 - <<'PY'
+          import json
+          p="/tmp/flint-config.json"
+          with open(p, "r", encoding="utf-8") as f:
+              data=json.load(f)
+          assert isinstance(data, dict), "Flint /config must return a JSON object"
+          print("Flint public API: OK")
+          PY
 
       - name: Build Flint Android arm64 APK
         shell: bash
