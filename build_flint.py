@@ -19,12 +19,12 @@ def replace(path, old, new, required=True):
 replace(
     "CMakeLists.txt",
     'set(AMNEZIAVPN_VERSION 5.0.3.0 CACHE STRING "Client app version")',
-    'set(AMNEZIAVPN_VERSION 8.9.8 CACHE STRING "Client app version")'
+    'set(AMNEZIAVPN_VERSION 8.9.9 CACHE STRING "Client app version")'
 )
 replace(
     "CMakeLists.txt",
     'set(APP_ANDROID_VERSION_CODE 2163)',
-    'set(APP_ANDROID_VERSION_CODE 2165)'
+    'set(APP_ANDROID_VERSION_CODE 2166)'
 )
 replace(
     "client/cmake/branding/common.cmake",
@@ -293,4 +293,4 @@ assert '/auth/telegram/bot/start' in (root / "client/ui/controllers/flintControl
 assert 'parseSubscriptionProfiles' in (root / "client/ui/controllers/flintController.cpp").read_text(encoding="utf-8")
 assert 'flintProfileServerId' in (root / "client/core/controllers/coreController.cpp").read_text(encoding="utf-8")
 
-print("Flint Android 8.9.8 one-screen patch applied and statically verified")
+print("Flint Android 8.9.9 one-screen patch applied and statically verified")
