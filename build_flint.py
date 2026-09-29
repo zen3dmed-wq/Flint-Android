@@ -19,7 +19,7 @@ def replace(path, old, new, required=True):
 replace(
     "CMakeLists.txt",
     'set(AMNEZIAVPN_VERSION 5.0.3.0 CACHE STRING "Client app version")',
-    'set(AMNEZIAVPN_VERSION 8.9.9 CACHE STRING "Client app version")'
+    'set(AMNEZIAVPN_VERSION 8.9.10 CACHE STRING "Client app version")'
 )
 replace(
     "CMakeLists.txt",
@@ -41,16 +41,12 @@ replace(
     'set(CLIENT_APP_INSTANCE_NAME "AmneziaVPNInstance" CACHE STRING "Single-instance local server name")',
     'set(CLIENT_APP_INSTANCE_NAME "FlintInstance" CACHE STRING "Single-instance local server name")'
 )
-replace(
-    "client/cmake/branding/android.cmake",
-    'set(CLIENT_ANDROID_PACKAGE "org.amnezia.vpn" CACHE STRING "Android package name for Play Store version lookup")',
-    'set(CLIENT_ANDROID_PACKAGE "app.flint.vpn" CACHE STRING "Android package name for Play Store version lookup")'
-)
+# Keep the engine's Android package namespace intact. User-visible identity is
+# still Flint (label/icon/UI); this avoids JNI/package assumptions in the native bridge.
 
 gradle = root / "client/android/build.gradle.kts"
 gs = gradle.read_text(encoding="utf-8")
-if 'applicationId = "org.amnezia.vpn"' in gs:
-    gs = gs.replace('applicationId = "org.amnezia.vpn"', 'applicationId = "app.flint.vpn"')
+# Do NOT change applicationId: Qt/JNI bridge code is built around org.amnezia.vpn.
 # CI builds an unsigned release APK; it is signed with Flint's private key
 # only after the artifact is downloaded into the private build environment.
 gs = gs.replace('signingConfig = signingConfigs["release"]', 'signingConfig = null')
@@ -200,8 +196,7 @@ for component in [
     mt = mt.replace(f'android:name=".{component}"',
                     f'android:name="org.amnezia.vpn.{component}"')
 mt = mt.replace('android:icon="@drawable/ic_amnezia_round"', 'android:icon="@drawable/ic_flint_round"')
-mt = mt.replace('android:authorities="org.amnezia.vpn.qtprovider"',
-                'android:authorities="app.flint.vpn.qtprovider"')
+# Keep the FileProvider authority aligned with the stable engine namespace.
 manifest.write_text(mt, encoding="utf-8")
 
 # Remove remaining user-visible Amnezia naming from Android system dialogs.
@@ -311,7 +306,7 @@ app_cpp.write_text(app_text, encoding="utf-8")
 assert 'android:label="Flint"' in manifest.read_text(encoding="utf-8")
 assert 'android:name="org.amnezia.vpn.AmneziaApplication"' in manifest.read_text(encoding="utf-8")
 assert 'android:name="org.amnezia.vpn.AmneziaActivity"' in manifest.read_text(encoding="utf-8")
-assert 'app.flint.vpn' in gradle.read_text(encoding="utf-8")
+assert 'applicationId = "org.amnezia.vpn"' in gradle.read_text(encoding="utf-8")
 assert 'PageSetupWizardStart' not in (root / "client/ui/qml/Pages2/PageStart.qml").read_text(encoding="utf-8")
 assert 'Flickable' not in (root / "client/ui/qml/Pages2/PageHome.qml").read_text(encoding="utf-8")
 assert 'zakupki.gov.ru' in repo.read_text(encoding="utf-8")
@@ -320,4 +315,4 @@ assert 'parseSubscriptionProfiles' in (root / "client/ui/controllers/flintContro
 assert 'flintProfileServerId' in (root / "client/core/controllers/coreController.cpp").read_text(encoding="utf-8")
 assert 'clearQtCaches();' in (root / "client/amneziaApplication.cpp").read_text(encoding="utf-8")
 
-print("Flint Android 8.9.9 one-screen patch applied and statically verified")
+print("Flint Android 8.9.10 startup-safe patch applied and statically verified")
