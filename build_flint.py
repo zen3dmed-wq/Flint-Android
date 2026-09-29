@@ -238,7 +238,29 @@ if 'setQmlContextProperty("FlintController"' not in s:
         '    setQmlContextProperty("FlintController", m_flintController);\n'
         '    connect(m_flintController, &FlintController::profileReady,\n'
         '            this, [this](const QString &uri) {\n'
-        '        importConfigFromData(uri);\n'
+        '        if (!m_importController || !m_serversUiController) return;\n'
+        '        if (m_connectionUiController &&\n'
+        '            (m_connectionUiController->isConnected() || m_connectionUiController->isConnectionInProgress())) {\n'
+        '            emit m_pageController->showNotificationMessage(QStringLiteral("Отключите Flint перед сменой локации."));\n'
+        '            return;\n'
+        '        }\n'
+        '        const QString oldFlintId = m_settings->value("Conf/flintProfileServerId").toString();\n'
+        '        const int before = m_serversUiController->getServersCount();\n'
+        '        if (!m_importController->extractConfigFromData(uri)) return;\n'
+        '        m_importController->importConfig();\n'
+        '        m_serversUiController->updateModel();\n'
+        '        const int after = m_serversUiController->getServersCount();\n'
+        '        if (after <= before) return;\n'
+        '        const QString newFlintId = m_serversUiController->getServerId(after - 1);\n'
+        '        if (newFlintId.isEmpty()) return;\n'
+        '        if (!oldFlintId.isEmpty() && oldFlintId != newFlintId &&\n'
+        '            m_serversUiController->getServerIndexById(oldFlintId) >= 0) {\n'
+        '            m_serversUiController->removeServer(oldFlintId);\n'
+        '        }\n'
+        '        m_serversUiController->updateModel();\n'
+        '        m_serversUiController->setDefaultServer(newFlintId);\n'
+        '        m_serversUiController->setProcessedServerId(newFlintId);\n'
+        '        m_settings->setValue("Conf/flintProfileServerId", newFlintId);\n'
         '    });\n'
     )
     s = s.replace(anchor, block, 1)
@@ -252,5 +274,6 @@ assert 'Flickable' not in (root / "client/ui/qml/Pages2/PageHome.qml").read_text
 assert 'zakupki.gov.ru' in repo.read_text(encoding="utf-8")
 assert '/auth/telegram/bot/start' in (root / "client/ui/controllers/flintController.cpp").read_text(encoding="utf-8")
 assert 'parseSubscriptionProfiles' in (root / "client/ui/controllers/flintController.cpp").read_text(encoding="utf-8")
+assert 'flintProfileServerId' in (root / "client/core/controllers/coreController.cpp").read_text(encoding="utf-8")
 
 print("Flint Android 8.9.7 one-screen patch applied and statically verified")
