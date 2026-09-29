@@ -85,6 +85,25 @@ QString countryNameForCode(const QString &code)
 FlintController::FlintController(SecureQSettings *settings, QObject *parent)
     : QObject(parent), m_settings(settings)
 {
+    // 8.9.7/8.9.8 could leave partially written auth/QR state behind when the
+    // QML engine aborted during startup. Remove only Flint session/cache keys
+    // once; VPN engine settings are preserved. The user may need to sign in once.
+    const int startupSchema = m_settings->value("Conf/flintStartupSchema", 0).toInt();
+    if (startupSchema < 899) {
+        const QStringList transientKeys = {
+            "Conf/flintAccessToken",
+            "Conf/flintRefreshToken",
+            "Conf/flintSubscriptionUrl",
+            "Conf/flintTelegramLoginId",
+            "Conf/flintTelegramVerifier",
+            "Conf/flintTelegramBotUrl",
+            "Conf/flintLastProfile",
+            "Conf/flintLastProfileName"
+        };
+        for (const QString &key : transientKeys)
+            m_settings->remove(key);
+        m_settings->setValue("Conf/flintStartupSchema", 899);
+    }
     QVariantMap a;
     a["code"] = "AUTO";
     a["name"] = QStringLiteral("Автоматически");
