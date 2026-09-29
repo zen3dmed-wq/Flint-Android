@@ -44,7 +44,7 @@ jobs:
 
       - uses: android-actions/setup-android@v4
         with:
-          packages: "platforms;android-30 build-tools;35.0.0 ndk;27.0.11718014 emulator system-images;android-30;google_apis;x86_64"
+          packages: "platforms;android-30 build-tools;35.0.0 ndk;27.0.11718014 emulator system-images;android-34;google_apis;x86_64"
 
       - uses: jurplel/install-qt-action@v4.3.1
         with:
@@ -90,23 +90,58 @@ jobs:
       - name: Boot emulator and launch Flint
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 30
+          api-level: 34
           target: google_apis
           arch: x86_64
           profile: pixel_2
           disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            set -e
+            set -euo pipefail
+            adb start-server
+            adb wait-for-device
+
+            echo "Waiting for Android framework/package manager..."
+            ready=0
+            for i in $(seq 1 180); do
+              boot="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+              pkg="$(adb shell service check package 2>/dev/null | tr -d '\r' || true)"
+              if [ "$boot" = "1" ] && echo "$pkg" | grep -qi "found"; then
+                ready=1
+                break
+              fi
+              sleep 2
+            done
+            if [ "$ready" != "1" ]; then
+              echo "Android framework did not become ready"
+              adb shell getprop || true
+              adb shell service list || true
+              exit 1
+            fi
+
+            adb shell input keyevent 82 || true
             adb install -r /tmp/flint-smoke.apk
             adb logcat -c
+
+            adb shell am force-stop app.flint.vpn || true
             adb shell am start -W -n app.flint.vpn/org.amnezia.vpn.AmneziaActivity | tee /tmp/am-start.txt
-            sleep 8
-            adb shell pidof app.flint.vpn | tee /tmp/pid.txt
-            test -s /tmp/pid.txt
+            sleep 12
+
             adb logcat -d > /tmp/logcat.txt
-            if grep -A20 -B5 -E "FATAL EXCEPTION|Process: app\.flint\.vpn.*has died|Unable to instantiate application|Unable to start activity" /tmp/logcat.txt; then
+            pid="$(adb shell pidof app.flint.vpn | tr -d '\r' || true)"
+            echo "Flint pid: $pid"
+
+            echo "=== Flint/Qt startup log excerpt ==="
+            grep -E "AndroidRuntime|FATAL EXCEPTION|QQml|qml|Qt|AmneziaQt|flint|Unable to instantiate|Unable to start activity" /tmp/logcat.txt | tail -n 300 || true
+
+            if [ -z "$pid" ]; then
+              echo "Flint process exited after launch"
+              exit 1
+            fi
+
+            if grep -E "FATAL EXCEPTION|Process: app\.flint\.vpn.*has died|Unable to instantiate application|Unable to start activity|QQmlApplicationEngine failed to load component" /tmp/logcat.txt; then
               echo "Flint crashed during launch"
               exit 1
             fi
-            grep -E "Status: ok|Activity:" /tmp/am-start.txt || true
+
             echo "Flint launch smoke: OK"
