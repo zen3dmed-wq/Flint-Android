@@ -22,6 +22,11 @@ replace(
     'set(AMNEZIAVPN_VERSION 8.9.7 CACHE STRING "Client app version")'
 )
 replace(
+    "CMakeLists.txt",
+    'set(APP_ANDROID_VERSION_CODE 2163)',
+    'set(APP_ANDROID_VERSION_CODE 2164)'
+)
+replace(
     "client/cmake/branding/common.cmake",
     'set(CLIENT_APPLICATION_NAME "AmneziaVPN" CACHE STRING "Application display and executable name")',
     'set(CLIENT_APPLICATION_NAME "Flint" CACHE STRING "Application display and executable name")'
