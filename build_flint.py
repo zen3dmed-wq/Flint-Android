@@ -296,6 +296,17 @@ core_text = core_text.replace(
 )
 core_cpp.write_text(core_text, encoding="utf-8")
 
+# A broken QML from 8.9.7 may leave a persistent compiled QML/shader cache.
+# Android keeps that cache when the APK is updated, so a fixed APK can still
+# close immediately. Clear Qt caches before constructing QQmlApplicationEngine.
+app_cpp = root / "client/amneziaApplication.cpp"
+app_text = app_cpp.read_text(encoding="utf-8")
+app_text = app_text.replace(
+    'void AmneziaApplication::init()\n{\n    m_engine = new QQmlApplicationEngine;',
+    'void AmneziaApplication::init()\n{\n#ifdef Q_OS_ANDROID\n    clearQtCaches();\n#endif\n    m_engine = new QQmlApplicationEngine;'
+)
+app_cpp.write_text(app_text, encoding="utf-8")
+
 # Build-time guardrails: fail instead of shipping an Amnezia-looking client.
 assert 'android:label="Flint"' in manifest.read_text(encoding="utf-8")
 assert 'android:name="org.amnezia.vpn.AmneziaApplication"' in manifest.read_text(encoding="utf-8")
@@ -307,5 +318,6 @@ assert 'zakupki.gov.ru' in repo.read_text(encoding="utf-8")
 assert '/auth/telegram/bot/start' in (root / "client/ui/controllers/flintController.cpp").read_text(encoding="utf-8")
 assert 'parseSubscriptionProfiles' in (root / "client/ui/controllers/flintController.cpp").read_text(encoding="utf-8")
 assert 'flintProfileServerId' in (root / "client/core/controllers/coreController.cpp").read_text(encoding="utf-8")
+assert 'clearQtCaches();' in (root / "client/amneziaApplication.cpp").read_text(encoding="utf-8")
 
 print("Flint Android 8.9.9 one-screen patch applied and statically verified")
