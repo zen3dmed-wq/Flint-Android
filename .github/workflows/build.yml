@@ -11,6 +11,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: flint-android-main
+  cancel-in-progress: true
+
 jobs:
   android-arm64:
     runs-on: ubuntu-latest
