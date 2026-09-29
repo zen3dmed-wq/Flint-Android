@@ -97,6 +97,8 @@ jobs:
           grep -q '/auth/telegram/bot/start' amnezia-client/client/ui/controllers/flintController.cpp
           grep -q 'parseSubscriptionProfiles' amnezia-client/client/ui/controllers/flintController.cpp
           ! grep -q 'PageSetupWizardStart' amnezia-client/client/ui/qml/Pages2/PageStart.qml
+          grep -q 'source: "PageHome.qml"' amnezia-client/client/ui/qml/Pages2/PageStart.qml
+          grep -q 'Loader {' amnezia-client/client/ui/qml/Pages2/PageStart.qml
           ! grep -q 'Flickable' amnezia-client/client/ui/qml/Pages2/PageHome.qml
           ! grep -q 'anchors.centerIn: Overlay.overlay' amnezia-client/client/ui/qml/Pages2/PageHome.qml
           grep -q 'android:name="org.amnezia.vpn.AmneziaApplication"' amnezia-client/client/android/AndroidManifest.xml
