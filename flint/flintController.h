@@ -1,4 +1,4 @@
-// Flint Android 8.9.5 - stable cached-subscription connection path
+// Flint Android 8.9.7
 #ifndef FLINTCONTROLLER_H
 #define FLINTCONTROLLER_H
 
@@ -91,6 +91,10 @@ private:
     void authorizedGet(const QString &path, std::function<void(int,const QByteArray&,const QString&)> done, bool retry=true);
     void postPublic(const QString &path, const QJsonObject &body, std::function<void(int,const QByteArray&,const QString&)> done);
     bool validSubscriptionUrl(const QString &value) const;
+    QStringList parseSubscriptionProfiles(const QByteArray &raw) const;
+    QString chooseProfile(const QStringList &profiles);
+    void updateCountriesFromProfiles(const QStringList &profiles);
+    static QString profileName(const QString &uri);
     static QString b64url(const QByteArray &in);
 
     SecureQSettings *m_settings;
