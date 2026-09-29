@@ -72,6 +72,14 @@ PageType {
         }
     }
 
+    Connections {
+        target: FlintController
+        function onTelegramChanged() {
+            if (FlintController.telegramPending && FlintController.telegramBotUrl.length > 0)
+                Qt.openUrlExternally(FlintController.telegramBotUrl)
+        }
+    }
+
     Component.onCompleted: {
         IpSplitTunnelingController.setRouteMode(2)
         IpSplitTunnelingController.toggleSplitTunneling(FlintController.ruDirectEnabled)

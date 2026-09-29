@@ -45,8 +45,16 @@ QString countryCodeForName(const QString &name)
     for (const auto &x : table) {
         const QStringList keys = QString::fromLatin1(x.keys).split(' ', Qt::SkipEmptyParts);
         for (const QString &k : keys) {
-            if (n.contains(k))
+            if (k.size() <= 2) {
+                const QRegularExpression re(
+                    QStringLiteral("(^|[^a-z0-9])%1([^a-z0-9]|$)")
+                        .arg(QRegularExpression::escape(k)),
+                    QRegularExpression::CaseInsensitiveOption);
+                if (re.match(n).hasMatch())
+                    return QString::fromLatin1(x.code);
+            } else if (n.contains(k)) {
                 return QString::fromLatin1(x.code);
+            }
         }
     }
     return QString();
