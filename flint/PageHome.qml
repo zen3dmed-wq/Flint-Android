@@ -318,6 +318,10 @@ PageType {
                 MouseArea {
                     anchors.fill: parent
                     onClicked: {
+                        if (ConnectionController.isConnected || ConnectionController.isConnectionInProgress) {
+                            PageController.showNotificationMessage("Отключите Flint перед сменой локации.")
+                            return
+                        }
                         if (FlintController.subscriptionActive) {
                             FlintController.importSubscription()
                             countryPopup.open()
@@ -668,6 +672,11 @@ PageType {
                     checkable: true
                     checked: FlintController.selectedCountry === modelData.code
                     onClicked: {
+                        if (ConnectionController.isConnected || ConnectionController.isConnectionInProgress) {
+                            PageController.showNotificationMessage("Отключите Flint перед сменой локации.")
+                            countryPopup.close()
+                            return
+                        }
                         FlintController.selectedCountry = modelData.code
                         FlintController.importSubscription()
                         countryPopup.close()
