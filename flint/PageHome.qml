@@ -564,7 +564,7 @@ PageType {
                             elide: Text.ElideRight
                         }
                     }
-                    MouseArea { anchors.fill: parent; onClicked: assistPopup.open() }
+                    MouseArea { anchors.fill: parent; onClicked: { if (FlintController.loggedIn) { servicePopup.section = 3; servicePopup.open() } else accountPopup.open() } }
                 }
             }
 
@@ -1044,7 +1044,7 @@ PageType {
             FlintButton {
                 Layout.fillWidth: true
                 text: "Подписки, покупки и поддержка"
-                onClicked: { settingsPopup.close(); servicePopup.section = 0; servicePopup.open() }
+                onClicked: { settingsPopup.close(); if (FlintController.loggedIn) { servicePopup.section = 0; servicePopup.open() } else accountPopup.open() }
             }
             FlintButton {
                 Layout.fillWidth: true
