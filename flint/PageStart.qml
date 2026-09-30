@@ -65,7 +65,7 @@ PageType {
             horizontalAlignment: Text.AlignHCenter
         }
 
-        Button {
+        FlintButton {
             anchors.horizontalCenter: parent.horizontalCenter
             text: "Повторить"
             onClicked: {

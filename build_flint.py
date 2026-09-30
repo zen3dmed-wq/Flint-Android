@@ -147,7 +147,8 @@ shutil.copy2(flint / "PageHome.qml",
 shutil.copy2(flint / "PageStart.qml",
              root / "client/ui/qml/Pages2/PageStart.qml")
 
-shutil.copy2(flint / "FlintAccount.qml", root / "client/ui/qml/Pages2/FlintAccount.qml")
+for name in ("FlintAccount.qml", "FlintButton.qml", "FlintField.qml", "FlintChoice.qml"):
+    shutil.copy2(flint / name, root / "client/ui/qml/Pages2" / name)
 # Flint's user-visible assets. The Amnezia engine remains internal only.
 qml_assets = root / "client/ui/qml/Assets"
 qml_assets.mkdir(parents=True, exist_ok=True)
@@ -156,7 +157,8 @@ for asset in ["flint-dog.svg", "flint-background.svg", "flint-main.png", "flint-
 
 qml_qrc = root / "client/ui/qml/qml.qrc"
 qrc = qml_qrc.read_text(encoding="utf-8")
-qrc = qrc.replace("    </qresource>", "        <file>Pages2/FlintAccount.qml</file>\n    </qresource>", 1)
+for name in ("FlintAccount.qml", "FlintButton.qml", "FlintField.qml", "FlintChoice.qml"):
+    qrc = qrc.replace("    </qresource>", f"        <file>Pages2/{name}</file>\n    </qresource>", 1)
 for asset in ["flint-dog.svg", "flint-background.svg", "flint-main.png", "flint-background.jpg", "flint-logo.svg", "flint-logo.png"]:
     entry = f"        <file>Assets/{asset}</file>\n"
     if entry.strip() not in qrc:

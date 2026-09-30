@@ -291,7 +291,7 @@ PageType {
                         elide: Text.ElideRight
                     }
                 }
-                Button {
+                FlintButton {
                     objectName: "settingsButton"
                     Layout.preferredWidth: 44
                     Layout.preferredHeight: 44
@@ -348,7 +348,7 @@ PageType {
                 }
             }
 
-            Button {
+            FlintButton {
                 id: connectBtn
                 objectName: "connectButton"
                 Layout.fillWidth: true
@@ -571,7 +571,7 @@ PageType {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 10 * root.u
-                Button {
+                FlintButton {
                     objectName: "importQrButton"
                     Layout.fillWidth: true
                     Layout.preferredHeight: 42
@@ -581,7 +581,7 @@ PageType {
                     enabled: !root.importBusy
                     onClicked: root.scanQr()
                 }
-                Button {
+                FlintButton {
                     objectName: "importClipboardButton"
                     Layout.fillWidth: true
                     Layout.preferredHeight: 42
@@ -611,7 +611,7 @@ PageType {
         x: Math.round((root.width - width) / 2)
         y: Math.round((root.height - height) / 2)
         width: Math.min(root.width - 28, 470)
-        height: Math.min(root.height - PageController.safeAreaTopMargin - PageController.safeAreaBottomMargin - 30, 510)
+        height: Math.min(root.height - PageController.safeAreaTopMargin - PageController.safeAreaBottomMargin - 30, 680)
         modal: true
         focus: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
@@ -651,7 +651,7 @@ PageType {
                 }
             }
 
-            TextField {
+            FlintField {
                 id: emailField
                 visible: !FlintController.loggedIn
                 Layout.fillWidth: true
@@ -659,7 +659,7 @@ PageType {
                 inputMethodHints: Qt.ImhEmailCharactersOnly
             }
 
-            TextField {
+            FlintField {
                 id: passwordField
                 visible: !FlintController.loggedIn
                 Layout.fillWidth: true
@@ -667,15 +667,16 @@ PageType {
                 echoMode: TextInput.Password
             }
 
-            Button {
+            FlintButton {
                 visible: !FlintController.loggedIn
                 Layout.fillWidth: true
+                primary: true
                 text: "Войти"
                 enabled: !FlintController.busy
                 onClicked: FlintController.login(emailField.text, passwordField.text)
             }
 
-            Button {
+            FlintButton {
                 visible: !FlintController.loggedIn
                 Layout.fillWidth: true
                 text: root.telegramNeedsRestart ? "Начать вход заново" : (FlintController.telegramPending ? "Открыть Telegram" : "Войти через Telegram")
@@ -684,7 +685,7 @@ PageType {
                 onClicked: root.beginTelegram(false)
             }
 
-            Button {
+            FlintButton {
                 visible: !FlintController.loggedIn
                 Layout.fillWidth: true
                 text: "Создать аккаунт"
@@ -716,27 +717,27 @@ PageType {
                     color: root.muted
                 }
 
-                Button {
+                FlintButton {
                     Layout.fillWidth: true
                     text: "Обновить"
                     onClicked: FlintController.refresh()
                 }
 
-                Button {
+                FlintButton {
                     Layout.fillWidth: true
                     text: "Подготовить профиль"
                     enabled: FlintController.subscriptionActive
                     onClicked: FlintController.importSubscription()
                 }
 
-                Button {
+                FlintButton {
                     Layout.fillWidth: true
                     text: "Добавить устройство по QR"
                     enabled: FlintController.subscriptionActive && FlintController.subscriptionUrl.length > 0
                     onClicked: familyQrPopup.open()
                 }
 
-                Button {
+                FlintButton {
                     Layout.fillWidth: true
                     text: "Выйти"
                     onClicked: FlintController.logout()
@@ -759,7 +760,7 @@ PageType {
                 wrapMode: Text.Wrap
             }
 
-            Button {
+            FlintButton {
                 Layout.fillWidth: true
                 visible: !FlintController.loggedIn && !root.telegramNeedsRestart && FlintController.telegramPending
                 objectName: "restartTelegramButton"
@@ -771,7 +772,7 @@ PageType {
             RowLayout {
                 Layout.fillWidth: true
                 visible: !FlintController.loggedIn && !root.telegramNeedsRestart && FlintController.telegramPending && FlintController.telegramBotUrl.length > 0
-                Button {
+                FlintButton {
                     Layout.fillWidth: true
                     text: "В браузере"
                     onClicked: {
@@ -779,7 +780,7 @@ PageType {
                             root.telegramError = "Браузер не открылся. Скопируйте ссылку."
                     }
                 }
-                Button {
+                FlintButton {
                     Layout.fillWidth: true
                     text: "Копировать ссылку"
                     onClicked: {
@@ -795,7 +796,7 @@ PageType {
 
             Item { Layout.fillHeight: true }
 
-            Button {
+            FlintButton {
                 text: "Закрыть"
                 Layout.alignment: Qt.AlignRight
                 onClicked: accountPopup.close()
@@ -836,7 +837,7 @@ PageType {
                 clip: true
                 model: FlintController.countries
 
-                delegate: Button {
+                delegate: FlintButton {
                     required property var modelData
                     width: ListView.view.width
                     height: 48
@@ -856,7 +857,7 @@ PageType {
                 }
             }
 
-            Button {
+            FlintButton {
                 text: "Закрыть"
                 Layout.alignment: Qt.AlignRight
                 onClicked: countryPopup.close()
@@ -911,26 +912,26 @@ PageType {
                 wrapMode: Text.Wrap
             }
 
-            Button {
+            FlintButton {
                 Layout.fillWidth: true
                 text: "Написать оператору"
                 onClicked: { assistPopup.close(); servicePopup.section = 3; servicePopup.open() }
             }
             RowLayout {
                 Layout.fillWidth: true
-                Button {
+                FlintButton {
                     Layout.fillWidth: true
                     text: "Подключение"
                     onClicked: FlintController.askAssist("не подключается")
                 }
-                Button {
+                FlintButton {
                     Layout.fillWidth: true
                     text: "Госзакупки"
                     onClicked: FlintController.askAssist("zakupki российские сервисы")
                 }
             }
 
-            Button {
+            FlintButton {
                 text: "Закрыть"
                 Layout.alignment: Qt.AlignRight
                 onClicked: assistPopup.close()
@@ -1014,7 +1015,7 @@ PageType {
 
             Item { Layout.fillHeight: true }
 
-            Button {
+            FlintButton {
                 text: "Закрыть"
                 Layout.alignment: Qt.AlignHCenter
                 onClicked: familyQrPopup.close()
@@ -1040,12 +1041,12 @@ PageType {
 
         contentItem: ColumnLayout {
             spacing: 10
-            Button {
+            FlintButton {
                 Layout.fillWidth: true
                 text: "Подписки, покупки и поддержка"
                 onClicked: { settingsPopup.close(); servicePopup.section = 0; servicePopup.open() }
             }
-            Button {
+            FlintButton {
                 Layout.fillWidth: true
                 text: "Адрес API сервиса"
                 onClicked: { settingsPopup.close(); apiBaseField.text = FlintController.apiBase; apiSetupPopup.open() }
@@ -1063,7 +1064,7 @@ PageType {
                 wrapMode: Text.Wrap
             }
 
-            Button {
+            FlintButton {
                 Layout.fillWidth: true
                 text: FlintController.loggedIn ? root.accountTitle() : "Войти во Flint"
                 onClicked: {
@@ -1072,7 +1073,7 @@ PageType {
                 }
             }
 
-            Button {
+            FlintButton {
                 Layout.fillWidth: true
                 text: "Обновить данные"
                 onClicked: FlintController.refresh()
@@ -1080,7 +1081,7 @@ PageType {
 
             Item { Layout.fillHeight: true }
 
-            Button {
+            FlintButton {
                 text: "Закрыть"
                 Layout.alignment: Qt.AlignRight
                 onClicked: settingsPopup.close()
@@ -1135,13 +1136,13 @@ PageType {
                 RowLayout {
                     Layout.fillWidth: true
                     visible: !root.importReady
-                    Button {
+                    FlintButton {
                         Layout.fillWidth: true
                         text: "Вставить"
                         enabled: !root.importBusy
                         onClicked: { importText.text = ""; importText.paste() }
                     }
-                    Button {
+                    FlintButton {
                         Layout.fillWidth: true
                         text: "QR-код"
                         enabled: !root.importBusy
@@ -1179,21 +1180,21 @@ PageType {
                         visible: ImportController.isNativeWireGuardConfig
                         text: "Включить обфускацию WireGuard"
                     }
-                    Button {
+                    FlintButton {
                         Layout.fillWidth: true
                         text: "Другой ключ"
                         enabled: !root.importBusy
                         onClicked: root.importReady = false
                     }
                 }
-                Button {
+                FlintButton {
                     objectName: "confirmImportButton"
                     Layout.fillWidth: true
                     enabled: !root.importBusy
                     text: root.importBusy ? "Добавление…" : (root.importReady ? "Добавить профиль" : "Проверить ключ")
                     onClicked: root.importReady ? root.saveImport() : root.parseImport()
                 }
-                Button {
+                FlintButton {
                     Layout.fillWidth: true
                     text: "Закрыть"
                     enabled: !root.importBusy
@@ -1217,10 +1218,10 @@ PageType {
                 width: apiSetupScroll.availableWidth; spacing: 14
                 Text { Layout.fillWidth: true; text: "Подключение к сервису"; color: root.ink; font.pixelSize: 21; wrapMode: Text.Wrap }
                 Text { Layout.fillWidth: true; text: "Адрес HTTPS API, полученный от администратора. После смены сервера потребуется войти повторно."; color: root.muted; wrapMode: Text.Wrap }
-                TextField { id: apiBaseField; Layout.fillWidth: true; placeholderText: "https://example.com/api/v1"; inputMethodHints: Qt.ImhUrlCharactersOnly }
+                FlintField { id: apiBaseField; Layout.fillWidth: true; placeholderText: "https://example.com/api/v1"; inputMethodHints: Qt.ImhUrlCharactersOnly }
                 Text { Layout.fillWidth: true; visible: FlintController.lastError.length > 0; text: FlintController.lastError; color: "#FFAAAA"; wrapMode: Text.Wrap }
-                Button { text: "Сохранить адрес"; onClicked: { if (FlintController.setApiBase(apiBaseField.text)) { apiSetupPopup.close(); accountPopup.open() } } }
-                Button { text: "Отмена"; onClicked: apiSetupPopup.close() }
+                FlintButton { primary: true; text: "Сохранить адрес"; onClicked: { if (FlintController.setApiBase(apiBaseField.text)) { apiSetupPopup.close(); accountPopup.open() } } }
+                FlintButton { text: "Отмена"; onClicked: apiSetupPopup.close() }
             }
         }
     }

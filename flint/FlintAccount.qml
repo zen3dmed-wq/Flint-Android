@@ -19,24 +19,11 @@ Popup {
     readonly property color ink: "#F8FBFF"
     readonly property color muted: "#B7C9DA"
     readonly property color mint: "#4AE6A3"
-    component AccountButton: Button {
-        id: control
-        padding: 12
-        contentItem: Text {
-            text: control.text; font: control.font; color: control.enabled ? (control.highlighted ? "#062719" : panel.ink) : "#6E8597"
-            horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
-            elide: Text.ElideRight
-        }
-        background: Rectangle {
-            radius: 10; implicitHeight: 42
-            color: control.highlighted ? panel.mint : (control.down ? "#284F61" : "#163447")
-            border.color: control.highlighted ? panel.mint : "#355A70"
-        }
-    }
     width: Math.min(parent.width - 20, 560)
     height: Math.max(180, Math.min(parent.height - PageController.safeAreaTopMargin - PageController.safeAreaBottomMargin - 24, 760))
     x: (parent.width - width) / 2
     y: PageController.safeAreaTopMargin + 12
+    padding: 18
     modal: true
     focus: true
     background: Rectangle { radius: 20; color: "#FD081827"; border.color: "#46637A" }
@@ -138,13 +125,14 @@ Popup {
         spacing: 10
         RowLayout {
             Layout.fillWidth: true
-            Text { Layout.fillWidth: true; text: "Мой Flint"; color: panel.ink; font.pixelSize: 24; font.bold: true }
-            AccountButton { text: "Закрыть"; onClicked: panel.close() }
+            Text { Layout.fillWidth: true; text: "Мой Flint"; color: panel.ink; font.pixelSize: 26; font.bold: true }
+            FlintButton { text: "×"; implicitWidth: 40; implicitHeight: 40; font.pixelSize: 24; subtle: true; onClicked: panel.close() }
         }
+        Text { text: "Один аккаунт на всех устройствах"; color: panel.muted; font.pixelSize: 12; Layout.bottomMargin: 10 }
         RowLayout {
-            Layout.fillWidth: true; spacing: 4
+            Layout.fillWidth: true; spacing: 5
             Repeater { model: ["Подписки", "Купить", "Друзья", "Поддержка"]
-                AccountButton { required property int index; required property string modelData; Layout.fillWidth: true; text: modelData; font.pixelSize: 11; highlighted: panel.section === index; onClicked: panel.section = index }
+                FlintButton { required property int index; required property string modelData; Layout.fillWidth: true; text: modelData; font.pixelSize: 11; leftPadding: 6; rightPadding: 6; highlighted: panel.section === index; onClicked: panel.section = index }
             }
         }
         Text { Layout.fillWidth: true; visible: panel.error.length > 0; text: panel.error; color: "#FFAAAA"; wrapMode: Text.Wrap }
@@ -168,38 +156,40 @@ Popup {
                             Rectangle { Layout.fillWidth: true; height: 1; color: "#46637A" }
                         }
                     }
-                    AccountButton { text: "Обновить подписки"; enabled: !panel.pending.subscriptions; onClicked: { panel.request("subscriptions", "GET", "/subscriptions"); FlintController.refresh() } }
-                    AccountButton { visible: panel.config.purchasesEnabled === true; text: "Купить подписку"; onClicked: panel.section = 1 }
+                    FlintButton { text: "Обновить подписки"; enabled: !panel.pending.subscriptions; onClicked: { panel.request("subscriptions", "GET", "/subscriptions"); FlintController.refresh() } }
+                    FlintButton { visible: panel.config.purchasesEnabled === true; primary: true; text: "Купить подписку"; onClicked: panel.section = 1 }
                 }
                 ColumnLayout {
                     visible: FlintController.loggedIn && panel.section === 1; Layout.fillWidth: true
                     Text { Layout.fillWidth: true; visible: !panel.config.purchasesEnabled; text: "Покупки пока недоступны на подключённом API."; color: panel.muted; wrapMode: Text.Wrap }
                     Text { Layout.fillWidth: true; text: "После оплаты подписка появится в этом аккаунте на Android и Windows."; color: panel.muted; wrapMode: Text.Wrap }
-                    ComboBox { id: planChoice; Layout.fillWidth: true; model: panel.plans; textRole: "name"; enabled: panel.config.purchasesEnabled === true && !panel.purchase.key }
-                    Text { Layout.fillWidth: true; color: panel.mint; text: planChoice.currentIndex >= 0 && panel.plans[planChoice.currentIndex] ? panel.plans[planChoice.currentIndex].price.amount + " " + panel.plans[planChoice.currentIndex].price.currency : "Тарифы не загружены" }
-                    ComboBox { id: methodChoice; Layout.fillWidth: true; model: panel.methods; textRole: "title"; enabled: panel.config.purchasesEnabled === true && !panel.purchase.key }
-                    AccountButton { Layout.fillWidth: true; visible: !panel.purchase.order; enabled: panel.config.purchasesEnabled === true && !panel.pending.purchase; text: panel.purchase.key ? "Повторить запрос заказа" : "Перейти к оплате"; onClicked: panel.pay() }
+                    Text { text: "ТАРИФ"; font.pixelSize: 11; font.letterSpacing: 1.2; color: panel.muted; Layout.topMargin: 16 }
+                    FlintChoice { id: planChoice; Layout.fillWidth: true; model: panel.plans; textRole: "name"; enabled: panel.config.purchasesEnabled === true && !panel.purchase.key }
+                    Text { Layout.fillWidth: true; color: panel.mint; font.pixelSize: 24; font.bold: true; Layout.topMargin: 8; text: planChoice.currentIndex >= 0 && panel.plans[planChoice.currentIndex] ? panel.plans[planChoice.currentIndex].price.amount + " " + panel.plans[planChoice.currentIndex].price.currency : "Тарифы не загружены" }
+                    Text { text: "СПОСОБ ОПЛАТЫ"; font.pixelSize: 11; font.letterSpacing: 1.2; color: panel.muted; Layout.topMargin: 12 }
+                    FlintChoice { id: methodChoice; Layout.fillWidth: true; model: panel.methods; textRole: "title"; enabled: panel.config.purchasesEnabled === true && !panel.purchase.key }
+                    FlintButton { Layout.fillWidth: true; visible: !panel.purchase.order; enabled: panel.config.purchasesEnabled === true && !panel.pending.purchase; primary: true; text: panel.purchase.key ? "Повторить запрос заказа" : "Перейти к оплате"; onClicked: panel.pay() }
                     Text { Layout.fillWidth: true; visible: panel.purchase.order !== undefined; text: "Ожидаем подтверждения оплаты от сервера. После оплаты вернитесь в приложение."; color: panel.muted; wrapMode: Text.Wrap }
-                    AccountButton { visible: panel.purchase.order !== undefined; text: "Открыть оплату"; onClicked: panel.openPayment() }
-                    AccountButton { visible: panel.purchase.order !== undefined; text: "Проверить оплату"; enabled: !panel.pending.order; onClicked: panel.request("order", "GET", "/orders/" + encodeURIComponent(panel.purchase.order.id)) }
-                    AccountButton { visible: panel.purchase.order !== undefined && panel.config.purchasesEnabled === true; text: "Получить новую ссылку"; enabled: !panel.pending.paymentLink; onClicked: panel.request("paymentLink", "POST", "/orders/" + encodeURIComponent(panel.purchase.order.id) + "/payment-link") }
-                    AccountButton { visible: panel.purchase.order !== undefined; text: "Отменить заказ"; enabled: !panel.pending.cancelOrder; onClicked: panel.request("cancelOrder", "POST", "/orders/" + encodeURIComponent(panel.purchase.order.id) + "/cancel") }
+                    FlintButton { visible: panel.purchase.order !== undefined; text: "Открыть оплату"; onClicked: panel.openPayment() }
+                    FlintButton { visible: panel.purchase.order !== undefined; text: "Проверить оплату"; enabled: !panel.pending.order; onClicked: panel.request("order", "GET", "/orders/" + encodeURIComponent(panel.purchase.order.id)) }
+                    FlintButton { visible: panel.purchase.order !== undefined && panel.config.purchasesEnabled === true; text: "Получить новую ссылку"; enabled: !panel.pending.paymentLink; onClicked: panel.request("paymentLink", "POST", "/orders/" + encodeURIComponent(panel.purchase.order.id) + "/payment-link") }
+                    FlintButton { visible: panel.purchase.order !== undefined; text: "Отменить заказ"; enabled: !panel.pending.cancelOrder; onClicked: panel.request("cancelOrder", "POST", "/orders/" + encodeURIComponent(panel.purchase.order.id) + "/cancel") }
                 }
                 ColumnLayout {
                     visible: FlintController.loggedIn && panel.section === 2; Layout.fillWidth: true
                     Text { Layout.fillWidth: true; text: panel.config.referralsEnabled ? "Приглашайте друзей" : "Реферальная программа пока недоступна"; font.pixelSize: 19; color: panel.ink; wrapMode: Text.Wrap }
                     Text { Layout.fillWidth: true; text: panel.referralText(); color: panel.mint; wrapMode: Text.WrapAnywhere }
                     Text { text: "Приглашено: " + (panel.referrals.invitedCount || 0) + " · Бонусных дней: " + (panel.referrals.bonusDays || 0); color: panel.muted; Layout.fillWidth: true; wrapMode: Text.Wrap }
-                    AccountButton { text: "Скопировать приглашение"; enabled: !!panel.referrals.code; onClicked: panel.copyText(panel.referralText()) }
-                    TextField { id: referralCode; Layout.fillWidth: true; placeholderText: "Код пригласившего друга"; visible: panel.config.referralsEnabled === true }
-                    AccountButton { visible: panel.config.referralsEnabled === true; text: "Применить код"; enabled: referralCode.text.trim().length > 0 && !panel.pending.applyReferral; onClicked: panel.request("applyReferral", "POST", "/referrals/apply", {code: referralCode.text.trim()}) }
+                    FlintButton { text: "Скопировать приглашение"; enabled: !!panel.referrals.code; onClicked: panel.copyText(panel.referralText()) }
+                    FlintField { id: referralCode; Layout.fillWidth: true; placeholderText: "Код пригласившего друга"; visible: panel.config.referralsEnabled === true }
+                    FlintButton { visible: panel.config.referralsEnabled === true; text: "Применить код"; enabled: referralCode.text.trim().length > 0 && !panel.pending.applyReferral; onClicked: panel.request("applyReferral", "POST", "/referrals/apply", {code: referralCode.text.trim()}) }
                 }
                 ColumnLayout {
                     visible: FlintController.loggedIn && panel.section === 3; Layout.fillWidth: true
                     Text { Layout.fillWidth: true; visible: !(panel.config.flintIntegration && panel.config.flintIntegration.supportEnabled); text: "Доставка обращений ещё не подключена. Администратор сможет включить её через API и админку."; color: panel.muted; wrapMode: Text.Wrap }
-                    TextArea { id: supportText; Layout.fillWidth: true; Layout.preferredHeight: 120; color: panel.ink; placeholderTextColor: panel.muted; placeholderText: "Опишите проблему"; wrapMode: TextEdit.Wrap; enabled: !panel.pending.sendTicket; background: Rectangle { radius: 10; color: "#132E40" } }
-                    AccountButton { text: "Отправить в поддержку"; enabled: panel.config.flintIntegration !== undefined && panel.config.flintIntegration.supportEnabled === true && !panel.pending.sendTicket; onClicked: panel.sendTicket() }
-                    AccountButton { text: "Обновить ответы"; enabled: panel.config.flintIntegration !== undefined && panel.config.flintIntegration.supportEnabled === true && !panel.pending.tickets; onClicked: panel.request("tickets", "GET", "/support/tickets") }
+                    TextArea { id: supportText; padding: 16; font.pixelSize: 14; Layout.topMargin: 10; Layout.fillWidth: true; Layout.preferredHeight: 140; color: panel.ink; placeholderTextColor: panel.muted; placeholderText: "Опишите проблему"; wrapMode: TextEdit.Wrap; enabled: !panel.pending.sendTicket; background: Rectangle { radius: 14; color: "#102635"; border.color: supportText.activeFocus ? panel.mint : "#2B4A5E" } }
+                    FlintButton { primary: true; text: "Отправить в поддержку"; enabled: panel.config.flintIntegration !== undefined && panel.config.flintIntegration.supportEnabled === true && !panel.pending.sendTicket; onClicked: panel.sendTicket() }
+                    FlintButton { text: "Обновить ответы"; enabled: panel.config.flintIntegration !== undefined && panel.config.flintIntegration.supportEnabled === true && !panel.pending.tickets; onClicked: panel.request("tickets", "GET", "/support/tickets") }
                     Repeater { model: panel.tickets
                         ColumnLayout { required property var modelData; Layout.fillWidth: true
                             Text { text: "Обращение " + modelData.id.slice(0,10); color: panel.mint }
