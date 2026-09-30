@@ -19,12 +19,12 @@ def replace(path, old, new, required=True):
 replace(
     "CMakeLists.txt",
     'set(AMNEZIAVPN_VERSION 5.0.3.0 CACHE STRING "Client app version")',
-    'set(AMNEZIAVPN_VERSION 8.9.10 CACHE STRING "Client app version")'
+    'set(AMNEZIAVPN_VERSION 8.10.0 CACHE STRING "Client app version")'
 )
 replace(
     "CMakeLists.txt",
     'set(APP_ANDROID_VERSION_CODE 2163)',
-    'set(APP_ANDROID_VERSION_CODE 2166)'
+    'set(APP_ANDROID_VERSION_CODE 2170)'
 )
 replace(
     "client/cmake/branding/common.cmake",
@@ -41,15 +41,15 @@ replace(
     'set(CLIENT_APP_INSTANCE_NAME "AmneziaVPNInstance" CACHE STRING "Single-instance local server name")',
     'set(CLIENT_APP_INSTANCE_NAME "FlintInstance" CACHE STRING "Single-instance local server name")'
 )
-# Keep the engine's Android package namespace intact. User-visible identity is
-# still Flint (label/icon/UI); this avoids JNI/package assumptions in the native bridge.
+# Keep the Java/JNI namespace intact while matching the installed Flint package ID.
 
 gradle = root / "client/android/build.gradle.kts"
 gs = gradle.read_text(encoding="utf-8")
-# Do NOT change applicationId: Qt/JNI bridge code is built around org.amnezia.vpn.
+# Components below are fully qualified under the engine's Java namespace.
 # CI builds an unsigned release APK; it is signed with Flint's private key
 # only after the artifact is downloaded into the private build environment.
 gs = gs.replace('signingConfig = signingConfigs["release"]', 'signingConfig = null')
+gs = gs.replace('applicationId = "org.amnezia.vpn"', 'applicationId = "app.flint.vpn"')
 gradle.write_text(gs, encoding="utf-8")
 
 # Russian services: keep the list deliberately small. Android split tunneling
@@ -131,7 +131,7 @@ secure = root / "client/secureQSettings.cpp"
 s = secure.read_text(encoding="utf-8")
 old = 'encryptedKeys({ "Servers/serversList" })'
 new = ('encryptedKeys({ "Servers/serversList", "Conf/flintAccessToken", '
-       '"Conf/flintRefreshToken", "Conf/flintSubscriptionUrl", '
+       '"Conf/flintRefreshToken", "Conf/flintSubscriptionUrl", "Conf/flintDraft/purchase", "Conf/flintDraft/support", '
        '"Conf/flintTelegramVerifier", "Conf/flintTelegramLoginId" })')
 if old in s:
     s = s.replace(old, new, 1)
@@ -147,6 +147,7 @@ shutil.copy2(flint / "PageHome.qml",
 shutil.copy2(flint / "PageStart.qml",
              root / "client/ui/qml/Pages2/PageStart.qml")
 
+shutil.copy2(flint / "FlintAccount.qml", root / "client/ui/qml/Pages2/FlintAccount.qml")
 # Flint's user-visible assets. The Amnezia engine remains internal only.
 qml_assets = root / "client/ui/qml/Assets"
 qml_assets.mkdir(parents=True, exist_ok=True)
@@ -155,6 +156,7 @@ for asset in ["flint-dog.svg", "flint-background.svg", "flint-main.png", "flint-
 
 qml_qrc = root / "client/ui/qml/qml.qrc"
 qrc = qml_qrc.read_text(encoding="utf-8")
+qrc = qrc.replace("    </qresource>", "        <file>Pages2/FlintAccount.qml</file>\n    </qresource>", 1)
 for asset in ["flint-dog.svg", "flint-background.svg", "flint-main.png", "flint-background.jpg", "flint-logo.svg", "flint-logo.png"]:
     entry = f"        <file>Assets/{asset}</file>\n"
     if entry.strip() not in qrc:
@@ -312,15 +314,15 @@ app_cpp.write_text(app_text, encoding="utf-8")
 assert 'android:label="Flint"' in manifest.read_text(encoding="utf-8")
 assert 'android:name="org.amnezia.vpn.AmneziaApplication"' in manifest.read_text(encoding="utf-8")
 assert 'android:name="org.amnezia.vpn.AmneziaActivity"' in manifest.read_text(encoding="utf-8")
-assert 'applicationId = "org.amnezia.vpn"' in gradle.read_text(encoding="utf-8")
+assert 'applicationId = "app.flint.vpn"' in gradle.read_text(encoding="utf-8")
 assert 'PageSetupWizardStart' not in (root / "client/ui/qml/Pages2/PageStart.qml").read_text(encoding="utf-8")
 assert 'source: "PageHome.qml"' in (root / "client/ui/qml/Pages2/PageStart.qml").read_text(encoding="utf-8")
 assert 'Loader {' in (root / "client/ui/qml/Pages2/PageStart.qml").read_text(encoding="utf-8")
-assert 'Flickable' not in (root / "client/ui/qml/Pages2/PageHome.qml").read_text(encoding="utf-8")
+assert 'Flickable' in (root / "client/ui/qml/Pages2/PageHome.qml").read_text(encoding="utf-8")
 assert 'zakupki.gov.ru' in repo.read_text(encoding="utf-8")
 assert '/auth/telegram/bot/start' in (root / "client/ui/controllers/flintController.cpp").read_text(encoding="utf-8")
 assert 'parseSubscriptionProfiles' in (root / "client/ui/controllers/flintController.cpp").read_text(encoding="utf-8")
 assert 'flintProfileServerId' in (root / "client/core/controllers/coreController.cpp").read_text(encoding="utf-8")
 assert 'clearQtCaches();' in (root / "client/amneziaApplication.cpp").read_text(encoding="utf-8")
 
-print("Flint Android 8.9.10 startup-safe patch applied and statically verified")
+print("Flint Android 8.10.0 startup-safe patch applied and statically verified")

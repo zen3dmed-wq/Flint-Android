@@ -100,4 +100,10 @@ PageType {
         }
         function onEscapePressed() { PageController.hideWindow() }
     }
+    Connections {
+        target: ImportController
+        function onImportErrorOccurred(error, goToPageHome) {
+            if (flintLoader.item) flintLoader.item.handleImportError(error)
+        }
+    }
 }

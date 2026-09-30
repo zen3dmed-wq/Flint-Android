@@ -1,22 +1,30 @@
-name: Build Flint Android 8.9.10
+name: Build Flint Android 8.10.0
 
 on:
+  pull_request:
   workflow_dispatch:
-  push:
-    paths:
-      - 'build_flint.py'
-      - 'flint/**'
-      - '.github/workflows/build.yml'
 
 permissions:
   contents: read
 
 concurrency:
-  group: flint-android-main
+  group: flint-android-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  controller-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt test dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -y qt6-base-dev cmake ninja-build
+      - name: Compile and check controller
+        run: |
+          cmake -S tests/controller -B /tmp/flint-controller-tests -G Ninja
+          cmake --build /tmp/flint-controller-tests
+          ctest --test-dir /tmp/flint-controller-tests --output-on-failure
   android-arm64:
+    needs: controller-tests
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
@@ -82,7 +90,7 @@ jobs:
           git clone --recursive --branch 5.0.3.0 \
             https://github.com/amnezia-vpn/amnezia-client.git amnezia-client
 
-      - name: Apply Flint Android 8.9.10
+      - name: Apply Flint Android 8.10.0
         shell: bash
         run: |
           python3 build_flint.py amnezia-client
@@ -92,14 +100,14 @@ jobs:
         run: |
           set -euo pipefail
           grep -q 'android:label="Flint"' amnezia-client/client/android/AndroidManifest.xml
-          grep -q 'applicationId = "org.amnezia.vpn"' amnezia-client/client/android/build.gradle.kts
+          grep -q 'applicationId = "app.flint.vpn"' amnezia-client/client/android/build.gradle.kts
           grep -q 'zakupki.gov.ru' amnezia-client/client/core/repositories/secureAppSettingsRepository.cpp
           grep -q '/auth/telegram/bot/start' amnezia-client/client/ui/controllers/flintController.cpp
           grep -q 'parseSubscriptionProfiles' amnezia-client/client/ui/controllers/flintController.cpp
           ! grep -q 'PageSetupWizardStart' amnezia-client/client/ui/qml/Pages2/PageStart.qml
           grep -q 'source: "PageHome.qml"' amnezia-client/client/ui/qml/Pages2/PageStart.qml
           grep -q 'Loader {' amnezia-client/client/ui/qml/Pages2/PageStart.qml
-          ! grep -q 'Flickable' amnezia-client/client/ui/qml/Pages2/PageHome.qml
+          grep -q 'Flickable' amnezia-client/client/ui/qml/Pages2/PageHome.qml
           ! grep -q 'anchors.centerIn: Overlay.overlay' amnezia-client/client/ui/qml/Pages2/PageHome.qml
           grep -q 'android:name="org.amnezia.vpn.AmneziaApplication"' amnezia-client/client/android/AndroidManifest.xml
           grep -q 'android:name="org.amnezia.vpn.AmneziaActivity"' amnezia-client/client/android/AndroidManifest.xml
@@ -142,20 +150,20 @@ jobs:
           find amnezia-client/deploy -type f -name '*.apk' -print -exec cp -f {} dist/ \;
           APK=$(find dist -maxdepth 1 -name '*.apk' | head -n 1)
           test -n "$APK"
-          mv "$APK" dist/Flint-v8.9.10-Android-arm64.apk
-          sha256sum dist/Flint-v8.9.10-Android-arm64.apk > dist/Flint-v8.9.10-Android-arm64.apk.sha256
+          mv "$APK" dist/Flint-v8.10.0-Android-arm64.apk
+          sha256sum dist/Flint-v8.10.0-Android-arm64.apk > dist/Flint-v8.10.0-Android-arm64.apk.sha256
 
       - name: Verify APK identity
         shell: bash
         run: |
           set -euo pipefail
-          APK=dist/Flint-v8.9.10-Android-arm64.apk
+          APK=dist/Flint-v8.10.0-Android-arm64.apk
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           "$AAPT" dump badging "$APK" | tee dist/aapt-badging.txt
           "$AAPT" dump xmltree "$APK" AndroidManifest.xml | tee dist/aapt-manifest.txt
-          grep -F "package: name='org.amnezia.vpn'" dist/aapt-badging.txt
+          grep -F "package: name='app.flint.vpn'" dist/aapt-badging.txt
           grep -F "application-label:'Flint'" dist/aapt-badging.txt
-          grep -F "versionName='8.9.10'" dist/aapt-badging.txt
+          grep -F "versionName='8.10.0'" dist/aapt-badging.txt
           grep -F "org.amnezia.vpn.AmneziaApplication" dist/aapt-manifest.txt
           grep -F "org.amnezia.vpn.AmneziaActivity" dist/aapt-manifest.txt
           unzip -t "$APK"
@@ -164,10 +172,10 @@ jobs:
       - name: Upload Flint APK
         uses: actions/upload-artifact@v4
         with:
-          name: Flint-v8.9.10-Android-arm64
+          name: Flint-v8.10.0-Android-arm64
           path: |
-            dist/Flint-v8.9.10-Android-arm64.apk
-            dist/Flint-v8.9.10-Android-arm64.apk.sha256
+            dist/Flint-v8.10.0-Android-arm64.apk
+            dist/Flint-v8.10.0-Android-arm64.apk.sha256
             dist/aapt-badging.txt
             dist/aapt-manifest.txt
           retention-days: 14

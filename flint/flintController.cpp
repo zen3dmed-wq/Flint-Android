@@ -15,7 +15,7 @@
 
 namespace {
 const QString kApiBase = QStringLiteral("https://flintmain.ru/api/v1");
-const QString kVersion = QStringLiteral("8.9.8");
+const QString kVersion = QStringLiteral("8.10.0");
 
 bool isProfileUri(const QString &s)
 {
@@ -134,6 +134,101 @@ QString FlintController::subscriptionUrl() const
     return m_settings->value("Conf/flintSubscriptionUrl").toString().trimmed();
 }
 
+QString FlintController::apiBase() const
+{
+    return m_settings->value("Conf/flintApiBase", kApiBase).toString();
+}
+
+bool FlintController::setApiBase(const QString &base)
+{
+    QString value = base.trimmed();
+    while (value.endsWith('/')) value.chop(1);
+    const QUrl url(value);
+    if (!url.isValid() || url.scheme() != "https" || url.host().isEmpty() ||
+        !url.userInfo().isEmpty() || url.hasQuery() || url.hasFragment() || url.path().contains("..")) {
+        setError(QStringLiteral("Введите HTTPS-адрес API без пароля, параметров и фрагмента."));
+        return false;
+    }
+    if (value == apiBase()) return true;
+    // Responses from the previous authority must not populate the new account.
+    ++m_apiEpoch;
+    m_tgTimer.stop();
+    m_telegramCheckInFlight = false;
+    m_telegramLoginId.clear(); m_telegramVerifier.clear(); m_telegramBotUrl.clear();
+    for (const auto &key : {"Conf/flintTelegramLoginId", "Conf/flintTelegramVerifier", "Conf/flintTelegramBotUrl"}) m_settings->remove(key);
+    m_refreshInFlight = false; m_refreshWaiters.clear();
+    for (auto *reply : m_net.findChildren<QNetworkReply*>()) reply->abort();
+    clearAuthState();
+    m_settings->setValue("Conf/flintApiBase", value);
+    setBusy(false); setError(QString());
+    emit telegramChanged(); emit apiBaseChanged();
+    refreshConfig();
+    return true;
+}
+
+QString FlintController::newRequestKey() const { return QUuid::createUuid().toString(QUuid::WithoutBraces); }
+
+QVariantMap FlintController::clientDraft(const QString &name) const
+{
+    if (name != "purchase" && name != "support") return {};
+    return QJsonDocument::fromJson(m_settings->value("Conf/flintDraft/" + name).toByteArray()).object().toVariantMap();
+}
+
+void FlintController::saveClientDraft(const QString &name, const QVariantMap &value)
+{
+    if (name != "purchase" && name != "support") return;
+    const QString key = "Conf/flintDraft/" + name;
+    if (value.isEmpty()) m_settings->remove(key);
+    else m_settings->setValue(key, QJsonDocument(QJsonObject::fromVariantMap(value)).toJson(QJsonDocument::Compact));
+}
+
+void FlintController::accountRequest(const QString &id, const QString &method, const QString &path,
+                                     const QVariantMap &body, const QString &key)
+{
+    static const QRegularExpression allowed(QStringLiteral(
+        "^/(config|me|subscriptions|plans|payment-methods|orders(/[A-Za-z0-9_-]+(/(payment-link|cancel))?)?|referrals(/apply)?|support/tickets(/[A-Za-z0-9_-]+)?)$"));
+    if (!allowed.match(path).hasMatch() || (method != "GET" && method != "POST")) {
+        emit accountResponse(id, 400, {}, QStringLiteral("Операция API не поддерживается")); return;
+    }
+    if (method == "POST" && (path == "/orders" || path == "/support/tickets") && key.isEmpty()) {
+        emit accountResponse(id, 400, {}, QStringLiteral("Не указан ключ повторного запроса")); return;
+    }
+    accountRequestImpl(id, method, path, body, key, true);
+}
+
+void FlintController::accountRequestImpl(const QString &id, const QString &method, const QString &path,
+                                         const QVariantMap &body, const QString &key, bool retry)
+{
+    const bool authorized = path != "/config";
+    if (authorized && !loggedIn()) { emit accountResponse(id, 401, {}, QStringLiteral("Войдите в аккаунт Flint")); return; }
+    auto request = apiRequest(path, authorized);
+    if (!key.isEmpty()) request.setRawHeader("Idempotency-Key", key.toUtf8());
+    auto *reply = method == "GET" ? m_net.get(request)
+        : m_net.post(request, QJsonDocument(QJsonObject::fromVariantMap(body)).toJson(QJsonDocument::Compact));
+    const int epoch = m_apiEpoch;
+    connect(reply, &QNetworkReply::finished, this, [this, reply, id, method, path, body, key, retry, epoch]() {
+        if (epoch != m_apiEpoch) { reply->deleteLater(); return; }
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const QByteArray raw = reply->readAll();
+        const QJsonDocument document = QJsonDocument::fromJson(raw);
+        reply->deleteLater();
+        if (status == 401 && retry) {
+            refreshAccessToken([this, id, method, path, body, key, epoch](bool ok) {
+                if (epoch != m_apiEpoch) return;
+                if (ok) accountRequestImpl(id, method, path, body, key, false);
+                else emit accountResponse(id, 401, {}, QStringLiteral("Сессия истекла. Войдите повторно."));
+            }); return;
+        }
+        QString error;
+        if (status < 200 || status >= 300) {
+            error = document.object().value("detail").toString();
+            if (error.isEmpty()) error = status == 0 ? QStringLiteral("Нет ответа сервера. Повторите запрос.")
+                : QStringLiteral("Операция недоступна на подключённом API (HTTP %1).").arg(status);
+        } else if (!document.isObject()) error = QStringLiteral("Некорректный ответ API");
+        emit accountResponse(id, status, document.object().toVariantMap(), error);
+    });
+}
+
 QString FlintController::selectedCountry() const
 {
     return m_settings->value("Conf/flintSelectedCountry", "AUTO").toString();
@@ -167,7 +262,8 @@ QByteArray FlintController::deviceJson() const
 
 QNetworkRequest FlintController::apiRequest(const QString &path, bool authorized) const
 {
-    QNetworkRequest r(QUrl(kApiBase + path));
+    QNetworkRequest r(QUrl(apiBase() + path));
+    r.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
     r.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     r.setRawHeader("X-Client", QByteArray("android/") + kVersion.toUtf8());
     r.setRawHeader("User-Agent", QByteArray("Flint/") + kVersion.toUtf8());
@@ -304,6 +400,9 @@ void FlintController::saveTokens(const QJsonObject &obj)
 
 void FlintController::clearAuthState()
 {
+    ++m_apiEpoch;
+    saveClientDraft("purchase", {});
+    saveClientDraft("support", {});
     m_settings->remove("Conf/flintAccessToken");
     m_settings->remove("Conf/flintRefreshToken");
     m_settings->remove("Conf/flintEmail");
@@ -325,7 +424,9 @@ void FlintController::postPublic(
 {
     QNetworkReply *reply =
         m_net.post(apiRequest(path, false), QJsonDocument(body).toJson(QJsonDocument::Compact));
-    connect(reply, &QNetworkReply::finished, this, [this, reply, done]() {
+    const int epoch = m_apiEpoch;
+    connect(reply, &QNetworkReply::finished, this, [this, reply, done, epoch]() {
+        if (epoch != m_apiEpoch) { reply->deleteLater(); return; }
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         const QByteArray raw = reply->readAll();
         const QString err =
@@ -396,8 +497,10 @@ void FlintController::authorizedGet(
     }
 
     QNetworkReply *reply = m_net.get(apiRequest(path, true));
+    const int epoch = m_apiEpoch;
     connect(reply, &QNetworkReply::finished, this,
-        [this, reply, path, done, retry]() {
+        [this, reply, path, done, retry, epoch]() {
+            if (epoch != m_apiEpoch) { reply->deleteLater(); return; }
             const int status =
                 reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
             const QByteArray raw = reply->readAll();
@@ -422,7 +525,9 @@ void FlintController::authorizedGet(
 void FlintController::refreshConfig()
 {
     QNetworkReply *reply = m_net.get(apiRequest("/config", false));
-    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+    const int epoch = m_apiEpoch;
+    connect(reply, &QNetworkReply::finished, this, [this, reply, epoch]() {
+        if (epoch != m_apiEpoch) { reply->deleteLater(); return; }
         const int status =
             reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         const QByteArray raw = reply->readAll();
@@ -609,6 +714,12 @@ void FlintController::logout()
 
 void FlintController::startTelegramLogin()
 {
+    if (m_busy) return;
+    m_tgTimer.stop();
+    m_telegramLoginId.clear();
+    m_telegramBotUrl.clear();
+    m_telegramCheckInFlight = false;
+    for (const auto &key : {"Conf/flintTelegramLoginId", "Conf/flintTelegramVerifier", "Conf/flintTelegramBotUrl"}) m_settings->remove(key);
     QByteArray random(32, Qt::Uninitialized);
     for (int i = 0; i < random.size(); ++i)
         random[i] = char(QRandomGenerator::system()->bounded(256));
@@ -653,6 +764,7 @@ void FlintController::startTelegramLogin()
 
 void FlintController::checkTelegramLogin()
 {
+    if (m_telegramCheckInFlight) return;
     if (m_telegramLoginId.isEmpty() || m_telegramVerifier.isEmpty()) {
         m_tgTimer.stop();
         return;
@@ -661,9 +773,13 @@ void FlintController::checkTelegramLogin()
     QJsonObject body;
     body["loginId"] = m_telegramLoginId;
     body["codeVerifier"] = m_telegramVerifier;
+    const QString loginId = m_telegramLoginId;
+    m_telegramCheckInFlight = true;
 
     postPublic("/auth/telegram/bot/complete", body,
-        [this](int status, const QByteArray &raw, const QString &err) {
+        [this, loginId](int status, const QByteArray &raw, const QString &err) {
+            if (loginId != m_telegramLoginId) return;
+            m_telegramCheckInFlight = false;
             if (status == 202) return;
 
             if (status >= 200 && status < 300) {
@@ -686,6 +802,17 @@ void FlintController::checkTelegramLogin()
 
             if (status != 0 && status != 408) {
                 m_tgTimer.stop();
+                if (status == 410) {
+                    m_telegramLoginId.clear();
+                    m_telegramVerifier.clear();
+                    m_telegramBotUrl.clear();
+                    m_settings->remove("Conf/flintTelegramLoginId");
+                    m_settings->remove("Conf/flintTelegramVerifier");
+                    m_settings->remove("Conf/flintTelegramBotUrl");
+                    emit telegramChanged();
+                    setError(QStringLiteral("Попытка входа больше недействительна. Начните вход заново."));
+                    return;
+                }
                 setError(err.isEmpty()
                     ? QStringLiteral("Telegram-вход не подтверждён.")
                     : err);

@@ -31,6 +31,7 @@ class FlintController : public QObject
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
     Q_PROPERTY(bool apiOnline READ apiOnline NOTIFY apiStatusChanged)
+    Q_PROPERTY(QString apiBase READ apiBase NOTIFY apiBaseChanged)
 
 public:
     explicit FlintController(SecureQSettings *settings, QObject *parent=nullptr);
@@ -51,6 +52,13 @@ public:
     bool busy() const { return m_busy; }
     QString lastError() const { return m_lastError; }
     bool apiOnline() const { return m_apiOnline; }
+    QString apiBase() const;
+    Q_INVOKABLE bool setApiBase(const QString &base);
+    Q_INVOKABLE QString newRequestKey() const;
+    Q_INVOKABLE QVariantMap clientDraft(const QString &name) const;
+    Q_INVOKABLE void saveClientDraft(const QString &name, const QVariantMap &value);
+    Q_INVOKABLE void accountRequest(const QString &id, const QString &method, const QString &path,
+                                    const QVariantMap &body, const QString &idempotencyKey);
 
 public slots:
     void refresh();
@@ -76,6 +84,8 @@ signals:
     void lastErrorChanged();
     void apiStatusChanged();
     void profileReady(const QString &uri);
+    void apiBaseChanged();
+    void accountResponse(const QString &id, int status, const QVariantMap &data, const QString &error);
 
 private:
     QNetworkRequest apiRequest(const QString &path, bool authorized=false) const;
@@ -91,6 +101,8 @@ private:
     void refreshAccessToken(std::function<void(bool)> done);
     void authorizedGet(const QString &path, std::function<void(int,const QByteArray&,const QString&)> done, bool retry=true);
     void postPublic(const QString &path, const QJsonObject &body, std::function<void(int,const QByteArray&,const QString&)> done);
+    void accountRequestImpl(const QString &id, const QString &method, const QString &path,
+                            const QVariantMap &body, const QString &key, bool retry);
     bool validSubscriptionUrl(const QString &value) const;
     QStringList parseSubscriptionProfiles(const QByteArray &raw) const;
     QString chooseProfile(const QStringList &profiles);
@@ -116,6 +128,8 @@ private:
     bool m_apiOnline = true;
     bool m_refreshInFlight = false;
     QList<std::function<void(bool)>> m_refreshWaiters;
+    int m_apiEpoch = 0;
+    bool m_telegramCheckInFlight = false;
 };
 
 #endif
