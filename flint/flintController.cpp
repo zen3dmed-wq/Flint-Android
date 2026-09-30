@@ -401,6 +401,9 @@ void FlintController::saveTokens(const QJsonObject &obj)
 void FlintController::clearAuthState()
 {
     ++m_apiEpoch;
+    m_refreshInFlight = false;
+    m_refreshWaiters.clear();
+    setBusy(false);
     saveClientDraft("purchase", {});
     saveClientDraft("support", {});
     m_settings->remove("Conf/flintAccessToken");
@@ -591,6 +594,12 @@ void FlintController::refreshAccount()
                     emit subscriptionChanged();
                     if (changed)
                         importSubscription();
+                } else {
+                    // A successful response without an active subscription is
+                    // authoritative. Keep cached access only on network failure.
+                    m_settings->remove("Conf/flintSubscriptionUrl");
+                    m_subscriptionActive = false;
+                    emit subscriptionChanged();
                 }
                 setError(QString());
             } else if (!validSubscriptionUrl(subscriptionUrl()) && !err.isEmpty()) {

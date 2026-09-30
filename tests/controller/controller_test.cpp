@@ -46,6 +46,17 @@ private slots:
         controller.accountRequest("support", "GET", "/support/tickets", {}, "");
         QCOMPARE(response.takeFirst().at(1).toInt(), 401);
     }
+    void logoutReleasesBusyLoginState() {
+        QTemporaryDir dir;
+        SecureQSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
+        settings.setValue("Conf/flintApiBase", "https://127.0.0.1:1/api/v1");
+        FlintController controller(&settings);
+        controller.login("test@example.invalid", "TEST-PASSWORD");
+        QVERIFY(controller.busy());
+        controller.logout();
+        QVERIFY(!controller.busy());
+        QVERIFY(!controller.loggedIn());
+    }
 };
 QTEST_GUILESS_MAIN(ControllerTests)
 #include "controller_test.moc"
