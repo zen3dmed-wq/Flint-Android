@@ -6,6 +6,7 @@ import QtQuick.Dialogs
 import Style 1.0
 import "./"
 import "FlintFocus.js" as FlintFocus
+import "FlintUsage.js" as Usage
 import "../Controls2"
 
 PageType {
@@ -25,6 +26,12 @@ PageType {
     FlintAccount { id: servicePopup; parent: root }
     FlintDevices { id: devicesPopup; parent: root }
     FlintSites { id: sitesPopup; parent: root }
+    FlintSubscriptions { id: subscriptionsPopup; parent: root }
+    Timer {
+        interval: 60000; repeat: true
+        running: FlintController.loggedIn && Qt.application.state === Qt.ApplicationActive
+        onTriggered: if (!FlintController.busy && !root.connectionPending) FlintController.refresh()
+    }
     property bool connectRequested: false
     property bool awaitingProfile: false
     property bool retryPending: false
@@ -270,7 +277,7 @@ PageType {
         else if(point.y + item.height > viewport.contentY + viewport.height) viewport.contentY = Math.min(viewport.contentHeight - viewport.height, point.y + item.height - viewport.height + 12)
     }
     function moveHomeFocus(step) {
-        var controls = [homeSettingsButton, importQrButton, importClipboardButton, connectBtn, homePurchaseButton, tvPairButton, locationTile, directTile, familyTile, supportTile]
+        var controls = [homeSettingsButton, importQrButton, importClipboardButton, connectBtn, homePurchaseButton, tvPairButton, homeSubscriptionButton, locationTile, directTile, familyTile, supportTile]
         controls = controls.filter(function(item) { return item.visible && item.enabled })
         var index = controls.findIndex(function(item) { return item.activeFocus })
         if(index < 0) return false
@@ -430,6 +437,10 @@ PageType {
     }
     Connections {
         target: FlintController
+        function onVpnPermissionDenied() {
+            root.cancelConnection()
+            PageController.showNotificationMessage("Разрешение VPN не выдано. Подключение отменено.")
+        }
         function onProfilePreparationFinished(success) {
             if (!root.awaitingProfile || !root.connectRequested) return
             root.awaitingProfile = false
@@ -727,6 +738,25 @@ PageType {
                 onClicked: root.startTvPairing()
             }
 
+            FlintButton {
+                id: homeSubscriptionButton
+                objectName: "homeSubscriptionButton"
+                visible: FlintController.loggedIn
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.max(86, subscriptionLabels.implicitHeight + 22)
+                Accessible.name: "Выбрать подписку"
+                contentItem: ColumnLayout {
+                    id: subscriptionLabels; spacing: 4
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text { text: Usage.title(FlintController.selectedSubscription); color: root.ink; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true }
+                        Text { text: "Сменить ›"; color: root.mint; font.pixelSize: 12 }
+                    }
+                    FlintTrafficBar { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight; subscription: FlintController.selectedSubscription; textColor: root.muted }
+                }
+                onClicked: subscriptionsPopup.open()
+            }
+
             GridLayout {
                 objectName: "featureGrid"
                 Layout.fillWidth: true
@@ -774,7 +804,7 @@ PageType {
                         Row {
                             spacing: 8 * root.u
                             Text { width: 24 * root.u; text: "РФ"; color: root.mint; font.bold: true; font.pixelSize: 13 * root.u }
-                            Text { text: "Российские"; color: root.ink; font.bold: true; font.pixelSize: 13 * root.u; MouseArea { anchors.fill: parent; onClicked: sitesPopup.open() } }
+                            Text { text: "Сайты РФ"; color: root.ink; font.bold: true; font.pixelSize: 13 * root.u; MouseArea { anchors.fill: parent; onClicked: sitesPopup.open() } }
                         }
                         RowLayout {
                             width: parent.width
@@ -782,7 +812,7 @@ PageType {
                             Text {
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 0
-                                text: "Список сайтов →"
+                                text: "Правила и сайты →"
                                 MouseArea { anchors.fill: parent; onClicked: sitesPopup.open() }
                                 color: FlintController.ruDirectEnabled ? root.mint : root.muted
                                 font.pixelSize: 11 * root.u
@@ -830,7 +860,7 @@ PageType {
                         Row {
                             spacing: 8 * root.u
                             Glyph { pathData: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8" }
-                            Text { anchors.verticalCenter: parent.verticalCenter; text: "Семья"; color: root.ink; font.bold: true; font.pixelSize: 13 * root.u }
+                            Text { anchors.verticalCenter: parent.verticalCenter; text: "Устройства"; color: root.ink; font.bold: true; font.pixelSize: 13 * root.u }
                         }
                         Text {
                             width: parent.width
@@ -1104,7 +1134,7 @@ PageType {
             spacing: 9
 
             Text {
-                text: "Локация"
+                text: "Выбор сервера"
                 color: root.ink
                 font.pixelSize: 21
                 font.bold: true
@@ -1153,7 +1183,7 @@ PageType {
                             elide: Text.ElideRight
                         }
                         Text {
-                            text: modelData.kind === "saved" ? "Добавленный сервер" : "Подписка Flint"
+                            text: modelData.code === "AUTO" ? "Выбор доступного сервера" : modelData.kind === "saved" ? "Добавлен вручную" : Usage.title(FlintController.selectedSubscription)
                             font.pixelSize: 11
                             color: locationButton.highlighted ? "#164C3C" : root.muted
                         }
@@ -1368,7 +1398,7 @@ PageType {
             }
 
             Text { text: "Настройки Flint"; color: root.ink; font.pixelSize: 21; font.bold: true }
-            Text { text: "Flint Android 8.10.6"; color: root.muted }
+            Text { text: "Flint Android 8.10.7"; color: root.muted }
 
             FlintButton {
                 Layout.fillWidth: true

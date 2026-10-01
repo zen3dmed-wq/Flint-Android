@@ -37,7 +37,8 @@ Popup {
         ScrollView {
             id: bodyScroll; Layout.fillWidth: true; Layout.fillHeight: true; contentWidth: availableWidth; clip: true
             ColumnLayout { width: bodyScroll.availableWidth; spacing: 12
-        Text { text: "Сайты из списка открываются напрямую, в обход VPN. Добавляйте также нужные поддомены."; color: "#B7C9DA"; font.pixelSize: 13; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+        Text { text: FlintController.routingSummary; color: "#64ECC0"; font.pixelSize: 12; Layout.fillWidth: true; wrapMode: Text.Wrap }
+        Text { text: "Для VLESS/Xray общий список обновляется из конфигурации. Добавленные ниже сайты и их поддомены дополняют его и открываются напрямую. Для других протоколов применяется список отдельных сайтов."; color: "#B7C9DA"; font.pixelSize: 13; Layout.fillWidth: true; wrapMode: Text.WordWrap }
         RowLayout {
             Layout.fillWidth: true
             Text { text: "Открывать напрямую"; color: "#F8FBFF"; Layout.fillWidth: true; wrapMode: Text.WordWrap }

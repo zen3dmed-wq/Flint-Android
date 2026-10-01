@@ -115,7 +115,7 @@ Popup {
             if (kind === "subscriptions") {
                 panel.subscriptions = (data.items || []).map(function(s) { return {id:s.id, name:s.plan ? s.plan.name : "Подписка", status:s.status} })
                 if (!panel.subscriptions.some(function(s) { return s.id === panel.subscriptionId }))
-                    panel.subscriptionId = panel.subscriptions.length ? panel.subscriptions[0].id : ""
+                    panel.subscriptionId = panel.subscriptions.some(function(s) { return s.id === FlintController.selectedSubscriptionId }) ? FlintController.selectedSubscriptionId : (panel.subscriptions.length ? panel.subscriptions[0].id : "")
                 panel.loadDevices()
             }
             if (kind.indexOf("list-") === 0) {

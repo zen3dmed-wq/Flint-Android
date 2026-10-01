@@ -6,6 +6,8 @@ from patch_android_identity import apply as apply_android_identity
 from patch_android_widget import apply as apply_android_widget
 from patch_direct_sites import apply as apply_direct_sites
 from patch_qr_images import apply as apply_qr_images
+from patch_vpn_permission import apply as apply_vpn_permission
+from patch_routing import apply as apply_routing
 
 root = Path(sys.argv[1]).resolve()
 flint = Path(__file__).resolve().parent / "flint"
@@ -23,12 +25,12 @@ def replace(path, old, new, required=True):
 replace(
     "CMakeLists.txt",
     'set(AMNEZIAVPN_VERSION 5.0.3.0 CACHE STRING "Client app version")',
-    'set(AMNEZIAVPN_VERSION 8.10.6 CACHE STRING "Client app version")'
+    'set(AMNEZIAVPN_VERSION 8.10.7 CACHE STRING "Client app version")'
 )
 replace(
     "CMakeLists.txt",
     'set(APP_ANDROID_VERSION_CODE 2163)',
-    'set(APP_ANDROID_VERSION_CODE 2176)'
+    'set(APP_ANDROID_VERSION_CODE 2177)'
 )
 replace(
     "client/cmake/branding/common.cmake",
@@ -167,7 +169,7 @@ shutil.copy2(flint / "PageHome.qml",
 shutil.copy2(flint / "PageStart.qml",
              root / "client/ui/qml/Pages2/PageStart.qml")
 
-for name in ("FlintAccount.qml", "FlintIdentity.qml", "FlintButton.qml", "FlintField.qml", "FlintChoice.qml", "FlintDevices.qml", "FlintSites.qml", "DeviceRows.js", "FlintFocus.js"):
+for name in ("FlintAccount.qml", "FlintIdentity.qml", "FlintButton.qml", "FlintField.qml", "FlintChoice.qml", "FlintDevices.qml", "FlintSites.qml", "DeviceRows.js", "FlintFocus.js", "FlintUsage.js", "FlintSubscriptions.qml", "FlintTrafficBar.qml"):
     shutil.copy2(flint / name, root / "client/ui/qml/Pages2" / name)
 # Flint's user-visible assets. The Amnezia engine remains internal only.
 qml_assets = root / "client/ui/qml/Assets"
@@ -177,7 +179,7 @@ for asset in ["flint-dog.svg", "flint-background.svg", "flint-main.png", "flint-
 
 qml_qrc = root / "client/ui/qml/qml.qrc"
 qrc = qml_qrc.read_text(encoding="utf-8")
-for name in ("FlintAccount.qml", "FlintIdentity.qml", "FlintButton.qml", "FlintField.qml", "FlintChoice.qml", "FlintDevices.qml", "FlintSites.qml", "DeviceRows.js", "FlintFocus.js"):
+for name in ("FlintAccount.qml", "FlintIdentity.qml", "FlintButton.qml", "FlintField.qml", "FlintChoice.qml", "FlintDevices.qml", "FlintSites.qml", "DeviceRows.js", "FlintFocus.js", "FlintUsage.js", "FlintSubscriptions.qml", "FlintTrafficBar.qml"):
     qrc = qrc.replace("    </qresource>", f"        <file>Pages2/{name}</file>\n    </qresource>", 1)
 for asset in ["flint-dog.svg", "flint-background.svg", "flint-main.png", "flint-background.jpg", "flint-logo.svg", "flint-logo.png"]:
     entry = f"        <file>Assets/{asset}</file>\n"
@@ -278,8 +280,10 @@ if 'setQmlContextProperty("FlintController"' not in s:
         anchor +
         '\n    m_flintController = new FlintController(m_settings, this);\n'
         '    setQmlContextProperty("FlintController", m_flintController);\n'
+        '    connect(m_vpnConnection.data(), &VpnConnection::bytesChanged, m_flintController, &FlintController::updateTraffic);\n' 
         '    connect(m_connectionUiController, &ConnectionUiController::connectionStateChanged,\n'
         '            m_flintController, [this]() {\n'
+        '        m_flintController->setVpnActive(m_connectionUiController->isConnected() || m_connectionUiController->isConnectionInProgress());\n'
         '        if (m_connectionUiController->isConnected()) m_flintController->markProfileConnected();\n'
         '    });\n'
         '    connect(m_serversUiController, &ServersUiController::defaultServerIdChanged,\n'
@@ -375,4 +379,8 @@ assert 'parseSubscriptionProfiles' in (root / "client/ui/controllers/flintContro
 assert 'flintProfileServerId' in (root / "client/core/controllers/coreController.cpp").read_text(encoding="utf-8")
 assert 'clearQtCaches();' in (root / "client/amneziaApplication.cpp").read_text(encoding="utf-8")
 
-print("Flint Android 8.10.6 startup-safe patch applied and statically verified")
+print("Flint Android 8.10.7 startup-safe patch applied and statically verified")
+
+apply_vpn_permission(root)
+
+apply_routing(root, flint)

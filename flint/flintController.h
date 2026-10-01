@@ -7,6 +7,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
 #include <QJsonObject>
+#include <QJsonArray>
 #include <QTimer>
 #include <QPointer>
 #include <QNetworkReply>
@@ -17,6 +18,8 @@
 class FlintController : public QObject
 {
     Q_OBJECT
+    Q_PROPERTY(qulonglong receivedBytes MEMBER m_receivedBytes NOTIFY trafficChanged)
+    Q_PROPERTY(qulonglong sentBytes MEMBER m_sentBytes NOTIFY trafficChanged)
     Q_PROPERTY(bool loggedIn READ loggedIn NOTIFY authChanged)
     Q_PROPERTY(QString email READ email NOTIFY authChanged)
     Q_PROPERTY(QString telegramUsername READ telegramUsername NOTIFY authChanged)
@@ -24,11 +27,15 @@ class FlintController : public QObject
     Q_PROPERTY(bool telegramPending READ telegramPending NOTIFY telegramChanged)
     Q_PROPERTY(bool subscriptionActive READ subscriptionActive NOTIFY subscriptionChanged)
     Q_PROPERTY(QString subscriptionUrl READ subscriptionUrl NOTIFY subscriptionChanged)
+    Q_PROPERTY(QVariantList subscriptions READ subscriptions NOTIFY subscriptionChanged)
+    Q_PROPERTY(QString selectedSubscriptionId READ selectedSubscriptionId NOTIFY subscriptionChanged)
+    Q_PROPERTY(QVariantMap selectedSubscription READ selectedSubscription NOTIFY subscriptionChanged)
     Q_PROPERTY(int sessionsCount READ sessionsCount NOTIFY subscriptionChanged)
     Q_PROPERTY(QString selectedCountry READ selectedCountry WRITE setSelectedCountry NOTIFY selectedCountryChanged)
     Q_PROPERTY(QVariantList countries READ countries NOTIFY countriesChanged)
     Q_PROPERTY(QVariantList savedServers READ savedServers NOTIFY savedServersChanged)
     Q_PROPERTY(QString selectedSavedServerId READ selectedSavedServerId NOTIFY savedServersChanged)
+    Q_PROPERTY(QString routingSummary READ routingSummary NOTIFY routingChanged)
     Q_PROPERTY(bool ruDirectEnabled READ ruDirectEnabled WRITE setRuDirectEnabled NOTIFY ruDirectEnabledChanged)
     Q_PROPERTY(QString assistReply READ assistReply NOTIFY assistChanged)
     Q_PROPERTY(QString assistTitle READ assistTitle NOTIFY assistChanged)
@@ -48,6 +55,12 @@ public:
     bool telegramPending() const { return !m_telegramLoginId.isEmpty(); }
     bool subscriptionActive() const { return m_subscriptionActive; }
     QString subscriptionUrl() const;
+    QVariantList subscriptions() const { return m_subscriptions; }
+    QString selectedSubscriptionId() const;
+    QVariantMap selectedSubscription() const;
+    Q_INVOKABLE bool selectSubscription(const QString &id);
+    void setVpnActive(bool active) { m_vpnActive = active; }
+    void updateTraffic(quint64 received, quint64 sent) { m_receivedBytes = received; m_sentBytes = sent; emit trafficChanged(); }
     int sessionsCount() const { return m_sessionsCount; }
     QString selectedCountry() const;
     QVariantList countries() const { return m_countries; }
@@ -60,6 +73,7 @@ public:
     void profileInstallResult(bool success);
     void markProfileConnected();
     Q_INVOKABLE bool tryNextAutomaticProfile();
+    QString routingSummary() const;
     bool ruDirectEnabled() const;
     QString assistReply() const { return m_assistReply; }
     QString assistTitle() const { return m_assistTitle; }
@@ -90,6 +104,9 @@ public slots:
     void askAssist(const QString &message);
 
 signals:
+    void routingChanged();
+    void trafficChanged();
+    void vpnPermissionDenied();
     void authChanged();
     void telegramChanged();
     void subscriptionChanged();
@@ -109,6 +126,9 @@ signals:
     void qrImageDecoded(const QString &requestId, const QString &text, const QString &error);
 
 private:
+    quint64 m_receivedBytes = 0, m_sentBytes = 0;
+    QVariantList m_subscriptions;
+    bool m_vpnActive = false;
     bool m_qrImageBusy = false;
     QNetworkRequest apiRequest(const QString &path, bool authorized=false) const;
     QByteArray deviceJson() const;
@@ -120,6 +140,7 @@ private:
     void clearAuthState();
     void refreshConfig();
     void refreshAccount();
+    void applySubscriptions(const QJsonArray &items);
     void refreshAccessToken(std::function<void(bool)> done);
     void authorizedGet(const QString &path, std::function<void(int,const QByteArray&,const QString&)> done, bool retry=true);
     void postPublic(const QString &path, const QJsonObject &body, std::function<void(int,const QByteArray&,const QString&)> done);

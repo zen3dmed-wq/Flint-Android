@@ -5,10 +5,65 @@
 #include <QRegularExpression>
 #include "flintController.h"
 #include "flintDirectSites.h"
+#include "flintRouting.h"
 
 class ControllerTests : public QObject {
     Q_OBJECT
 private slots:
+
+    void everySubscriptionNodeHasStableSelectionIncludingUnknownCountries() {
+        QTemporaryDir dir; SecureQSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
+        settings.setValue("Conf/flintStartupSchema",999);
+        const QString url="https://127.0.0.1:1/sub";
+        const QStringList profiles={"vless://test@example.invalid:443#Armenia1", "vless://test@example.invalid:444#Armenia2", "vless://test@example.invalid:445#USA", "vless://test@example.invalid:446#Moldova"};
+        settings.setValue("Conf/flintSubscriptionUrl",url); settings.setValue("Conf/flintCachedProfilesUrl",url);
+        settings.setValue("Conf/flintCachedProfiles",profiles.join('\n').toUtf8());
+        FlintController c(&settings); QSignalSpy ready(&c,&FlintController::profileReady);
+        c.importSubscription(); c.profileInstallResult(true);
+        QCOMPARE(c.countries().size(),5);
+        const auto second=c.countries().at(2).toMap().value("code").toString();
+        QVERIFY(second.startsWith("SERVER:"));
+        c.setSelectedCountry(second); c.importSubscription();
+        QCOMPARE(ready.last().first().toString(),profiles[1]); c.profileInstallResult(true);
+        settings.setValue("Conf/flintCachedProfiles",(profiles[3]+'\n'+profiles[1]+'\n'+profiles[0]+'\n'+profiles[2]).toUtf8());
+        c.importSubscription(); QCOMPARE(ready.last().first().toString(),profiles[1]);
+        c.profileInstallResult(true);
+        // A disappeared server must not silently select a different node.
+        settings.setValue("Conf/flintCachedProfiles",profiles[0].toUtf8());
+        c.importSubscription(); QTRY_VERIFY_WITH_TIMEOUT(!c.profilePreparing(),2000);
+        QCOMPARE(ready.size(),3);
+    }
+    void selectedSubscriptionPersistsAndCannotChangeDuringTunnel() {
+        QTemporaryDir dir; SecureQSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
+        settings.setValue("Conf/flintStartupSchema",999);
+        const QJsonArray items{QJsonObject{{"id","a"},{"status","active"},{"subscriptionUrl","vless://test@example.invalid:443#Armenia"}},QJsonObject{{"id","b"},{"status","active"},{"subscriptionUrl","vless://test@example.invalid:444#USA"}},QJsonObject{{"id","expired"},{"status","expired"},{"subscriptionUrl","vless://test@example.invalid:445#France"}}};
+        settings.setValue("Conf/flintSubscriptions",QJsonDocument(items).toJson());
+        FlintController c(&settings); QVERIFY(c.selectSubscription("b"));
+        QCOMPARE(c.selectedSubscriptionId(),QString("b")); QCOMPARE(c.countries().size(),2);
+        QVERIFY(c.countries().last().toMap().value("name").toString().contains("USA"));
+        c.setVpnActive(true); QVERIFY(!c.selectSubscription("a")); QCOMPARE(c.selectedSubscriptionId(),QString("b"));
+        c.setVpnActive(false); QVERIFY(!c.selectSubscription("expired"));
+        FlintController reopened(&settings); QCOMPARE(reopened.selectedSubscriptionId(),QString("b"));
+        QVERIFY(reopened.subscriptionUrl().contains(":444"));
+        QVERIFY(reopened.selectSubscription("a")); QCOMPARE(reopened.selectedCountry(),QString("AUTO"));
+    }
+    void routingExpandsGroupsAndPreservesExistingProxyRules() {
+        auto policy=FlintRouting::defaults(); QVERIFY(FlintRouting::valid(policy));
+        auto invalid=policy; invalid["geosite"]=QJsonArray{"not-a-known-group"}; QVERIFY(!FlintRouting::valid(invalid));
+        invalid=policy; invalid["ips"]=QJsonArray{"bad-ip"}; QVERIFY(!FlintRouting::valid(invalid));
+        QJsonObject original{{"outbounds",QJsonArray{QJsonObject{{"protocol","vless"},{"tag","vpn"}}}},
+            {"inbounds",QJsonArray{QJsonObject{{"protocol","socks"}}}},
+            {"routing",QJsonObject{{"rules",QJsonArray{QJsonObject{{"network","tcp,udp"},{"outboundTag","vpn"}}}}}}};
+        const auto result=FlintRouting::apply(original,policy,{"example.org","192.0.2.0/24"});
+        QCOMPARE(result.value("outbounds").toArray().first(),original.value("outbounds").toArray().first());
+        const auto rules=result.value("routing").toObject().value("rules").toArray();
+        QVERIFY(rules.first().toObject().value("domain").toArray().contains("domain:example.org"));
+        QVERIFY(rules.first().toObject().value("domain").toArray().contains("domain:ru"));
+        QVERIFY(rules.at(1).toObject().value("ip").toArray().contains("192.0.2.0/24"));
+        QCOMPARE(rules.last().toObject().value("outboundTag").toString(),QString("vpn"));
+        QCOMPARE(FlintRouting::apply(original,invalid,{}),original);
+    }
+
     void identityLinkUsesAuthenticatedRoutesAndRefreshesAfterMigration() {
         QTcpServer server; QVERIFY(server.listen(QHostAddress::LocalHost));
         QStringList paths; QList<QByteArray> requests; int completes = 0;

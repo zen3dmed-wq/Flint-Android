@@ -1,5 +1,6 @@
 #include "flintController.h"
 #include "flintDirectSites.h"
+#include "flintRouting.h"
 
 QString FlintController::normalizeDirectSite(const QString &value) const
 {
@@ -8,6 +9,7 @@ QString FlintController::normalizeDirectSite(const QString &value) const
 
 #include <QCryptographicHash>
 #include <QJsonArray>
+#include <QMap>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkReply>
@@ -17,6 +19,7 @@ QString FlintController::normalizeDirectSite(const QString &value) const
 #include <QUrl>
 #include <QUrlQuery>
 #include <QUuid>
+#include <QDateTime>
 #include <utility>
 #ifdef Q_OS_ANDROID
 #include <QCoreApplication>
@@ -33,7 +36,7 @@ void FlintController::requestHomeWidget()
 
 namespace {
 const QString kApiBase = QStringLiteral("https://flintmain.ru/api/v1");
-const QString kVersion = QStringLiteral("8.10.6");
+const QString kVersion = QStringLiteral("8.10.7");
 
 bool isProfileUri(const QString &s)
 {
@@ -127,6 +130,7 @@ FlintController::FlintController(SecureQSettings *settings, QObject *parent)
     a["name"] = QStringLiteral("Автоматически");
     m_countries << a;
 
+    m_subscriptions = QJsonDocument::fromJson(m_settings->value("Conf/flintSubscriptions").toByteArray()).array().toVariantList();
     ensureDeviceId();
     m_subscriptionActive = validSubscriptionUrl(subscriptionUrl());
     m_email = m_settings->value("Conf/flintEmail").toString();
@@ -150,6 +154,75 @@ bool FlintController::loggedIn() const
 QString FlintController::subscriptionUrl() const
 {
     return m_settings->value("Conf/flintSubscriptionUrl").toString().trimmed();
+}
+
+QString FlintController::selectedSubscriptionId() const
+{
+    return m_settings->value("Conf/flintSelectedSubscriptionId").toString();
+}
+
+QVariantMap FlintController::selectedSubscription() const
+{
+    for (const auto &item : m_subscriptions) {
+        const auto sub = item.toMap();
+        if (sub.value("id").toString() == selectedSubscriptionId()) return sub;
+    }
+    return {};
+}
+
+bool FlintController::selectSubscription(const QString &id)
+{
+    if (m_vpnActive || m_profilePreparing) {
+        setError(QStringLiteral("Отключите VPN перед сменой подписки."));
+        return false;
+    }
+    for (const auto &item : m_subscriptions) {
+        const auto sub = item.toMap();
+        if (sub.value("id").toString() != id || sub.value("status").toString() != "active") continue;
+        const auto url = sub.value("subscriptionUrl").toString();
+        if (!validSubscriptionUrl(url)) return false;
+        const bool changed = id != selectedSubscriptionId() || url != subscriptionUrl();
+        m_settings->setValue("Conf/flintSelectedSubscriptionId", id);
+        m_settings->setValue("Conf/flintSubscriptionUrl", url);
+        m_subscriptionActive = true;
+        if (changed) {
+            cancelProfileImport();
+            m_pendingProfile.clear();
+            setSelectedCountry("AUTO");
+            updateCountriesFromProfiles(cachedProfiles());
+        }
+        emit subscriptionChanged();
+        setError({});
+        if (changed) importSubscription(false);
+        return true;
+    }
+    return false;
+}
+
+void FlintController::applySubscriptions(const QJsonArray &items)
+{
+    m_subscriptions = items.toVariantList();
+    m_settings->setValue("Conf/flintSubscriptions", QJsonDocument(items).toJson(QJsonDocument::Compact));
+    QString wanted;
+    for (const auto &v : items) {
+        const auto sub = v.toObject();
+        if (sub.value("status").toString() != "active" || !validSubscriptionUrl(sub.value("subscriptionUrl").toString())) continue;
+        const auto id = sub.value("id").toString();
+        if (wanted.isEmpty()) wanted = id;
+        if (id == selectedSubscriptionId()) { wanted = id; break; }
+    }
+    // Refresh usage during a tunnel without changing its subscription/profile.
+    if (!m_vpnActive && !m_profilePreparing) {
+        if (!wanted.isEmpty()) selectSubscription(wanted);
+        else {
+            cancelProfileImport();
+            m_settings->remove("Conf/flintSubscriptionUrl");
+            m_settings->remove("Conf/flintSelectedSubscriptionId");
+            m_subscriptionActive = false;
+            updateCountriesFromProfiles({});
+        }
+    }
+    emit subscriptionChanged();
 }
 
 QString FlintController::apiBase() const
@@ -177,6 +250,8 @@ bool FlintController::setApiBase(const QString &base)
     m_refreshInFlight = false; m_refreshWaiters.clear();
     for (auto *reply : m_net.findChildren<QNetworkReply*>()) reply->abort();
     clearAuthState();
+    m_settings->remove("Conf/flintRouting");
+    emit routingChanged();
     m_settings->setValue("Conf/flintApiBase", value);
     setBusy(false); setError(QString());
     emit telegramChanged(); emit apiBaseChanged();
@@ -275,6 +350,17 @@ void FlintController::accountRequestImpl(const QString &id, const QString &metho
 QString FlintController::selectedCountry() const
 {
     return m_settings->value("Conf/flintSelectedCountry", "AUTO").toString();
+}
+
+QString FlintController::routingSummary() const
+{
+    auto policy = QJsonDocument::fromJson(m_settings->value("Conf/flintRouting").toByteArray()).object();
+    const bool remote = !policy.isEmpty();
+    if (!remote) policy = FlintRouting::defaults();
+    QStringList groups;
+    for (const auto &kind : {"geosite", "geoip"})
+        for (const auto &group : policy.value(kind).toArray()) groups.append(QString(kind) + ":" + group.toString());
+    return (remote ? QStringLiteral("Правила из API: ") : QStringLiteral("Встроенные правила: ")) + groups.join(", ");
 }
 
 bool FlintController::ruDirectEnabled() const
@@ -395,16 +481,17 @@ void FlintController::updateCountriesFromProfiles(const QStringList &profiles)
     out << autoItem;
 
     QStringList seen;
+    QMap<QString, int> labels;
+    for (const auto &p : profiles) ++labels[profileName(p)];
+    QMap<QString, int> ordinals;
     for (const QString &p : profiles) {
-        const QString name = profileName(p);
-        const QString code = countryCodeForName(name);
-        if (code.isEmpty() || seen.contains(code))
-            continue;
-        seen << code;
-        QVariantMap m;
-        m["code"] = code;
-        m["name"] = countryNameForCode(code);
-        out << m;
+        if (seen.contains(p)) continue;
+        seen << p;
+        const QString rawName = profileName(p);
+        QString name = rawName.isEmpty() ? QStringLiteral("Сервер") : rawName;
+        if (labels.value(rawName) > 1) name += QStringLiteral(" · %1").arg(++ordinals[rawName]);
+        const QString key = "SERVER:" + QString::fromLatin1(QCryptographicHash::hash(p.toUtf8(), QCryptographicHash::Sha256).toHex()).toUpper();
+        out << QVariantMap{{"code", key}, {"name", name}, {"country", countryCodeForName(rawName)}};
     }
 
     m_countries = out;
@@ -429,8 +516,9 @@ QString FlintController::chooseProfile(const QStringList &profiles)
 
     for (const QString &p : profiles) {
         const QString name = profileName(p);
-        if (countryCodeForName(name) == wanted ||
-            name.contains(wanted, Qt::CaseInsensitive))
+        const QString key = "SERVER:" + QString::fromLatin1(QCryptographicHash::hash(p.toUtf8(), QCryptographicHash::Sha256).toHex()).toUpper();
+        if (key == wanted || (!wanted.startsWith("SERVER:") && (countryCodeForName(name) == wanted ||
+            name.contains(wanted, Qt::CaseInsensitive))))
             return p;
     }
 
@@ -462,6 +550,10 @@ void FlintController::clearAuthState()
     m_settings->remove("Conf/flintSubscriptionUrl");
     for (const auto &key : {"Conf/flintCachedProfiles", "Conf/flintCachedProfilesUrl", "Conf/flintWorkingProfile", "Conf/flintLastProfile", "Conf/flintLastProfileUrl"}) m_settings->remove(key);
     m_settings->remove("Conf/flintSessionsCount");
+    m_settings->remove("Conf/flintSubscriptions");
+    m_settings->remove("Conf/flintSelectedSubscriptionId");
+    m_subscriptions.clear();
+    updateCountriesFromProfiles({});
     m_email.clear();
     m_telegramUsername.clear();
     m_subscriptionActive = false;
@@ -590,6 +682,14 @@ void FlintController::refreshConfig()
             emit apiStatusChanged();
         }
         if (status >= 200 && status < 300) {
+            const auto routing = QJsonDocument::fromJson(raw).object().value("routing").toObject();
+            if (routing.contains("russianServices")) {
+                const auto policy = routing.value("russianServices").toObject();
+                if (FlintRouting::valid(policy)) {
+                    m_settings->setValue("Conf/flintRouting", QJsonDocument(policy).toJson(QJsonDocument::Compact));
+                    emit routingChanged();
+                } else setError(QStringLiteral("Правила российских сервисов из API не распознаны. Сохранены предыдущие правила."));
+            }
             const QJsonObject maintenance =
                 QJsonDocument::fromJson(raw).object().value("maintenance").toObject();
             if (maintenance.value("enabled").toBool()) {
@@ -625,32 +725,9 @@ void FlintController::refreshAccount()
     authorizedGet("/subscriptions",
         [this](int status, const QByteArray &raw, const QString &err) {
             if (status >= 200 && status < 300) {
-                const QJsonArray items =
-                    QJsonDocument::fromJson(raw).object().value("items").toArray();
-                QString found;
-                for (const QJsonValue &v : items) {
-                    const QJsonObject s = v.toObject();
-                    if (s.value("status").toString().compare(
-                            "active", Qt::CaseInsensitive) == 0) {
-                        found = s.value("subscriptionUrl").toString().trimmed();
-                        if (!found.isEmpty()) break;
-                    }
-                }
-
-                if (validSubscriptionUrl(found)) {
-                    const bool changed = found != subscriptionUrl();
-                    m_settings->setValue("Conf/flintSubscriptionUrl", found);
-                    m_subscriptionActive = true;
-                    emit subscriptionChanged();
-                    if (changed)
-                        importSubscription(false);
-                } else {
-                    // A successful response without an active subscription is
-                    // authoritative. Keep cached access only on network failure.
-                    m_settings->remove("Conf/flintSubscriptionUrl");
-                    m_subscriptionActive = false;
-                    emit subscriptionChanged();
-                }
+                const auto document = QJsonDocument::fromJson(raw);
+                if (!document.object().value("items").isArray()) { setBusy(false); return; }
+                applySubscriptions(document.object().value("items").toArray());
                 setError(QString());
             } else if (!validSubscriptionUrl(subscriptionUrl()) && !err.isEmpty()) {
                 setError(QStringLiteral("Не удалось обновить подписку: ") + err);

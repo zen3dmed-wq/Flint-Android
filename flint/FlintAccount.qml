@@ -11,6 +11,7 @@ Popup {
         onProfileUpdated: function(value) { panel.profile = value; if (panel.opened) panel.reload() }
     }
     FlintDevices { id: devicesPanel; parent: panel.parent }
+    FlintSubscriptions { id: subscriptionsPanel; parent: panel.parent }
     objectName: "flintAccountPanel"
     property int section: 0
     property var config: ({})
@@ -41,6 +42,7 @@ Popup {
         FlintController.accountRequest(id, method, path, body || {}, key || "")
     }
     function reload() {
+        FlintController.refresh()
         error = ""
         request("config", "GET", "/config")
         if (!FlintController.loggedIn) return
