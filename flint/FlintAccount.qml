@@ -4,6 +4,11 @@ import QtQuick.Layouts
 
 Popup {
     id: panel
+    property var profile: ({})
+    FlintIdentity {
+        id: identityPanel; parent: panel.parent
+        onProfileUpdated: function(value) { panel.profile = value; if (panel.opened) panel.reload() }
+    }
     FlintDevices { id: devicesPanel; parent: panel.parent }
     objectName: "flintAccountPanel"
     property int section: 0
@@ -38,6 +43,7 @@ Popup {
         error = ""
         request("config", "GET", "/config")
         if (!FlintController.loggedIn) return
+        request("profile", "GET", "/me")
         request("subscriptions", "GET", "/subscriptions")
         purchase = FlintController.clientDraft("purchase")
         if (purchase.order && purchase.order.id) request("order", "GET", "/orders/" + encodeURIComponent(purchase.order.id))
@@ -84,9 +90,10 @@ Popup {
     TextEdit { id: clipboard; visible: false }
     Connections {
         target: FlintController
-        function onAuthChanged() { if (!FlintController.loggedIn) { panel.subscriptions = []; panel.tickets = []; panel.referrals = {}; panel.purchase = {}; panel.pending = {} } }
-        function onApiBaseChanged() { panel.config = {}; panel.pending = {}; panel.close() }
+        function onAuthChanged() { if (!FlintController.loggedIn) { panel.profile = {}; panel.subscriptions = []; panel.tickets = []; panel.referrals = {}; panel.purchase = {}; panel.pending = {} } }
+        function onApiBaseChanged() { panel.profile = {}; panel.config = {}; panel.pending = {}; panel.close() }
         function onAccountResponse(id, status, data, failure) {
+            if (!panel.pending[id]) return
             var next = Object.assign({}, panel.pending); delete next[id]; panel.pending = next
             if (failure) {
                 panel.error = failure
@@ -94,6 +101,7 @@ Popup {
                 return
             }
             if (id === "config") { panel.config = data; panel.loadSection() }
+            if (id === "profile") panel.profile = data
             if (id === "subscriptions") panel.subscriptions = data.items || []
             if (id === "plans") panel.plans = data.items || []
             if (id === "methods") panel.methods = data.items || []
@@ -123,6 +131,7 @@ Popup {
         onTriggered: { if (Date.now() - panel.purchase.startedAt < 900000) panel.request("order", "GET", "/orders/" + encodeURIComponent(panel.purchase.order.id)) }
     }
     contentItem: ColumnLayout {
+        property bool flintFocusScope: true
         spacing: 10
         RowLayout {
             Layout.fillWidth: true
@@ -130,6 +139,7 @@ Popup {
             FlintButton { text: "×"; implicitWidth: 40; implicitHeight: 40; font.pixelSize: 24; subtle: true; onClicked: panel.close() }
         }
         Text { text: "Один аккаунт на всех устройствах"; color: panel.muted; font.pixelSize: 12; Layout.bottomMargin: 10 }
+        FlintButton { Layout.fillWidth: true; visible: FlintController.loggedIn; text: "Способы входа · почта и Telegram"; onClicked: identityPanel.open() }
         RowLayout {
             Layout.fillWidth: true; spacing: 5
             Repeater { model: ["Подписки", "Купить", "Друзья", "Поддержка"]
@@ -164,7 +174,8 @@ Popup {
                 ColumnLayout {
                     visible: FlintController.loggedIn && panel.section === 1; Layout.fillWidth: true
                     Text { Layout.fillWidth: true; visible: !panel.config.purchasesEnabled; text: "Покупки пока недоступны на подключённом API."; color: panel.muted; wrapMode: Text.Wrap }
-                    Text { Layout.fillWidth: true; text: "После оплаты подписка появится в этом аккаунте на Android и Windows."; color: panel.muted; wrapMode: Text.Wrap }
+                    Text { Layout.fillWidth: true; textFormat: Text.PlainText; text: "Покупка для: " + (panel.profile.email || (panel.profile.telegram && panel.profile.telegram.username ? "@" + panel.profile.telegram.username : "текущего аккаунта Flint")); color: panel.mint; wrapMode: Text.WrapAnywhere }
+                    Text { Layout.fillWidth: true; text: "После оплаты подписка появится на всех ваших устройствах. Достаточно входа по почте или Telegram; второй способ можно добавить позже."; color: panel.muted; wrapMode: Text.Wrap }
                     Text { text: "ТАРИФ"; font.pixelSize: 11; font.letterSpacing: 1.2; color: panel.muted; Layout.topMargin: 16 }
                     FlintChoice { id: planChoice; Layout.fillWidth: true; model: panel.plans; textRole: "name"; enabled: panel.config.purchasesEnabled === true && !panel.purchase.key }
                     Text { Layout.fillWidth: true; color: panel.mint; font.pixelSize: 24; font.bold: true; Layout.topMargin: 8; text: planChoice.currentIndex >= 0 && panel.plans[planChoice.currentIndex] ? panel.plans[planChoice.currentIndex].price.amount + " " + panel.plans[planChoice.currentIndex].price.currency : "Тарифы не загружены" }

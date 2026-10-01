@@ -30,6 +30,7 @@ Popup {
         function onErrorOccurred(message) { if (panel.opened) panel.feedback = message }
     }
     contentItem: ColumnLayout {
+        property bool flintFocusScope: true
         spacing: 12
         Text { text: "Российские сервисы"; color: "#F8FBFF"; font.pixelSize: 23; font.bold: true; Layout.fillWidth: true; wrapMode: Text.WordWrap }
         ScrollView {

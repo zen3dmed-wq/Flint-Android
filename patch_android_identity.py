@@ -19,6 +19,12 @@ def apply(root: Path, assets: Path):
     # Keep the supplied artwork byte-for-byte; Android sizes it at rendering.
     shutil.copy2(assets / "flint-emblem.jpg", res / "drawable-nodpi/flint_emblem.jpg")
     shutil.copy2(assets / "ic_flint_notification.xml", res / "drawable/ic_flint_notification.xml")
+    (res / "drawable/flint_tv_banner.xml").write_text('''<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item><shape android:shape="rectangle"><size android:width="320dp" android:height="180dp" /><solid android:color="#06111D" /></shape></item>
+    <item android:width="140dp" android:height="140dp" android:gravity="center"><bitmap android:src="@drawable/flint_emblem" android:gravity="fill" /></item>
+</layer-list>
+''', encoding="utf-8")
     (res / "mipmap-anydpi-v26/flint_icon.xml").write_text('''<?xml version="1.0" encoding="utf-8"?>
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background><shape android:shape="rectangle"><solid android:color="#FFFFFF" /></shape></background>
@@ -51,6 +57,8 @@ def apply(root: Path, assets: Path):
     start = source.index("<application")
     end = source.index(">", start)
     application = source[start:end]
+    application, count = re.subn(r'android:banner="[^"]+"', 'android:banner="@drawable/flint_tv_banner"', application)
+    assert count == 1, "TV launcher banner"
     for name in ("icon", "roundIcon"):
         application, count = re.subn(r'android:' + name + r'="[^"]+"',
                                     f'android:{name}="@mipmap/flint_icon"', application)

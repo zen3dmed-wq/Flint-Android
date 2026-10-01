@@ -2,12 +2,52 @@
 #include <QTemporaryDir>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QRegularExpression>
 #include "flintController.h"
 #include "flintDirectSites.h"
 
 class ControllerTests : public QObject {
     Q_OBJECT
 private slots:
+    void identityLinkUsesAuthenticatedRoutesAndRefreshesAfterMigration() {
+        QTcpServer server; QVERIFY(server.listen(QHostAddress::LocalHost));
+        QStringList paths; QList<QByteArray> requests; int completes = 0;
+        connect(&server, &QTcpServer::newConnection, &server, [&]() {
+            auto *socket = server.nextPendingConnection();
+            connect(socket, &QTcpSocket::readyRead, socket, [&, socket]() {
+                auto raw = socket->property("request").toByteArray() + socket->readAll();
+                socket->setProperty("request", raw);
+                const auto split = raw.indexOf("\r\n\r\n"); if (split < 0) return;
+                const QRegularExpression length("Content-Length: (\\d+)", QRegularExpression::CaseInsensitiveOption);
+                const auto match = length.match(QString::fromUtf8(raw.left(split)));
+                if (match.hasMatch() && raw.size() < split + 4 + match.captured(1).toInt()) return;
+                requests.append(raw); const QString path = QString::fromUtf8(raw.split(' ').at(1)); paths << path;
+                QByteArray status = "200 OK", body = R"({"id":"same-account","email":"test@example.invalid","telegram":{"id":123}})";
+                if (path == "/me/telegram/bot/start") body = R"({"loginId":"test-link","botUrl":"https://t.me/Flintgo_bot?start=test","expiresAt":"2099-01-01T00:00:00Z"})";
+                if (path == "/me/telegram/bot/complete" && completes++ == 0) { status = "401 Unauthorized"; body = R"({"code":"unauthorized"})"; }
+                if (path == "/auth/refresh") body = R"({"accessToken":"NEW-TEST","refreshToken":"NEW-REFRESH","expiresIn":3600})";
+                socket->write("HTTP/1.1 " + status + "\r\nContent-Length: " + QByteArray::number(body.size()) + "\r\nConnection: close\r\n\r\n" + body); socket->disconnectFromHost();
+            });
+        });
+        QTemporaryDir dir; SecureQSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
+        settings.setValue("Conf/flintStartupSchema",999);
+        settings.setValue("Conf/flintApiBase",QString("http://127.0.0.1:%1").arg(server.serverPort()));
+        settings.setValue("Conf/flintAccessToken","OLD-TEST"); settings.setValue("Conf/flintRefreshToken","OLD-REFRESH");
+        FlintController controller(&settings); QSignalSpy responses(&controller,&FlintController::accountResponse);
+        controller.accountRequest("email","POST","/me/email-login",{{"email","test@example.invalid"},{"password","TEST-PASSWORD"}},"");
+        QTRY_COMPARE_WITH_TIMEOUT(responses.size(),1,2000);
+        QCOMPARE(responses.last().at(1).toInt(),200); QVERIFY(requests.first().contains("Authorization: Bearer OLD-TEST"));
+        controller.accountRequest("start","POST","/me/telegram/bot/start",{},"");
+        QTRY_COMPARE_WITH_TIMEOUT(responses.size(),2,2000);
+        controller.accountRequest("complete","POST","/me/telegram/bot/complete",{{"loginId","test-link"}},"");
+        QTRY_COMPARE_WITH_TIMEOUT(responses.size(),3,2000);
+        QCOMPARE(responses.last().at(1).toInt(),200); QVERIFY(responses.last().at(3).toString().isEmpty());
+        QCOMPARE(completes,2); QVERIFY(paths.contains("/auth/refresh")); QVERIFY(requests.last().contains("Authorization: Bearer NEW-TEST"));
+        QCOMPARE(settings.value("Conf/flintRefreshToken").toString(),QString("NEW-REFRESH"));
+        for (const QString &path : {"/me/email-login","/me/telegram/bot/start","/me/telegram/bot/complete"}) {
+            controller.accountRequest("bad","GET",path,{},""); QCOMPARE(responses.last().at(1).toInt(),400);
+        }
+    }
     void normalizesDirectSitesWithoutBroadeningInvalidRules() {
         QCOMPARE(FlintDirectSites::normalize(" HTTPS://Example.RU:443/path?q=1 "), QString("example.ru"));
         QCOMPARE(FlintDirectSites::normalize(QString::fromUtf8("пример.рф")), QString("xn--e1afmkfd.xn--p1ai"));

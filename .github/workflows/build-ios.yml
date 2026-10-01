@@ -8,6 +8,8 @@ on:
       - 'patch_android_identity.py'
       - 'patch_android_widget.py'
       - 'patch_direct_sites.py'
+      - 'patch_qr_images.py'
+      - 'tests/qr/**'
       - 'flint/**'
       - '.github/workflows/build-ios.yml'
   workflow_dispatch:
@@ -45,6 +47,11 @@ jobs:
           arch: clang_64
           modules: 'qtremoteobjects qt5compat qtimageformats qtshadertools qtmultimedia'
           dir: '${{ runner.temp }}'
+      - name: Test real QR image decoder on macOS
+        run: |
+          cmake -S tests/qr -B "$RUNNER_TEMP/qr-checks" -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/Qt/$QT_VERSION/macos"
+          cmake --build "$RUNNER_TEMP/qr-checks"
+          "$RUNNER_TEMP/qr-checks/qr-image-checks"
       - name: Qt iOS
         run: aqt install-qt mac ios "$QT_VERSION" ios -O "$RUNNER_TEMP/Qt" -m qtremoteobjects qt5compat qtimageformats qtshadertools qtmultimedia
       - name: Engine and Flint integration

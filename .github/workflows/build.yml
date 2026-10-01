@@ -30,7 +30,17 @@ jobs:
           unzip -q /tmp/kotlin.zip -d /tmp/flint-kotlin
           /tmp/flint-kotlin/kotlinc/bin/kotlinc flint/widget/FlintWidgetModel.kt tests/widget/FlintWidgetModelTest.kt -include-runtime -d /tmp/flint-widget-tests.jar
           java -jar /tmp/flint-widget-tests.jar
-  android-arm64:
+  android:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - abi: arm64-v8a
+            qt: android_arm64_v8a
+            label: arm64
+          - abi: armeabi-v7a
+            qt: android_armv7
+            label: armv7
     needs: controller-tests
     runs-on: ubuntu-latest
     timeout-minutes: 120
@@ -84,10 +94,10 @@ jobs:
           dir: '${{ runner.temp }}'
           set-env: true
 
-      - name: Install Qt Android arm64
+      - name: Install Qt Android ${{ matrix.label }}
         shell: bash
         run: |
-          aqt install-qt all_os android "$QT_VERSION" android_arm64_v8a \
+          aqt install-qt all_os android "$QT_VERSION" ${{ matrix.qt }} \
             -O "${{ runner.temp }}/Qt" \
             -m qtremoteobjects qt5compat qtimageformats qtshadertools
 
@@ -143,7 +153,7 @@ jobs:
           fi
           exit 0
 
-      - name: Build Flint Android arm64 APK
+      - name: Build Flint Android ${{ matrix.label }} APK
         shell: bash
         env:
           QT_INSTALL_DIR: '${{ runner.temp }}'
@@ -152,20 +162,20 @@ jobs:
           APP_ANDROID_MIN_SDK: '30'
         run: |
           cd amnezia-client
-          deploy/build.sh -t android --abi arm64-v8a
+          deploy/build.sh -t android --abi ${{ matrix.abi }}
           cd ..
           mkdir -p dist
           find amnezia-client/deploy -type f -name '*.apk' -print -exec cp -f {} dist/ \;
           APK=$(find dist -maxdepth 1 -name '*.apk' | head -n 1)
           test -n "$APK"
-          mv "$APK" dist/Flint-v8.10.6-Android-arm64.apk
-          sha256sum dist/Flint-v8.10.6-Android-arm64.apk > dist/Flint-v8.10.6-Android-arm64.apk.sha256
+          mv "$APK" dist/Flint-v8.10.6-Android-${{ matrix.label }}.apk
+          sha256sum dist/Flint-v8.10.6-Android-${{ matrix.label }}.apk > dist/Flint-v8.10.6-Android-${{ matrix.label }}.apk.sha256
 
       - name: Verify APK identity
         shell: bash
         run: |
           set -euo pipefail
-          APK=dist/Flint-v8.10.6-Android-arm64.apk
+          APK=dist/Flint-v8.10.6-Android-${{ matrix.label }}.apk
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           "$AAPT" dump badging "$APK" | tee dist/aapt-badging.txt
           "$AAPT" dump xmltree "$APK" AndroidManifest.xml | tee dist/aapt-manifest.txt
@@ -180,10 +190,10 @@ jobs:
       - name: Upload Flint APK
         uses: actions/upload-artifact@v4
         with:
-          name: Flint-v8.10.6-Android-arm64
+          name: Flint-v8.10.6-Android-${{ matrix.label }}
           path: |
-            dist/Flint-v8.10.6-Android-arm64.apk
-            dist/Flint-v8.10.6-Android-arm64.apk.sha256
+            dist/Flint-v8.10.6-Android-${{ matrix.label }}.apk
+            dist/Flint-v8.10.6-Android-${{ matrix.label }}.apk.sha256
             dist/aapt-badging.txt
             dist/aapt-manifest.txt
           retention-days: 14

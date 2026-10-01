@@ -132,6 +132,7 @@ Popup {
         }
     }
     contentItem: ColumnLayout {
+        property bool flintFocusScope: true
         spacing: 12
         RowLayout {
             Layout.fillWidth: true
@@ -209,6 +210,7 @@ Popup {
         padding: 20; modal: true; focus: true
         background: Rectangle { radius: 20; color: "#102635"; border.color: "#57E4B0" }
         contentItem: ColumnLayout {
+        property bool flintFocusScope: true
             spacing: 16
             Text { Layout.fillWidth: true; text: "Завершить этот вход?"; color: panel.ink; font.pixelSize: 20; wrapMode: Text.Wrap }
             Text { Layout.fillWidth: true; text: "Flint " + (panel.sessionTarget.appVersion || "—") + " · " + panel.dateText(panel.sessionTarget.lastActiveAt); color: panel.ink; wrapMode: Text.Wrap }
@@ -225,6 +227,7 @@ Popup {
         padding: 20; modal: true; focus: true
         background: Rectangle { radius: 20; color: "#102635"; border.color: "#57E4B0" }
         contentItem: ColumnLayout {
+        property bool flintFocusScope: true
             spacing: 16
             Text { Layout.fillWidth: true; text: "Отключить «" + (panel.confirmTarget.name || "Устройство") + "»?"; textFormat: Text.PlainText; color: panel.ink; font.pixelSize: 20; wrapMode: Text.Wrap }
             Text { Layout.fillWidth: true; text: "Устройство потеряет доступ к VPN по этой подписке. Остальные устройства продолжат работать."; color: panel.muted; wrapMode: Text.Wrap }

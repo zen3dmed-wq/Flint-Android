@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.16)
+project(FlintQrImageChecks LANGUAGES CXX OBJCXX)
+set(CMAKE_CXX_STANDARD 17)
+find_package(Qt6 REQUIRED COMPONENTS Core)
+add_executable(qr-image-checks qr_image_test.mm ../../flint/flintQrImageIOS.mm)
+target_link_libraries(qr-image-checks PRIVATE Qt6::Core "-framework Foundation" "-framework CoreImage" "-framework ImageIO" "-framework CoreGraphics")

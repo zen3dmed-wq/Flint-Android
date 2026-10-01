@@ -69,6 +69,7 @@ public:
     QString apiBase() const;
     Q_INVOKABLE bool setApiBase(const QString &base);
     Q_INVOKABLE void requestHomeWidget();
+    Q_INVOKABLE void decodeQrImage(const QString &url, const QString &requestId);
     Q_INVOKABLE QString normalizeDirectSite(const QString &value) const;
     Q_INVOKABLE QString newRequestKey() const;
     Q_INVOKABLE QVariantMap clientDraft(const QString &name) const;
@@ -105,8 +106,10 @@ signals:
     void profilePreparationFinished(bool success);
     void apiBaseChanged();
     void accountResponse(const QString &id, int status, const QVariantMap &data, const QString &error);
+    void qrImageDecoded(const QString &requestId, const QString &text, const QString &error);
 
 private:
+    bool m_qrImageBusy = false;
     QNetworkRequest apiRequest(const QString &path, bool authorized=false) const;
     QByteArray deviceJson() const;
     QString ensureDeviceId();

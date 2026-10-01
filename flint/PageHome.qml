@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Dialogs
 
 import Style 1.0
 import "./"
@@ -9,6 +10,10 @@ import "../Controls2"
 PageType {
     id: root
 
+    readonly property bool isTv: SettingsController.isOnTv()
+    property bool tvPairWaiting: false
+    property bool tvPairReceivedLogin: false
+    property string tvPairMessage: ""
     property real u: Math.max(0.86, Math.min(1.0, width / 412))
     property color ink: "#F8FBFF"
     property color muted: "#B7C9DA"
@@ -40,6 +45,9 @@ PageType {
     property bool qrScanning: false
     property bool importReady: false
     property bool importBusy: false
+    property bool qrImageReading: false
+    property string qrImageRequest: ""
+    property bool purchaseAfterLogin: false
     property string importError: ""
     readonly property var locationChoices: buildLocationChoices()
 
@@ -142,6 +150,60 @@ PageType {
         ImportController.startDecodingQr()
     }
 
+    function chooseQrSource() { qrSourcePopup.open() }
+    function readQrImage(url) {
+        if (qrImageReading || importBusy) return
+        FlintController.cancelProfileImport()
+        qrImageRequest = FlintController.newRequestKey()
+        importText.text = ""; importError = ""; importReady = false; qrScanning = false
+        qrImageReading = true; importPopup.open()
+        FlintController.decodeQrImage(String(url), qrImageRequest)
+    }
+    function openPurchase() {
+        if (!FlintController.loggedIn) { purchaseAfterLogin = true; accountPopup.open(); return }
+        servicePopup.section = 1; servicePopup.open()
+    }
+    FileDialog {
+        id: qrImagePicker
+        title: "Выберите картинку с QR-кодом"
+        fileMode: FileDialog.OpenFile
+        nameFilters: ["Изображения (*.png *.jpg *.jpeg *.webp *.heic *.heif *.bmp)", "Все файлы (*)"]
+        onAccepted: root.readQrImage(selectedFile)
+    }
+    Connections {
+        target: FlintController
+        function onQrImageDecoded(requestId, text, error) {
+            if (!root.qrImageReading || requestId !== root.qrImageRequest) return
+            root.qrImageReading = false
+            if (error) { root.importError = error; return }
+            importText.text = text
+            root.parseImport()
+        }
+        function onAuthChanged() {
+            if (FlintController.loggedIn && root.purchaseAfterLogin) {
+                root.purchaseAfterLogin = false; accountPopup.close(); root.openPurchase()
+            }
+        }
+    }
+    Popup {
+        id: qrSourcePopup
+        objectName: "qrSourcePopup"
+        parent: root
+        width: Math.min(root.width - 32, 360)
+        height: Math.min(root.height - 24, sourceColumn.implicitHeight + 36)
+        anchors.centerIn: parent
+        padding: 18; modal: true; focus: true
+        background: Rectangle { color: "#081827"; radius: 22; border.color: root.line }
+        contentItem: ColumnLayout {
+        property bool flintFocusScope: true
+            id: sourceColumn; spacing: 12
+            Text { text: "Добавить по QR-коду"; color: root.ink; font.bold: true; font.pixelSize: 20; Layout.fillWidth: true; wrapMode: Text.Wrap }
+            FlintButton { Layout.fillWidth: true; text: "Сканировать камерой"; onClicked: { qrSourcePopup.close(); root.scanQr() } }
+            FlintButton { objectName: "qrImageSourceButton"; Layout.fillWidth: true; text: "Выбрать изображение"; onClicked: { qrSourcePopup.close(); qrImagePicker.open() } }
+            FlintButton { Layout.fillWidth: true; text: "Отмена"; subtle: true; onClicked: qrSourcePopup.close() }
+        }
+    }
+
     function parseImport() {
         importError = ""
         importReady = false
@@ -196,6 +258,82 @@ PageType {
             importText.text = ""
             importPopup.close()
             PageController.showNotificationMessage("Сервер добавлен в список «Локация».")
+        }
+    }
+
+    function keepHomeFocusVisible(item) {
+        if (!isTv) return
+        var point = item.mapToItem(main, 0, 0)
+        if(point.y < viewport.contentY) viewport.contentY = Math.max(0, point.y - 12)
+        else if(point.y + item.height > viewport.contentY + viewport.height) viewport.contentY = Math.min(viewport.contentHeight - viewport.height, point.y + item.height - viewport.height + 12)
+    }
+    function moveHomeFocus(step) {
+        var controls = [homeSettingsButton, importQrButton, importClipboardButton, connectBtn, homePurchaseButton, tvPairButton, locationTile, directTile, familyTile, supportTile]
+        controls = controls.filter(function(item) { return item.visible && item.enabled })
+        var index = controls.findIndex(function(item) { return item.activeFocus })
+        if(index < 0) return false
+        var next = controls[(index + step + controls.length) % controls.length]
+        next.forceActiveFocus(); keepHomeFocusVisible(next); return true
+    }
+    Keys.onPressed: function(event) {
+        if(!root.isTv) return
+        if(event.key === Qt.Key_Down || event.key === Qt.Key_Right) event.accepted = moveHomeFocus(1)
+        else if(event.key === Qt.Key_Up || event.key === Qt.Key_Left) event.accepted = moveHomeFocus(-1)
+    }
+    function startTvPairing() {
+        if (FlintController.loggedIn) { beginConnect(); return }
+        tvPairWaiting = true; tvPairReceivedLogin = false; tvPairMessage = ""
+        telegramRequested = false
+        tvPairPopup.open()
+        FlintController.startTelegramLogin()
+    }
+    function finishTvPairing() {
+        if(!tvPairWaiting || !tvPairReceivedLogin || !FlintController.loggedIn || !FlintController.subscriptionActive || !FlintController.subscriptionUrl) return
+        tvPairWaiting = false; tvPairTimer.stop(); tvPairPopup.close()
+        FlintController.selectedCountry = "AUTO"
+        connectRequested = true; autoConnection = true; awaitingProfile = true
+        FlintController.importSubscription()
+    }
+    Timer {
+        id: tvPairTimer; interval: 45000
+        onTriggered: { root.tvPairWaiting = false; root.tvPairMessage = "Вход выполнен, но активная подписка пока не получена. Проверьте тариф или повторите обновление." }
+    }
+    Connections {
+        target: FlintController
+        function onAuthChanged() {
+            if(root.tvPairWaiting && FlintController.loggedIn) {
+                root.tvPairReceivedLogin = true; tvPairTimer.restart()
+            }
+        }
+        function onSubscriptionChanged() { root.finishTvPairing() }
+    }
+    Popup {
+        id: tvPairPopup; objectName: "tvPairPopup"; parent: root
+        width: Math.min(root.width - 32, 560); height: Math.min(root.height - 24, 690)
+        anchors.centerIn: parent; padding: 22; modal: true; focus: true
+        background: Rectangle { radius: 24; color: "#081827"; border.color: root.line }
+        onClosed: { root.tvPairWaiting = false; tvPairTimer.stop() }
+        contentItem: ColumnLayout {
+        property bool flintFocusScope: true
+            spacing: 14
+            Text { text: "Подключить телевизор"; color: root.ink; font.pixelSize: 25; font.bold: true; Layout.fillWidth: true; wrapMode: Text.Wrap }
+            Text { text: "Сканируйте QR камерой телефона и подтвердите вход в Telegram. После этого телевизор подключится по вашей подписке."; color: root.muted; Layout.fillWidth: true; wrapMode: Text.Wrap }
+            Rectangle {
+                Layout.fillWidth: true; Layout.fillHeight: true; Layout.minimumHeight: 90
+                color: "white"; radius: 18
+                Image {
+                    anchors.fill: parent; anchors.margins: 18; fillMode: Image.PreserveAspectFit
+                    source: root.tvPairWaiting && !root.tvPairReceivedLogin && FlintController.telegramPending && FlintController.telegramBotUrl ? MtProxyConfigModel.generateQrCode(FlintController.telegramBotUrl) : ""
+                }
+                Text { anchors.centerIn: parent; text: root.tvPairReceivedLogin ? "Получаем подписку…" : "Готовим QR…"; color: "#142E40"; visible: root.tvPairReceivedLogin || !FlintController.telegramPending }
+            }
+            Text { Layout.fillWidth: true; wrapMode: Text.Wrap; color: root.warning; text: root.tvPairMessage || FlintController.lastError }
+            Text { Layout.fillWidth: true; wrapMode: Text.Wrap; color: root.muted; text: "При первом подключении разрешите VPN в системном окне на телевизоре."; font.pixelSize: 12 }
+            RowLayout {
+                Layout.fillWidth: true
+                FlintButton { Layout.fillWidth: true; text: "Новый QR"; onClicked: root.startTvPairing() }
+                FlintButton { Layout.fillWidth: true; text: "Закрыть"; onClicked: tvPairPopup.close() }
+            }
         }
     }
 
@@ -309,6 +447,7 @@ PageType {
         IpSplitTunnelingController.setRouteMode(2)
         IpSplitTunnelingController.toggleSplitTunneling(FlintController.ruDirectEnabled)
         FlintController.refresh()
+        if(root.isTv) Qt.callLater(function() { tvPairButton.forceActiveFocus() })
     }
 
     Image {
@@ -342,7 +481,13 @@ PageType {
         radius: 17 * root.u
         color: root.card
         border.width: 1
-        border.color: root.line
+        border.color: activeFocus ? root.mint : root.line
+        activeFocusOnTab: true
+        property var activate: function() {}
+        Keys.onReturnPressed: activate()
+        Keys.onEnterPressed: activate()
+        Keys.onPressed: function(event) { if(event.key === Qt.Key_Select) { activate(); event.accepted = true } }
+        onActiveFocusChanged: if(activeFocus) root.keepHomeFocusVisible(this)
     }
 
     Flickable {
@@ -353,7 +498,7 @@ PageType {
         anchors.bottom: parent.bottom
         anchors.topMargin: PageController.safeAreaTopMargin + 8
         anchors.bottomMargin: PageController.safeAreaBottomMargin + 8
-        width: Math.min(parent.width - 28, 480)
+        width: Math.min(parent.width - 28, root.isTv ? 680 : 480)
         contentHeight: main.implicitHeight
         boundsBehavior: Flickable.StopAtBounds
         interactive: contentHeight > height
@@ -396,6 +541,7 @@ PageType {
                     }
                 }
                 FlintButton {
+                    id: homeSettingsButton
                     objectName: "settingsButton"
                     Layout.preferredWidth: 44
                     Layout.preferredHeight: 44
@@ -419,14 +565,41 @@ PageType {
             }
 
             Item {
+                id: emblemStage
+                objectName: "emblemStage"
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.max(120 * root.u, Math.min(280 * root.u, viewport.height - 576 * root.u))
                 Image {
+                    id: mainEmblem
+                    objectName: "mainEmblem"
                     anchors.centerIn: parent
                     width: Math.min(parent.height, parent.width * 0.72)
                     height: width
                     source: "qrc:/ui/qml/Assets/flint-main.png"
                     fillMode: Image.PreserveAspectFit
+                }
+                FlintButton {
+                    id: importQrButton
+                    objectName: "importQrButton"
+                    anchors.left: parent.left
+                    y: mainEmblem.y
+                    width: Math.min(110 * root.u, parent.width * 0.28)
+                    height: 38 * root.u
+                    leftPadding: 8; rightPadding: 8; font.pixelSize: 12 * root.u
+                    text: "QR-код"
+                    enabled: !root.importBusy && !root.qrImageReading
+                    onClicked: root.chooseQrSource()
+                }
+                FlintButton {
+                    id: importClipboardButton
+                    objectName: "importClipboardButton"
+                    anchors.right: parent.right
+                    y: mainEmblem.y
+                    width: importQrButton.width; height: importQrButton.height
+                    leftPadding: 8; rightPadding: 8; font.pixelSize: 12 * root.u
+                    text: "Из буфера"
+                    enabled: !root.importBusy && !root.qrImageReading
+                    onClicked: root.openClipboardImport()
                 }
             }
 
@@ -497,6 +670,8 @@ PageType {
             }
 
             Rectangle {
+                id: guardPanel
+                objectName: "guardPanel"
                 Layout.fillWidth: true
                 Layout.preferredHeight: 40 * root.u
                 radius: 14 * root.u
@@ -531,6 +706,24 @@ PageType {
                 }
             }
 
+            FlintButton {
+                id: homePurchaseButton
+                objectName: "homePurchaseButton"
+                Layout.fillWidth: true
+                Layout.preferredHeight: 44 * root.u
+                text: "Купить / продлить подписку"
+                onClicked: root.openPurchase()
+            }
+
+            FlintButton {
+                id: tvPairButton
+                objectName: "tvPairButton"
+                visible: root.isTv
+                Layout.fillWidth: true
+                text: "Добавить с помощью QR"
+                onClicked: root.startTvPairing()
+            }
+
             GridLayout {
                 objectName: "featureGrid"
                 Layout.fillWidth: true
@@ -540,6 +733,8 @@ PageType {
                 uniformCellWidths: true
 
                 Tile {
+                    id: locationTile
+                    activate: function() { root.openLocations() }
                     Column {
                         anchors.fill: parent
                         anchors.margins: 12 * root.u
@@ -567,6 +762,8 @@ PageType {
                 }
 
                 Tile {
+                    id: directTile
+                    activate: function() { sitesPopup.open() }
                     Column {
                         anchors.fill: parent
                         anchors.margins: 12 * root.u
@@ -621,6 +818,8 @@ PageType {
                 }
 
                 Tile {
+                    id: familyTile
+                    activate: function() { FlintController.loggedIn ? devicesPopup.open() : accountPopup.open() }
                     Column {
                         anchors.fill: parent
                         anchors.margins: 12 * root.u
@@ -642,6 +841,8 @@ PageType {
                 }
 
                 Tile {
+                    id: supportTile
+                    activate: function() { FlintController.loggedIn ? (servicePopup.section = 3, servicePopup.open()) : accountPopup.open() }
                     Column {
                         anchors.fill: parent
                         anchors.margins: 12 * root.u
@@ -663,30 +864,6 @@ PageType {
                 }
             }
 
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 10 * root.u
-                FlintButton {
-                    objectName: "importQrButton"
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 42
-                    text: "QR-код"
-                    palette.buttonText: root.ink
-                    background: Rectangle { radius: 13; color: parent.down ? "#245443" : root.card; border.color: root.line }
-                    enabled: !root.importBusy
-                    onClicked: root.scanQr()
-                }
-                FlintButton {
-                    objectName: "importClipboardButton"
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 42
-                    text: "Из буфера"
-                    palette.buttonText: root.ink
-                    background: Rectangle { radius: 13; color: parent.down ? "#245443" : root.card; border.color: root.line }
-                    enabled: !root.importBusy
-                    onClicked: root.openClipboardImport()
-                }
-            }
 
             Text {
                 visible: FlintController.lastError.length > 0
@@ -917,6 +1094,7 @@ PageType {
         }
 
         contentItem: ColumnLayout {
+        property bool flintFocusScope: true
             spacing: 9
 
             Text {
@@ -946,6 +1124,7 @@ PageType {
                         ? FlintController.selectedSavedServerId === modelData.id
                         : !FlintController.selectedSavedServerId && FlintController.selectedCountry === modelData.code
                     contentItem: ColumnLayout {
+        property bool flintFocusScope: true
                         spacing: 3
                         Text {
                             Layout.fillWidth: true
@@ -991,6 +1170,7 @@ PageType {
         }
 
         contentItem: ColumnLayout {
+        property bool flintFocusScope: true
             spacing: 10
 
             RowLayout {
@@ -1065,6 +1245,7 @@ PageType {
         }
 
         contentItem: ColumnLayout {
+        property bool flintFocusScope: true
             spacing: 9
 
             Text {
@@ -1219,7 +1400,7 @@ PageType {
         modal: true
         focus: true
         closePolicy: root.importBusy ? Popup.NoAutoClose : Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        onClosed: { if (!root.importBusy) importText.text = "" }
+        onClosed: { if (!root.importBusy) { importText.text = ""; root.qrImageRequest = ""; root.qrImageReading = false } }
         background: Rectangle { radius: 23; color: "#FC081827"; border.width: 1; border.color: root.line }
         contentItem: ScrollView {
             id: importScroll
@@ -1240,7 +1421,7 @@ PageType {
                     objectName: "importText"
                     Layout.fillWidth: true
                     Layout.preferredHeight: 120
-                    enabled: !root.importBusy
+                    enabled: !root.importBusy && !root.qrImageReading
                     visible: !root.importReady
                     placeholderText: "vpn://, vless:// или текст конфигурации"
                     color: root.ink
@@ -1259,14 +1440,14 @@ PageType {
                     FlintButton {
                         Layout.fillWidth: true
                         text: "Вставить"
-                        enabled: !root.importBusy
+                        enabled: !root.importBusy && !root.qrImageReading
                         onClicked: { importText.text = ""; importText.paste() }
                     }
                     FlintButton {
                         Layout.fillWidth: true
                         text: "QR-код"
-                        enabled: !root.importBusy
-                        onClicked: root.scanQr()
+                        enabled: !root.importBusy && !root.qrImageReading
+                        onClicked: root.chooseQrSource()
                     }
                 }
                 Text {
@@ -1303,21 +1484,21 @@ PageType {
                     FlintButton {
                         Layout.fillWidth: true
                         text: "Другой ключ"
-                        enabled: !root.importBusy
+                        enabled: !root.importBusy && !root.qrImageReading
                         onClicked: root.importReady = false
                     }
                 }
                 FlintButton {
                     objectName: "confirmImportButton"
                     Layout.fillWidth: true
-                    enabled: !root.importBusy
-                    text: root.importBusy ? "Добавление…" : (root.importReady ? "Добавить профиль" : "Проверить ключ")
+                    enabled: !root.importBusy && !root.qrImageReading
+                    text: root.qrImageReading ? "Читаю QR-код…" : root.importBusy ? "Добавление…" : (root.importReady ? "Добавить профиль" : "Проверить ключ")
                     onClicked: root.importReady ? root.saveImport() : root.parseImport()
                 }
                 FlintButton {
                     Layout.fillWidth: true
                     text: "Закрыть"
-                    enabled: !root.importBusy
+                    enabled: !root.importBusy && !root.qrImageReading
                     onClicked: importPopup.close()
                 }
             }

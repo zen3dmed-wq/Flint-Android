@@ -204,10 +204,12 @@ void FlintController::accountRequest(const QString &id, const QString &method, c
                                      const QVariantMap &body, const QString &key)
 {
     static const QRegularExpression allowed(QStringLiteral(
-        "^/(config|me(/sessions(/[A-Za-z0-9_-]{1,128})?)?|subscriptions(/[A-Za-z0-9_-]+/devices(/[A-Za-z0-9_-]+)?)?|plans|payment-methods|orders(/[A-Za-z0-9_-]+(/(payment-link|cancel))?)?|referrals(/apply)?|support/tickets(/[A-Za-z0-9_-]+)?)$"));
+        "^/(config|me(/sessions(/[A-Za-z0-9_-]{1,128})?|/email-login|/telegram/bot/(start|complete))?|subscriptions(/[A-Za-z0-9_-]+/devices(/[A-Za-z0-9_-]+)?)?|plans|payment-methods|orders(/[A-Za-z0-9_-]+(/(payment-link|cancel))?)?|referrals(/apply)?|support/tickets(/[A-Za-z0-9_-]+)?)$"));
     static const QRegularExpression deviceDelete(QStringLiteral("^/subscriptions/[A-Za-z0-9_-]+/devices/[A-Za-z0-9_-]+$"));
     static const QRegularExpression sessionDelete(QStringLiteral("^/me/sessions/[A-Za-z0-9_-]{1,128}$"));
     const bool isSession = sessionDelete.match(path).hasMatch();
+    const bool isIdentity = path == "/me/email-login" || path == "/me/telegram/bot/start" || path == "/me/telegram/bot/complete";
+    if (isIdentity && method != "POST") { emit accountResponse(id, 400, {}, QStringLiteral("Операция API не поддерживается")); return; }
     if (!allowed.match(path).hasMatch() || (isSession && method != "DELETE") || (method != "GET" && method != "POST" && !(method == "DELETE" && (deviceDelete.match(path).hasMatch() || isSession)))) {
         emit accountResponse(id, 400, {}, QStringLiteral("Операция API не поддерживается")); return;
     }

@@ -5,6 +5,7 @@ import sys
 from patch_android_identity import apply as apply_android_identity
 from patch_android_widget import apply as apply_android_widget
 from patch_direct_sites import apply as apply_direct_sites
+from patch_qr_images import apply as apply_qr_images
 
 root = Path(sys.argv[1]).resolve()
 flint = Path(__file__).resolve().parent / "flint"
@@ -130,6 +131,7 @@ if constructor_marker not in s:
     ctl.write_text(s, encoding="utf-8")
 
 apply_direct_sites(root)
+apply_qr_images(root)
 
 # Keep Flint tokens/subscription in the app's protected settings.
 secure = root / "client/secureQSettings.cpp"
@@ -165,7 +167,7 @@ shutil.copy2(flint / "PageHome.qml",
 shutil.copy2(flint / "PageStart.qml",
              root / "client/ui/qml/Pages2/PageStart.qml")
 
-for name in ("FlintAccount.qml", "FlintButton.qml", "FlintField.qml", "FlintChoice.qml", "FlintDevices.qml", "FlintSites.qml", "DeviceRows.js"):
+for name in ("FlintAccount.qml", "FlintIdentity.qml", "FlintButton.qml", "FlintField.qml", "FlintChoice.qml", "FlintDevices.qml", "FlintSites.qml", "DeviceRows.js"):
     shutil.copy2(flint / name, root / "client/ui/qml/Pages2" / name)
 # Flint's user-visible assets. The Amnezia engine remains internal only.
 qml_assets = root / "client/ui/qml/Assets"
@@ -175,7 +177,7 @@ for asset in ["flint-dog.svg", "flint-background.svg", "flint-main.png", "flint-
 
 qml_qrc = root / "client/ui/qml/qml.qrc"
 qrc = qml_qrc.read_text(encoding="utf-8")
-for name in ("FlintAccount.qml", "FlintButton.qml", "FlintField.qml", "FlintChoice.qml", "FlintDevices.qml", "FlintSites.qml", "DeviceRows.js"):
+for name in ("FlintAccount.qml", "FlintIdentity.qml", "FlintButton.qml", "FlintField.qml", "FlintChoice.qml", "FlintDevices.qml", "FlintSites.qml", "DeviceRows.js"):
     qrc = qrc.replace("    </qresource>", f"        <file>Pages2/{name}</file>\n    </qresource>", 1)
 for asset in ["flint-dog.svg", "flint-background.svg", "flint-main.png", "flint-background.jpg", "flint-logo.svg", "flint-logo.png"]:
     entry = f"        <file>Assets/{asset}</file>\n"
