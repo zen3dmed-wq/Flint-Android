@@ -57,6 +57,11 @@ def apply(root, bundle_id, team, render_icons=True):
     edit('client/ui/controllers/flintController.cpp', '"android"', '"ios"')
     edit('client/ui/controllers/flintController.cpp', '"android/"', '"ios/"')
     edit('client/ui/qml/Pages2/PageHome.qml', 'Flint Android 8.10.2', 'Flint iOS 8.10.2')
+    edit('client/ui/qml/Pages2/PageHome.qml', 'import Style 1.0', 'import Style 1.0\nimport PageEnum 1.0')
+    edit('client/ui/qml/Pages2/PageHome.qml', '        ImportController.startDecodingQr()',
+         '        ImportController.startDecodingQr()\n        PageController.goToPage(PageEnum.PageSetupWizardQrReader)')
+    edit('client/ui/qml/Pages2/PageHome.qml', '            if (!root.qrScanning) return',
+         '            if (!root.qrScanning) return\n            PageController.closePage()')
     edit('client/ui/qml/Pages2/PageHome.qml', 'text: "Добавить виджет на экран"',
          'visible: false\n                text: "Добавить виджет на экран"')
 
@@ -90,3 +95,4 @@ if __name__ == '__main__':
     parser.add_argument('--skip-icon-render', action='store_true', help='Static validation only; not a distributable build')
     args = parser.parse_args()
     apply(args.source.resolve(), args.bundle_id, args.team, not args.skip_icon_render)
+
