@@ -68,6 +68,7 @@ Popup {
     }
     function askSessionRevoke(session) {
         if (!session || session.isCurrent || !session.id || sessionBusy) return
+        error = ""; sessionNotice = ""
         sessionTarget = session
         sessionConfirmation.open()
     }
@@ -106,6 +107,7 @@ Popup {
             if (kind === "sessions") panel.sessions = DeviceRows.groupSessions(data.items || [])
             if (kind.indexOf("session-revoke-") === 0) {
                 if (status !== 204) { panel.error = "Сервер ещё не подтвердил завершение входа. Обновите список."; return }
+                panel.error = ""
                 panel.sessionNotice = "Вход завершён. Ранее выданный VPN-ключ этим действием не отзывается."
                 panel.request("sessions", "GET", "/me/sessions")
             }
