@@ -27,6 +27,21 @@ def apply(root: Path, assets: Path):
 </adaptive-icon>
 ''', encoding="utf-8")
 
+    # Android 12+ uses a separate splash icon. Updating application/roundIcon
+    # does not override the upstream theme's explicit @mipmap/icon reference.
+    splash_style = res / "values-v31/styles.xml"
+    source = splash_style.read_text(encoding="utf-8")
+    old = '<item name="android:windowSplashScreenAnimatedIcon">@mipmap/icon</item>'
+    new = '<item name="android:windowSplashScreenAnimatedIcon">@mipmap/flint_icon</item>'
+    assert source.count(old) == 1, "Android splash icon anchor changed"
+    source = source.replace(old, new, 1)
+    source = source.replace('<item name="android:windowSplashScreenBackground">@color/ic_launcher_background</item>',
+                            '<item name="android:windowSplashScreenBackground">#06111D</item>')
+    source = source.replace('<item name="android:windowSplashScreenIconBackgroundColor">@color/ic_launcher_background</item>',
+                            '<item name="android:windowSplashScreenIconBackgroundColor">#FFFFFF</item>')
+    ET.fromstring(source)
+    splash_style.write_text(source, encoding="utf-8")
+
     manifest = android / "AndroidManifest.xml"
     source = manifest.read_text(encoding="utf-8")
     # Earlier branding only replaced @drawable while the application used
