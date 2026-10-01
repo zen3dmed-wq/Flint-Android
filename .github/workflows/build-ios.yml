@@ -69,12 +69,12 @@ jobs:
         run: |
           python ios/verify_bundle.py ios-build | tee ios-build-report.json
           APP=$(find ios-build -type d -name Flint.app -print -quit)
-          ditto -c -k --sequesterRsrc --keepParent "$APP" Flint-iOS-8.10.8-UNSIGNED.zip
+          ditto -c -k --sequesterRsrc --keepParent "$APP" Flint-iOS-8.10.10-UNSIGNED.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: Flint-iOS-8.10.8-UNSIGNED
+          name: Flint-iOS-8.10.10-UNSIGNED
           path: |
-            Flint-iOS-8.10.8-UNSIGNED.zip
+            Flint-iOS-8.10.10-UNSIGNED.zip
             ios-build-report.json
           if-no-files-found: error
           retention-days: 14

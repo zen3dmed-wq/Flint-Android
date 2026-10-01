@@ -25,12 +25,12 @@ def replace(path, old, new, required=True):
 replace(
     "CMakeLists.txt",
     'set(AMNEZIAVPN_VERSION 5.0.3.0 CACHE STRING "Client app version")',
-    'set(AMNEZIAVPN_VERSION 8.10.8 CACHE STRING "Client app version")'
+    'set(AMNEZIAVPN_VERSION 8.10.10 CACHE STRING "Client app version")'
 )
 replace(
     "CMakeLists.txt",
     'set(APP_ANDROID_VERSION_CODE 2163)',
-    'set(APP_ANDROID_VERSION_CODE 2178)'
+    'set(APP_ANDROID_VERSION_CODE 2180)'
 )
 replace(
     "client/cmake/branding/common.cmake",
@@ -262,7 +262,7 @@ member = '    FlintController* m_flintController;\n'
 member_anchor = '    UpdateUiController* m_updateUiController;\n'
 if member not in s:
     if member_anchor not in s:
-        raise RuntimeError("CoreController member anchor changed")
+        raiseRuntimeError("CoreController member anchor changed")
     s = s.replace(member_anchor, member_anchor + member, 1)
 hdr.write_text(s, encoding="utf-8")
 
@@ -379,7 +379,7 @@ assert 'parseSubscriptionProfiles' in (root / "client/ui/controllers/flintContro
 assert 'flintProfileServerId' in (root / "client/core/controllers/coreController.cpp").read_text(encoding="utf-8")
 assert 'clearQtCaches();' in (root / "client/amneziaApplication.cpp").read_text(encoding="utf-8")
 
-print("Flint Android 8.10.8 startup-safe patch applied and statically verified")
+print("Flint Android 8.10.10 startup-safe patch applied and statically verified")
 
 apply_vpn_permission(root)
 

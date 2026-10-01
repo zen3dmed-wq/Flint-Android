@@ -28,7 +28,7 @@ PageType {
     property color line: "#46637A"
     property color warning: "#FFC56D"
     FlintAccount { id: servicePopup; parent: root }
-    FlintDevices { id: devicesPopup; parent: root }
+    FlintDevices { id: devicesPopup; parent: root; onAddDeviceRequested: familyQrPopup.open() }
     FlintSites { id: sitesPopup; parent: root }
     FlintSubscriptions { id: subscriptionsPopup; parent: root }
     Timer {
@@ -1057,13 +1057,6 @@ PageType {
 
                 FlintButton {
                     Layout.fillWidth: true
-                    text: "Добавить устройство по QR"
-                    enabled: FlintController.subscriptionActive && FlintController.subscriptionUrl.length > 0
-                    onClicked: familyQrPopup.open()
-                }
-
-                FlintButton {
-                    Layout.fillWidth: true
                     text: "Выйти"
                     onClicked: FlintController.logout()
                 }
@@ -1161,7 +1154,7 @@ PageType {
             ListView {
                 id: locationList
                 objectName: "locationList"
-                Layout.fillWidth: true
+Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
                 spacing: 10
@@ -1416,7 +1409,7 @@ PageType {
             }
 
             Text { text: "Настройки Flint"; color: root.ink; font.pixelSize: 21; font.bold: true }
-            Text { text: "Flint Android 8.10.8"; color: root.muted }
+            Text { text: "Flint Android 8.10.10"; color: root.muted }
 
             FlintButton {
                 Layout.fillWidth: true

@@ -7,6 +7,7 @@ import "DeviceRows.js" as DeviceRows
 Popup {
     id: panel
     objectName: "flintDevicesPanel"
+    signal addDeviceRequested()
     property var profile: ({})
     property var subscriptions: []
     property var devices: []
@@ -167,6 +168,14 @@ Popup {
                             FlintButton { text: "Отключить доступ"; visible: panel.canManage && !modelData.revoked; enabled: !panel.pending["devices:" + panel.generation + ":revoke"]; onClicked: panel.askRevoke(modelData) }
                         }
                     }
+                }
+                FlintButton {
+                    objectName: "devicesAddQrButton"
+                    Layout.fillWidth: true
+                    Layout.topMargin: 12
+                    text: "Добавить устройство по QR"
+                    enabled: FlintController.subscriptionActive && FlintController.subscriptionUrl.length > 0
+                    onClicked: panel.addDeviceRequested()
                 }
                 Text { Layout.topMargin: 12; text: "СЕАНСЫ ВХОДА В АККАУНТ"; color: panel.muted; font.pixelSize: 11; font.letterSpacing: 1 }
                 Text { Layout.fillWidth: true; text: "Входы собраны по системе устройства. Откройте группу, чтобы завершить ненужный вход. Это список входов в аккаунт, а не активных VPN-подключений."; color: panel.muted; font.pixelSize: 12; wrapMode: Text.Wrap }

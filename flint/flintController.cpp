@@ -36,7 +36,7 @@ void FlintController::requestHomeWidget()
 
 namespace {
 const QString kApiBase = QStringLiteral("https://flintmain.ru/api/v1");
-const QString kVersion = QStringLiteral("8.10.8");
+const QString kVersion = QStringLiteral("8.10.10");
 
 bool isProfileUri(const QString &s)
 {
@@ -52,7 +52,7 @@ QString countryCodeForName(const QString &name)
     const QList<CountryHint> table = {
         {QStringLiteral("FI"), QStringLiteral("Финляндия"),
          {QStringLiteral("финлянд"), QStringLiteral("finland"), QStringLiteral("helsinki"), QStringLiteral("🇫🇮")}},
-        {QStringLiteral("DE"), QStringLiteral("Германия"),
+{QStringLiteral("DE"), QStringLiteral("Германия"),
          {QStringLiteral("герман"), QStringLiteral("germany"), QStringLiteral("deutsch"), QStringLiteral("frankfurt"), QStringLiteral("🇩🇪")}},
         {QStringLiteral("NL"), QStringLiteral("Нидерланды"),
          {QStringLiteral("нидерланд"), QStringLiteral("netherlands"), QStringLiteral("holland"), QStringLiteral("amsterdam"), QStringLiteral("🇳🇱")}},
