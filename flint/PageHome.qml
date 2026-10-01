@@ -1028,7 +1028,7 @@ PageType {
         x: Math.round((root.width - width) / 2)
         y: Math.round((root.height - height) / 2)
         width: Math.min(root.width - 28, 440)
-        height: Math.min(root.height * 0.50, 340)
+        height: Math.min(root.height - 32, 470)
         modal: true
         focus: true
 
@@ -1039,7 +1039,12 @@ PageType {
             border.color: root.line
         }
 
-        contentItem: ColumnLayout {
+        contentItem: ScrollView {
+            id: settingsScroll
+            clip: true
+            contentWidth: availableWidth
+            ColumnLayout {
+            width: settingsScroll.availableWidth
             spacing: 10
             FlintButton {
                 Layout.fillWidth: true
@@ -1053,7 +1058,13 @@ PageType {
             }
 
             Text { text: "Настройки Flint"; color: root.ink; font.pixelSize: 21; font.bold: true }
-            Text { text: "Flint Android 8.9.8"; color: root.muted }
+            Text { text: "Flint Android 8.10.2"; color: root.muted }
+
+            FlintButton {
+                Layout.fillWidth: true
+                text: "Добавить виджет на экран"
+                onClicked: { settingsPopup.close(); FlintController.requestHomeWidget() }
+            }
 
             Text {
                 Layout.fillWidth: true
@@ -1079,7 +1090,6 @@ PageType {
                 onClicked: FlintController.refresh()
             }
 
-            Item { Layout.fillHeight: true }
 
             FlintButton {
                 text: "Закрыть"
@@ -1087,6 +1097,7 @@ PageType {
                 onClicked: settingsPopup.close()
             }
         }
+    }
     }
 
     Popup {

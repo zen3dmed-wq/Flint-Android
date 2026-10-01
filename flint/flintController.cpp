@@ -12,10 +12,22 @@
 #include <QUrlQuery>
 #include <QUuid>
 #include <utility>
+#ifdef Q_OS_ANDROID
+#include <QCoreApplication>
+#include <QJniObject>
+#endif
+
+void FlintController::requestHomeWidget()
+{
+#ifdef Q_OS_ANDROID
+    auto activity = QNativeInterface::QAndroidApplication::context();
+    if (activity.isValid()) activity.callMethod<void>("requestFlintWidget", "()V");
+#endif
+}
 
 namespace {
 const QString kApiBase = QStringLiteral("https://flintmain.ru/api/v1");
-const QString kVersion = QStringLiteral("8.10.0");
+const QString kVersion = QStringLiteral("8.10.2");
 
 bool isProfileUri(const QString &s)
 {
