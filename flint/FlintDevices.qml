@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "DeviceRows.js" as DeviceRows
 
 Popup {
     id: panel
@@ -78,12 +79,12 @@ Popup {
                 if (kind.indexOf("list-") === 0) {
                     panel.canManage = false; panel.devices = []
                     panel.notice = status === 403 ? "Управлять устройствами может только владелец основной подписки." :
-                        "Список VPN-устройств и отключение доступа ещё не подключены на сервере. Ниже доступны сеансы входа в аккаунт."
+                        (status === 404 || status === 501 ? "Ваш API пока не поддерживает отдельное отключение VPN-устройств. Вход в аккаунт выполнен, но серверную интеграцию ещё нужно подключить." : "Не удалось загрузить устройства: " + failure + ". Повторите обновление списка.")
                 } else panel.error = failure
                 return
             }
             if (kind === "me") { panel.profile = data; panel.loadDevices() }
-            if (kind === "sessions") panel.sessions = data.items || []
+            if (kind === "sessions") panel.sessions = DeviceRows.uniqueSessions(data.items || [])
             if (kind === "subscriptions") {
                 panel.subscriptions = (data.items || []).map(function(s) { return {id:s.id, name:s.plan ? s.plan.name : "Подписка", status:s.status} })
                 if (!panel.subscriptions.some(function(s) { return s.id === panel.subscriptionId }))

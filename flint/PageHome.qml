@@ -18,6 +18,7 @@ PageType {
     property color warning: "#FFC56D"
     FlintAccount { id: servicePopup; parent: root }
     FlintDevices { id: devicesPopup; parent: root }
+    FlintSites { id: sitesPopup; parent: root }
     property bool connectRequested: false
     property bool awaitingProfile: false
     property bool retryPending: false
@@ -573,7 +574,7 @@ PageType {
                         Row {
                             spacing: 8 * root.u
                             Text { width: 24 * root.u; text: "РФ"; color: root.mint; font.bold: true; font.pixelSize: 13 * root.u }
-                            Text { text: "Российские"; color: root.ink; font.bold: true; font.pixelSize: 13 * root.u }
+                            Text { text: "Российские"; color: root.ink; font.bold: true; font.pixelSize: 13 * root.u; MouseArea { anchors.fill: parent; onClicked: sitesPopup.open() } }
                         }
                         RowLayout {
                             width: parent.width
@@ -581,7 +582,8 @@ PageType {
                             Text {
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 0
-                                text: "zakupki.gov.ru\nнапрямую"
+                                text: "Список сайтов →"
+                                MouseArea { anchors.fill: parent; onClicked: sitesPopup.open() }
                                 color: FlintController.ruDirectEnabled ? root.mint : root.muted
                                 font.pixelSize: 11 * root.u
                             }
@@ -1165,7 +1167,7 @@ PageType {
             }
 
             Text { text: "Настройки Flint"; color: root.ink; font.pixelSize: 21; font.bold: true }
-            Text { text: "Flint Android 8.10.4"; color: root.muted }
+            Text { text: "Flint Android 8.10.5"; color: root.muted }
 
             FlintButton {
                 Layout.fillWidth: true

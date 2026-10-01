@@ -69,6 +69,7 @@ public:
     QString apiBase() const;
     Q_INVOKABLE bool setApiBase(const QString &base);
     Q_INVOKABLE void requestHomeWidget();
+    Q_INVOKABLE QString normalizeDirectSite(const QString &value) const;
     Q_INVOKABLE QString newRequestKey() const;
     Q_INVOKABLE QVariantMap clientDraft(const QString &name) const;
     Q_INVOKABLE void saveClientDraft(const QString &name, const QVariantMap &value);

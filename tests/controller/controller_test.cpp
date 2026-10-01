@@ -3,10 +3,26 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include "flintController.h"
+#include "flintDirectSites.h"
 
 class ControllerTests : public QObject {
     Q_OBJECT
 private slots:
+    void normalizesDirectSitesWithoutBroadeningInvalidRules() {
+        QCOMPARE(FlintDirectSites::normalize(" HTTPS://Example.RU:443/path?q=1 "), QString("example.ru"));
+        QCOMPARE(FlintDirectSites::normalize(QString::fromUtf8("пример.рф")), QString("xn--e1afmkfd.xn--p1ai"));
+        for (const QString &bad : {"", "*", "*.ru", "https://user:pass@example.ru", "ftp://example.ru", "https://bad host.ru", "-bad.ru", "http://"})
+            QVERIFY2(FlintDirectSites::normalize(bad).isEmpty(), qPrintable(bad));
+    }
+    void stableInstallationIDSurvivesRestartAndLogout() {
+        QTemporaryDir dir;
+        SecureQSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
+        settings.setValue("Conf/flintStartupSchema", 999);
+        QString id;
+        { FlintController first(&settings); id=settings.value("Conf/flintDeviceId").toString(); QVERIFY(!id.isEmpty()); first.logout(); }
+        { FlintController second(&settings); QCOMPARE(settings.value("Conf/flintDeviceId").toString(), id); }
+    }
+
     void deviceDeleteAcceptsNoContentAndRejectsOtherDeletes() {
         QTcpServer server;
         QVERIFY(server.listen(QHostAddress::LocalHost));

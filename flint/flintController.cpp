@@ -1,4 +1,10 @@
 #include "flintController.h"
+#include "flintDirectSites.h"
+
+QString FlintController::normalizeDirectSite(const QString &value) const
+{
+    return FlintDirectSites::normalize(value);
+}
 
 #include <QCryptographicHash>
 #include <QJsonArray>
@@ -27,7 +33,7 @@ void FlintController::requestHomeWidget()
 
 namespace {
 const QString kApiBase = QStringLiteral("https://flintmain.ru/api/v1");
-const QString kVersion = QStringLiteral("8.10.4");
+const QString kVersion = QStringLiteral("8.10.5");
 
 bool isProfileUri(const QString &s)
 {
@@ -259,6 +265,7 @@ QString FlintController::ensureDeviceId()
     if (id.isEmpty()) {
         id = QUuid::createUuid().toString(QUuid::WithoutBraces);
         m_settings->setValue("Conf/flintDeviceId", id);
+        m_settings->sync();
     }
     return id;
 }
