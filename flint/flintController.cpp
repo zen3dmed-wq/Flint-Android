@@ -27,7 +27,7 @@ void FlintController::requestHomeWidget()
 
 namespace {
 const QString kApiBase = QStringLiteral("https://flintmain.ru/api/v1");
-const QString kVersion = QStringLiteral("8.10.2");
+const QString kVersion = QStringLiteral("8.10.3");
 
 bool isProfileUri(const QString &s)
 {
@@ -605,7 +605,7 @@ void FlintController::refreshAccount()
                     m_subscriptionActive = true;
                     emit subscriptionChanged();
                     if (changed)
-                        importSubscription();
+                        importSubscription(false);
                 } else {
                     // A successful response without an active subscription is
                     // authoritative. Keep cached access only on network failure.
@@ -857,8 +857,51 @@ void FlintController::setRuDirectEnabled(bool enabled)
     emit ruDirectEnabledChanged();
 }
 
-void FlintController::importSubscription()
+QVariantList FlintController::savedServers() const
 {
+    const QString managedId = m_settings->value("Conf/flintProfileServerId").toString();
+    QVariantList result;
+    for (const auto &server : m_savedServers) {
+        if (server.toMap().value("id").toString() != managedId)
+            result.append(server);
+    }
+    return result;
+}
+
+QString FlintController::selectedSavedServerId() const
+{
+    for (const auto &server : savedServers()) {
+        if (server.toMap().value("id").toString() == m_defaultServerId)
+            return m_defaultServerId;
+    }
+    return {};
+}
+
+void FlintController::syncSavedServers(const QVariantList &servers, const QString &defaultServerId)
+{
+    if (m_savedServers == servers && m_defaultServerId == defaultServerId) return;
+    if (m_defaultServerId != defaultServerId) cancelProfileImport();
+    m_savedServers = servers;
+    m_defaultServerId = defaultServerId;
+    emit savedServersChanged();
+}
+
+void FlintController::setManagedProfileServerId(const QString &serverId)
+{
+    m_settings->setValue("Conf/flintProfileServerId", serverId);
+    emit savedServersChanged();
+}
+
+void FlintController::cancelProfileImport()
+{
+    ++m_profileEpoch;
+    if (m_profileReply) m_profileReply->abort();
+}
+
+void FlintController::importSubscription(bool selectProfile)
+{
+    // A passive account refresh must not cancel an explicit location choice.
+    if (!selectProfile && m_profileReply) return;
     const QString sub = subscriptionUrl();
     if (!validSubscriptionUrl(sub)) {
         setError(QStringLiteral("Активная подписка не найдена."));
@@ -866,6 +909,9 @@ void FlintController::importSubscription()
     }
 
     if (isProfileUri(sub)) {
+        updateCountriesFromProfiles({sub});
+        if (!selectProfile) return;
+        cancelProfileImport();
         m_settings->setValue("Conf/flintLastProfile", sub);
         const QString directCode = countryCodeForName(profileName(sub));
         m_settings->setValue("Conf/flintLastProfileCountry",
@@ -881,18 +927,30 @@ void FlintController::importSubscription()
     req.setRawHeader("X-Client", QByteArray("android/") + kVersion.toUtf8());
     req.setTransferTimeout(9000);
 
+    if (selectProfile) cancelProfileImport();
     setBusy(true);
+    const int profileEpoch = m_profileEpoch;
+    const int apiEpoch = m_apiEpoch;
     QNetworkReply *reply = m_net.get(req);
-    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+    m_profileReply = reply;
+    connect(reply, &QNetworkReply::finished, this, [this, reply, selectProfile, profileEpoch, apiEpoch]() {
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         const QByteArray raw = reply->readAll();
         const QString networkError =
             reply->error() == QNetworkReply::NoError ? QString() : reply->errorString();
         reply->deleteLater();
-        setBusy(false);
+        if (m_profileReply == reply) {
+            m_profileReply.clear();
+            setBusy(false);
+        }
+        if (apiEpoch != m_apiEpoch || profileEpoch != m_profileEpoch) return;
 
         if (status >= 200 && status < 300) {
             const QStringList profiles = parseSubscriptionProfiles(raw);
+            updateCountriesFromProfiles(profiles);
+            // Account refresh may update the list, but must never replace the
+            // user's imported server or change the engine's persisted default.
+            if (!selectProfile) return;
             const QString selected = chooseProfile(profiles);
             if (!selected.isEmpty()) {
                 m_settings->setValue("Conf/flintLastProfile", selected);
@@ -915,6 +973,7 @@ void FlintController::importSubscription()
                 : networkError);
         }
 
+        if (!selectProfile) return;
         const QString cached = m_settings->value("Conf/flintLastProfile").toString().trimmed();
         const QString cachedCountry =
             m_settings->value("Conf/flintLastProfileCountry", "AUTO").toString().toUpper();
@@ -945,4 +1004,3 @@ void FlintController::askAssist(const QString &message)
                   QStringLiteral("Обновите аккаунт или повторите подключение."));
     }
 }
-

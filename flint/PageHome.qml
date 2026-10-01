@@ -33,6 +33,54 @@ PageType {
     property bool importReady: false
     property bool importBusy: false
     property string importError: ""
+    readonly property var locationChoices: buildLocationChoices()
+
+    function buildLocationChoices() {
+        var result = []
+        var countries = FlintController.countries
+        for (var i = 0; i < countries.length; ++i) {
+            if (countries[i].code === "AUTO")
+                result.push({kind: "country", code: countries[i].code, name: countries[i].name})
+        }
+        var saved = FlintController.savedServers
+        for (var j = 0; j < saved.length; ++j)
+            result.push({kind: "saved", id: saved[j].id, name: saved[j].name || "Добавленный сервер"})
+        for (var k = 0; k < countries.length; ++k) {
+            if (countries[k].code !== "AUTO")
+                result.push({kind: "country", code: countries[k].code, name: countries[k].name})
+        }
+        return result
+    }
+
+    function chooseLocation(location) {
+        if (ConnectionController.isConnected || ConnectionController.isConnectionInProgress) {
+            PageController.showNotificationMessage("Отключите Flint перед сменой локации.")
+            return
+        }
+        if (location.kind === "saved") {
+            if (ServersUiController.getServerIndexById(location.id) < 0) return
+            FlintController.cancelProfileImport()
+            ServersUiController.setDefaultServer(location.id)
+            ServersUiController.setProcessedServerId(location.id)
+        } else {
+            FlintController.selectedCountry = location.code
+            FlintController.importSubscription()
+        }
+        countryPopup.close()
+    }
+
+    function openLocations() {
+        if (ConnectionController.isConnected || ConnectionController.isConnectionInProgress) {
+            PageController.showNotificationMessage("Отключите Flint перед сменой локации.")
+            return
+        }
+        if (FlintController.subscriptionActive || FlintController.savedServers.length > 0) {
+            countryPopup.open()
+            if (FlintController.subscriptionActive) FlintController.importSubscription(false)
+        } else {
+            accountPopup.open()
+        }
+    }
 
     function telegramAppUrl(url) {
         var match = /^https?:\/\/(?:www\.)?(?:t\.me|telegram\.me|telegram\.dog)\/([A-Za-z0-9_]+)\/?(?:\?([^#]*))?(?:#.*)?$/.exec(url)
@@ -62,6 +110,7 @@ PageType {
     }
 
     function openClipboardImport() {
+        FlintController.cancelProfileImport()
         importError = ""
         importReady = false
         qrScanning = false
@@ -72,6 +121,7 @@ PageType {
     }
 
     function scanQr() {
+        FlintController.cancelProfileImport()
         importError = ""
         importReady = false
         if (!SettingsController.isCameraPresent()) {
@@ -137,7 +187,7 @@ PageType {
             root.importReady = false
             importText.text = ""
             importPopup.close()
-            PageController.showNotificationMessage("Профиль добавлен. Нажмите «Подключиться» на главном экране.")
+            PageController.showNotificationMessage("Сервер добавлен в список «Локация».")
         }
     }
 
@@ -152,6 +202,10 @@ PageType {
     }
 
     function countryTitle() {
+        var savedId = FlintController.selectedSavedServerId
+        var saved = FlintController.savedServers
+        for (var j = 0; j < saved.length; ++j)
+            if (saved[j].id === savedId) return saved[j].name || "Добавленный сервер"
         var code = FlintController.selectedCountry
         if (!code || code === "AUTO") return "Автоматически"
         var list = FlintController.countries
@@ -453,22 +507,11 @@ PageType {
                                 elide: Text.ElideRight
                             }
                         }
-                        Text { text: "Лучший сервер"; color: root.muted; font.pixelSize: 12 * root.u }
+                        Text { text: FlintController.selectedSavedServerId ? "Добавленный сервер" : "Сервер подписки"; color: root.muted; font.pixelSize: 12 * root.u }
                     }
                     MouseArea {
                         anchors.fill: parent
-                        onClicked: {
-                            if (ConnectionController.isConnected || ConnectionController.isConnectionInProgress) {
-                                PageController.showNotificationMessage("Отключите Flint перед сменой локации.")
-                                return
-                            }
-                            if (FlintController.subscriptionActive) {
-                                FlintController.importSubscription()
-                                countryPopup.open()
-                            } else {
-                                accountPopup.open()
-                            }
-                        }
+                        onClicked: root.openLocations()
                     }
                 }
 
@@ -832,28 +875,42 @@ PageType {
             }
 
             ListView {
+                id: locationList
+                objectName: "locationList"
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
-                model: FlintController.countries
+                spacing: 10
+                model: root.locationChoices
+                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
                 delegate: FlintButton {
+                    id: locationButton
                     required property var modelData
                     width: ListView.view.width
-                    height: 48
+                    height: 64
                     text: modelData.name
-                    checkable: true
-                    checked: FlintController.selectedCountry === modelData.code
-                    onClicked: {
-                        if (ConnectionController.isConnected || ConnectionController.isConnectionInProgress) {
-                            PageController.showNotificationMessage("Отключите Flint перед сменой локации.")
-                            countryPopup.close()
-                            return
+                    highlighted: modelData.kind === "saved"
+                        ? FlintController.selectedSavedServerId === modelData.id
+                        : !FlintController.selectedSavedServerId && FlintController.selectedCountry === modelData.code
+                    contentItem: ColumnLayout {
+                        spacing: 3
+                        Text {
+                            Layout.fillWidth: true
+                            text: modelData.name
+                            textFormat: Text.PlainText
+                            font.pixelSize: 15
+                            font.weight: Font.DemiBold
+                            color: locationButton.highlighted ? "#052A20" : root.ink
+                            elide: Text.ElideRight
                         }
-                        FlintController.selectedCountry = modelData.code
-                        FlintController.importSubscription()
-                        countryPopup.close()
+                        Text {
+                            text: modelData.kind === "saved" ? "Добавленный сервер" : "Подписка Flint"
+                            font.pixelSize: 11
+                            color: locationButton.highlighted ? "#164C3C" : root.muted
+                        }
                     }
+                    onClicked: root.chooseLocation(modelData)
                 }
             }
 
@@ -1058,7 +1115,7 @@ PageType {
             }
 
             Text { text: "Настройки Flint"; color: root.ink; font.pixelSize: 21; font.bold: true }
-            Text { text: "Flint Android 8.10.2"; color: root.muted }
+            Text { text: "Flint Android 8.10.3"; color: root.muted }
 
             FlintButton {
                 Layout.fillWidth: true

@@ -8,6 +8,8 @@
 #include <QNetworkRequest>
 #include <QJsonObject>
 #include <QTimer>
+#include <QPointer>
+#include <QNetworkReply>
 #include <functional>
 #include <QList>
 #include "secureQSettings.h"
@@ -25,6 +27,8 @@ class FlintController : public QObject
     Q_PROPERTY(int sessionsCount READ sessionsCount NOTIFY subscriptionChanged)
     Q_PROPERTY(QString selectedCountry READ selectedCountry WRITE setSelectedCountry NOTIFY selectedCountryChanged)
     Q_PROPERTY(QVariantList countries READ countries NOTIFY countriesChanged)
+    Q_PROPERTY(QVariantList savedServers READ savedServers NOTIFY savedServersChanged)
+    Q_PROPERTY(QString selectedSavedServerId READ selectedSavedServerId NOTIFY savedServersChanged)
     Q_PROPERTY(bool ruDirectEnabled READ ruDirectEnabled WRITE setRuDirectEnabled NOTIFY ruDirectEnabledChanged)
     Q_PROPERTY(QString assistReply READ assistReply NOTIFY assistChanged)
     Q_PROPERTY(QString assistTitle READ assistTitle NOTIFY assistChanged)
@@ -46,6 +50,11 @@ public:
     int sessionsCount() const { return m_sessionsCount; }
     QString selectedCountry() const;
     QVariantList countries() const { return m_countries; }
+    QVariantList savedServers() const;
+    QString selectedSavedServerId() const;
+    void syncSavedServers(const QVariantList &servers, const QString &defaultServerId);
+    void setManagedProfileServerId(const QString &serverId);
+    Q_INVOKABLE void cancelProfileImport();
     bool ruDirectEnabled() const;
     QString assistReply() const { return m_assistReply; }
     QString assistTitle() const { return m_assistTitle; }
@@ -70,7 +79,7 @@ public slots:
     void checkTelegramLogin();
     void setSelectedCountry(const QString &value);
     void setRuDirectEnabled(bool enabled);
-    void importSubscription();
+    void importSubscription(bool selectProfile = true);
     void askAssist(const QString &message);
 
 signals:
@@ -79,6 +88,7 @@ signals:
     void subscriptionChanged();
     void selectedCountryChanged();
     void countriesChanged();
+    void savedServersChanged();
     void ruDirectEnabledChanged();
     void assistChanged();
     void busyChanged();
@@ -115,6 +125,10 @@ private:
     QNetworkAccessManager m_net;
     QTimer m_tgTimer;
     QVariantList m_countries;
+    QVariantList m_savedServers;
+    QString m_defaultServerId;
+    int m_profileEpoch = 0;
+    QPointer<QNetworkReply> m_profileReply;
     QString m_email;
     QString m_telegramUsername;
     QString m_telegramBotUrl;

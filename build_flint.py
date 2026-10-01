@@ -21,12 +21,12 @@ def replace(path, old, new, required=True):
 replace(
     "CMakeLists.txt",
     'set(AMNEZIAVPN_VERSION 5.0.3.0 CACHE STRING "Client app version")',
-    'set(AMNEZIAVPN_VERSION 8.10.2 CACHE STRING "Client app version")'
+    'set(AMNEZIAVPN_VERSION 8.10.3 CACHE STRING "Client app version")'
 )
 replace(
     "CMakeLists.txt",
     'set(APP_ANDROID_VERSION_CODE 2163)',
-    'set(APP_ANDROID_VERSION_CODE 2172)'
+    'set(APP_ANDROID_VERSION_CODE 2173)'
 )
 replace(
     "client/cmake/branding/common.cmake",
@@ -260,6 +260,15 @@ if 'setQmlContextProperty("FlintController"' not in s:
         anchor +
         '\n    m_flintController = new FlintController(m_settings, this);\n'
         '    setQmlContextProperty("FlintController", m_flintController);\n'
+        '    connect(m_serversUiController, &ServersUiController::defaultServerIdChanged,\n'
+        '            m_flintController, [this](const QString &defaultId) {\n'
+        '        QVariantList servers;\n'
+        '        for (int i = 0; i < m_serversUiController->getServersCount(); ++i) {\n'
+        '            const QString id = m_serversUiController->getServerId(i);\n'
+        '            servers.append(QVariantMap{{"id", id}, {"name", m_serversUiController->serverName(id)}});\n'
+        '        }\n'
+        '        m_flintController->syncSavedServers(servers, defaultId);\n'
+        '    });\n'
         '    connect(m_flintController, &FlintController::profileReady,\n'
         '            this, [this](const QString &uri) {\n'
         '        if (!m_importController || !m_serversUiController) return;\n'
@@ -269,14 +278,19 @@ if 'setQmlContextProperty("FlintController"' not in s:
         '            return;\n'
         '        }\n'
         '        const QString oldFlintId = m_settings->value("Conf/flintProfileServerId").toString();\n'
-        '        const int before = m_serversUiController->getServersCount();\n'
+        '        QStringList previousIds;\n'
+        '        for (int i = 0; i < m_serversUiController->getServersCount(); ++i)\n'
+        '            previousIds.append(m_serversUiController->getServerId(i));\n'
         '        if (!m_importController->extractConfigFromData(uri)) return;\n'
         '        m_importController->importConfig();\n'
         '        m_serversUiController->updateModel();\n'
-        '        const int after = m_serversUiController->getServersCount();\n'
-        '        if (after <= before) return;\n'
-        '        const QString newFlintId = m_serversUiController->getServerId(after - 1);\n'
+        '        QString newFlintId;\n'
+        '        for (int i = 0; i < m_serversUiController->getServersCount(); ++i) {\n'
+        '            const QString id = m_serversUiController->getServerId(i);\n'
+        '            if (!previousIds.contains(id)) { newFlintId = id; break; }\n'
+        '        }\n'
         '        if (newFlintId.isEmpty()) return;\n'
+        '        m_flintController->setManagedProfileServerId(newFlintId);\n'
         '        if (!oldFlintId.isEmpty() && oldFlintId != newFlintId &&\n'
         '            m_serversUiController->getServerIndexById(oldFlintId) >= 0) {\n'
         '            m_serversUiController->removeServer(oldFlintId);\n'
@@ -284,7 +298,6 @@ if 'setQmlContextProperty("FlintController"' not in s:
         '        m_serversUiController->updateModel();\n'
         '        m_serversUiController->setDefaultServer(newFlintId);\n'
         '        m_serversUiController->setProcessedServerId(newFlintId);\n'
-        '        m_settings->setValue("Conf/flintProfileServerId", newFlintId);\n'
         '    });\n'
     )
     s = s.replace(anchor, block, 1)
@@ -331,4 +344,4 @@ assert 'parseSubscriptionProfiles' in (root / "client/ui/controllers/flintContro
 assert 'flintProfileServerId' in (root / "client/core/controllers/coreController.cpp").read_text(encoding="utf-8")
 assert 'clearQtCaches();' in (root / "client/amneziaApplication.cpp").read_text(encoding="utf-8")
 
-print("Flint Android 8.10.2 startup-safe patch applied and statically verified")
+print("Flint Android 8.10.3 startup-safe patch applied and statically verified")
