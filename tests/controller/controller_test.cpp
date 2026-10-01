@@ -1,10 +1,104 @@
 #include <QtTest>
 #include <QTemporaryDir>
+#include <QTcpServer>
+#include <QTcpSocket>
 #include "flintController.h"
 
 class ControllerTests : public QObject {
     Q_OBJECT
 private slots:
+    void deviceDeleteAcceptsNoContentAndRejectsOtherDeletes() {
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        connect(&server, &QTcpServer::newConnection, &server, [&server]() {
+            auto *socket = server.nextPendingConnection();
+            connect(socket, &QTcpSocket::readyRead, socket, [socket]() {
+                socket->readAll(); socket->write("HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"); socket->disconnectFromHost();
+            });
+        });
+        QTemporaryDir dir;
+        SecureQSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
+        settings.setValue("Conf/flintStartupSchema", 999);
+        settings.setValue("Conf/flintApiBase", QString("http://127.0.0.1:%1").arg(server.serverPort()));
+        settings.setValue("Conf/flintRefreshToken", "TEST-ONLY");
+        settings.setValue("Conf/flintAccessToken", "TEST-ONLY");
+        FlintController controller(&settings);
+        QSignalSpy responses(&controller, &FlintController::accountResponse);
+        controller.accountRequest("revoke", "DELETE", "/subscriptions/sub1/devices/device1", {}, "");
+        QTRY_COMPARE_WITH_TIMEOUT(responses.size(), 1, 2000);
+        QCOMPARE(responses.at(0).at(1).toInt(), 204);
+        QVERIFY(responses.at(0).at(3).toString().isEmpty());
+        controller.accountRequest("bad", "DELETE", "/subscriptions", {}, "");
+        QCOMPARE(responses.last().at(1).toInt(), 400);
+        controller.accountRequest("session", "DELETE", "/me/sessions/current", {}, "");
+        QCOMPARE(responses.last().at(1).toInt(), 400);
+    }
+    void autoUsesCachedWorkingProfileAndHasBoundedAlternatives() {
+        QTemporaryDir dir;
+        SecureQSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
+        settings.setValue("Conf/flintStartupSchema", 999);
+        const QString sub = "https://127.0.0.1:1/sub";
+        const QString first = "vless://test@example.invalid:443#Germany";
+        const QString working = "vless://test@example.invalid:444#Armenia";
+        const QString third = "vless://test@example.invalid:445#USA";
+        const QString fourth = "vless://test@example.invalid:446#France";
+        settings.setValue("Conf/flintSubscriptionUrl", sub);
+        settings.setValue("Conf/flintCachedProfilesUrl", sub);
+        settings.setValue("Conf/flintCachedProfiles", (first+'\n'+working+'\n'+third+'\n'+fourth).toUtf8());
+        settings.setValue("Conf/flintWorkingProfile", working);
+        FlintController controller(&settings);
+        QSignalSpy ready(&controller, &FlintController::profileReady);
+        controller.importSubscription();
+        QCOMPARE(ready.size(), 1);
+        QCOMPARE(ready.last().first().toString(), working);
+        QVERIFY(!controller.busy());
+        controller.profileInstallResult(true);
+        QVERIFY(!controller.profilePreparing());
+        QVERIFY(controller.tryNextAutomaticProfile());
+        QCOMPARE(ready.last().first().toString(), first);
+        QVERIFY(controller.tryNextAutomaticProfile());
+        QCOMPARE(ready.last().first().toString(), third);
+        QVERIFY(!controller.tryNextAutomaticProfile());
+        settings.setValue("Conf/flintCachedProfilesUrl", "https://another.invalid/sub");
+        QVERIFY(!controller.tryNextAutomaticProfile());
+    }
+    void selectionTimeoutReleasesPreparationAndDoesNotBlockAccount() {
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        connect(&server, &QTcpServer::newConnection, &server, [&server]() {
+            auto *socket = server.nextPendingConnection();
+            connect(socket, &QTcpSocket::readyRead, socket, [socket]() {
+                socket->readAll(); // Accept the request, deliberately never answer.
+            });
+        });
+        QTemporaryDir dir;
+        SecureQSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
+        settings.setValue("Conf/flintStartupSchema", 999);
+        settings.setValue("Conf/flintSubscriptionUrl", QString("http://127.0.0.1:%1/sub").arg(server.serverPort()));
+        FlintController controller(&settings);
+        QSignalSpy finished(&controller, &FlintController::profilePreparationFinished);
+        controller.importSubscription();
+        QVERIFY(controller.profilePreparing());
+        QVERIFY(!controller.busy());
+        QTRY_COMPARE_WITH_TIMEOUT(finished.size(), 1, 12000);
+        QVERIFY(!finished.first().first().toBool());
+        QVERIFY(!controller.profilePreparing());
+        QVERIFY(!controller.lastError().contains("timed out"));
+    }
+    void backgroundRefreshNeverBlocksPreparationOrReportsTimeout() {
+        QTemporaryDir dir;
+        SecureQSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
+        settings.setValue("Conf/flintStartupSchema", 999);
+        settings.setValue("Conf/flintSubscriptionUrl", "https://127.0.0.1:1/sub");
+        FlintController controller(&settings);
+        QSignalSpy ready(&controller, &FlintController::profileReady);
+        controller.importSubscription(false);
+        QVERIFY(!controller.profilePreparing());
+        QVERIFY(!controller.busy());
+        QTest::qWait(100);
+        QVERIFY(controller.lastError().isEmpty());
+        QCOMPARE(ready.size(), 0);
+    }
     void importedServersKeepIdentityAndSelection() {
         QTemporaryDir dir;
         SecureQSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
@@ -65,10 +159,10 @@ private slots:
         settings.setValue("Conf/flintLastProfile", "vless://00000000-0000-0000-0000-000000000000@example.invalid:443#Armenia");
         FlintController controller(&settings);
         QSignalSpy ready(&controller, &FlintController::profileReady);
-        controller.importSubscription();
-        QVERIFY(controller.busy());
+        controller.importSubscription(true, true);
+        QVERIFY(controller.profilePreparing());
         controller.syncSavedServers({QVariantMap{{"id", "manual"}, {"name", "My server"}}}, "manual");
-        QTRY_VERIFY_WITH_TIMEOUT(!controller.busy(), 2000);
+        QTRY_VERIFY_WITH_TIMEOUT(!controller.profilePreparing(), 2000);
         QTest::qWait(50);
         QCOMPARE(ready.count(), 0);
         QCOMPARE(controller.selectedSavedServerId(), QString("manual"));

@@ -27,7 +27,7 @@ void FlintController::requestHomeWidget()
 
 namespace {
 const QString kApiBase = QStringLiteral("https://flintmain.ru/api/v1");
-const QString kVersion = QStringLiteral("8.10.3");
+const QString kVersion = QStringLiteral("8.10.4");
 
 bool isProfileUri(const QString &s)
 {
@@ -198,8 +198,9 @@ void FlintController::accountRequest(const QString &id, const QString &method, c
                                      const QVariantMap &body, const QString &key)
 {
     static const QRegularExpression allowed(QStringLiteral(
-        "^/(config|me|subscriptions|plans|payment-methods|orders(/[A-Za-z0-9_-]+(/(payment-link|cancel))?)?|referrals(/apply)?|support/tickets(/[A-Za-z0-9_-]+)?)$"));
-    if (!allowed.match(path).hasMatch() || (method != "GET" && method != "POST")) {
+        "^/(config|me(/sessions)?|subscriptions(/[A-Za-z0-9_-]+/devices(/[A-Za-z0-9_-]+)?)?|plans|payment-methods|orders(/[A-Za-z0-9_-]+(/(payment-link|cancel))?)?|referrals(/apply)?|support/tickets(/[A-Za-z0-9_-]+)?)$"));
+    static const QRegularExpression deviceDelete(QStringLiteral("^/subscriptions/[A-Za-z0-9_-]+/devices/[A-Za-z0-9_-]+$"));
+    if (!allowed.match(path).hasMatch() || (method != "GET" && method != "POST" && !(method == "DELETE" && deviceDelete.match(path).hasMatch()))) {
         emit accountResponse(id, 400, {}, QStringLiteral("Операция API не поддерживается")); return;
     }
     if (method == "POST" && (path == "/orders" || path == "/support/tickets") && key.isEmpty()) {
@@ -215,8 +216,9 @@ void FlintController::accountRequestImpl(const QString &id, const QString &metho
     if (authorized && !loggedIn()) { emit accountResponse(id, 401, {}, QStringLiteral("Войдите в аккаунт Flint")); return; }
     auto request = apiRequest(path, authorized);
     if (!key.isEmpty()) request.setRawHeader("Idempotency-Key", key.toUtf8());
-    auto *reply = method == "GET" ? m_net.get(request)
+    auto *reply = method == "DELETE" ? m_net.deleteResource(request) : method == "GET" ? m_net.get(request)
         : m_net.post(request, QJsonDocument(QJsonObject::fromVariantMap(body)).toJson(QJsonDocument::Compact));
+    QTimer::singleShot(12000, reply, [reply]() { if (!reply->isFinished()) reply->abort(); });
     const int epoch = m_apiEpoch;
     connect(reply, &QNetworkReply::finished, this, [this, reply, id, method, path, body, key, retry, epoch]() {
         if (epoch != m_apiEpoch) { reply->deleteLater(); return; }
@@ -236,7 +238,7 @@ void FlintController::accountRequestImpl(const QString &id, const QString &metho
             error = document.object().value("detail").toString();
             if (error.isEmpty()) error = status == 0 ? QStringLiteral("Нет ответа сервера. Повторите запрос.")
                 : QStringLiteral("Операция недоступна на подключённом API (HTTP %1).").arg(status);
-        } else if (!document.isObject()) error = QStringLiteral("Некорректный ответ API");
+        } else if (status != 204 && !document.isObject()) error = QStringLiteral("Некорректный ответ API");
         emit accountResponse(id, status, document.object().toVariantMap(), error);
     });
 }
@@ -388,8 +390,13 @@ QString FlintController::chooseProfile(const QStringList &profiles)
     updateCountriesFromProfiles(profiles);
 
     const QString wanted = selectedCountry().trimmed().toUpper();
-    if (wanted.isEmpty() || wanted == "AUTO")
+    if (wanted.isEmpty() || wanted == "AUTO") {
+        const QString lastWorking = m_settings->value("Conf/flintWorkingProfile").toString();
+        if (profiles.contains(lastWorking)) return lastWorking;
+        const QString lastUsed = m_settings->value("Conf/flintLastProfile").toString();
+        if (profiles.contains(lastUsed)) return lastUsed;
         return profiles.first();
+    }
 
     for (const QString &p : profiles) {
         const QString name = profileName(p);
@@ -398,7 +405,7 @@ QString FlintController::chooseProfile(const QStringList &profiles)
             return p;
     }
 
-    return profiles.first();
+    return {};
 }
 
 void FlintController::saveTokens(const QJsonObject &obj)
@@ -413,6 +420,7 @@ void FlintController::saveTokens(const QJsonObject &obj)
 void FlintController::clearAuthState()
 {
     ++m_apiEpoch;
+    cancelProfileImport();
     m_refreshInFlight = false;
     m_refreshWaiters.clear();
     setBusy(false);
@@ -423,6 +431,7 @@ void FlintController::clearAuthState()
     m_settings->remove("Conf/flintEmail");
     m_settings->remove("Conf/flintTelegramUsername");
     m_settings->remove("Conf/flintSubscriptionUrl");
+    for (const auto &key : {"Conf/flintCachedProfiles", "Conf/flintCachedProfilesUrl", "Conf/flintWorkingProfile", "Conf/flintLastProfile", "Conf/flintLastProfileUrl"}) m_settings->remove(key);
     m_settings->remove("Conf/flintSessionsCount");
     m_email.clear();
     m_telegramUsername.clear();
@@ -880,7 +889,7 @@ QString FlintController::selectedSavedServerId() const
 void FlintController::syncSavedServers(const QVariantList &servers, const QString &defaultServerId)
 {
     if (m_savedServers == servers && m_defaultServerId == defaultServerId) return;
-    if (m_defaultServerId != defaultServerId) cancelProfileImport();
+    if (m_defaultServerId != defaultServerId && m_profileReply) cancelProfileImport();
     m_savedServers = servers;
     m_defaultServerId = defaultServerId;
     emit savedServersChanged();
@@ -892,100 +901,133 @@ void FlintController::setManagedProfileServerId(const QString &serverId)
     emit savedServersChanged();
 }
 
+void FlintController::setProfilePreparing(bool preparing)
+{
+    if (m_profilePreparing == preparing) return;
+    m_profilePreparing = preparing;
+    emit profilePreparingChanged();
+}
+
 void FlintController::cancelProfileImport()
 {
     ++m_profileEpoch;
     if (m_profileReply) m_profileReply->abort();
+    setProfilePreparing(false);
 }
 
-void FlintController::importSubscription(bool selectProfile)
+QStringList FlintController::cachedProfiles() const
 {
-    // A passive account refresh must not cancel an explicit location choice.
-    if (!selectProfile && m_profileReply) return;
+    if (m_settings->value("Conf/flintCachedProfilesUrl").toString() != subscriptionUrl()) return {};
+    return parseSubscriptionProfiles(m_settings->value("Conf/flintCachedProfiles").toByteArray());
+}
+
+void FlintController::publishProfile(const QString &profile)
+{
+    m_pendingProfile = profile;
+    if (!m_attemptedProfiles.contains(profile)) m_attemptedProfiles.append(profile);
+    m_settings->setValue("Conf/flintLastProfile", profile);
+    m_settings->setValue("Conf/flintLastProfileUrl", subscriptionUrl());
+    m_settings->setValue("Conf/flintLastProfileCountry", selectedCountry());
+    setError({});
+    setProfilePreparing(true);
+    emit profileReady(profile);
+    // CoreController confirms the actual import before the UI starts a tunnel.
+}
+
+void FlintController::profileInstallResult(bool success)
+{
+    setProfilePreparing(false);
+    if (success) m_settings->setValue("Conf/flintInstalledProfile", m_pendingProfile);
+    if (!success) setError(QStringLiteral("Не удалось подготовить профиль. Выберите другую локацию или обновите подписку."));
+    emit profilePreparationFinished(success);
+}
+
+void FlintController::markProfileConnected()
+{
+    if (!m_pendingProfile.isEmpty() && m_defaultServerId == m_settings->value("Conf/flintProfileServerId").toString())
+        m_settings->setValue("Conf/flintWorkingProfile", m_pendingProfile);
+}
+
+bool FlintController::tryNextAutomaticProfile()
+{
+    if (selectedCountry() != "AUTO" || !selectedSavedServerId().isEmpty() || m_attemptedProfiles.size() >= 3) return false;
+    for (const auto &profile : cachedProfiles()) {
+        if (!m_attemptedProfiles.contains(profile)) {
+            publishProfile(profile);
+            return true;
+        }
+    }
+    return false;
+}
+
+void FlintController::importSubscription(bool selectProfile, bool forceRefresh)
+{
+    if (!selectProfile && (m_profileReply || m_profilePreparing)) return;
+    if (selectProfile) {
+        cancelProfileImport();
+        m_attemptedProfiles.clear();
+        setError({});
+    }
     const QString sub = subscriptionUrl();
     if (!validSubscriptionUrl(sub)) {
-        setError(QStringLiteral("Активная подписка не найдена."));
+        if (selectProfile) profileInstallResult(false);
         return;
     }
-
     if (isProfileUri(sub)) {
         updateCountriesFromProfiles({sub});
-        if (!selectProfile) return;
-        cancelProfileImport();
-        m_settings->setValue("Conf/flintLastProfile", sub);
-        const QString directCode = countryCodeForName(profileName(sub));
-        m_settings->setValue("Conf/flintLastProfileCountry",
-                             directCode.isEmpty() ? QStringLiteral("AUTO") : directCode);
-        emit profileReady(sub);
-        setAssist(QStringLiteral("Подписка Flint"),
-                  QStringLiteral("Профиль готов. Можно подключаться."));
+        if (selectProfile) publishProfile(sub);
         return;
     }
-
+    const auto cached = cachedProfiles();
+    if (selectProfile && !forceRefresh) {
+        const QString selected = chooseProfile(cached);
+        if (!selected.isEmpty()) { publishProfile(selected); return; }
+        // Upgrade path: the previous build only saved one profile. AUTO can
+        // keep using it while the endpoint is unavailable, without a busy UI.
+        const QString legacy = m_settings->value("Conf/flintLastProfile").toString();
+        if (selectedCountry() == "AUTO" && isProfileUri(legacy) &&
+            m_settings->value("Conf/flintLastProfileUrl", sub).toString() == sub) {
+            publishProfile(legacy);
+            return;
+        }
+    }
     QNetworkRequest req{QUrl(sub)};
     req.setRawHeader("User-Agent", QByteArray("Flint/") + kVersion.toUtf8());
     req.setRawHeader("X-Client", QByteArray("android/") + kVersion.toUtf8());
-    req.setTransferTimeout(9000);
-
-    if (selectProfile) cancelProfileImport();
-    setBusy(true);
+    req.setTransferTimeout(8000);
+    if (selectProfile) setProfilePreparing(true);
     const int profileEpoch = m_profileEpoch;
     const int apiEpoch = m_apiEpoch;
-    QNetworkReply *reply = m_net.get(req);
+    auto *reply = m_net.get(req);
     m_profileReply = reply;
-    connect(reply, &QNetworkReply::finished, this, [this, reply, selectProfile, profileEpoch, apiEpoch]() {
+    // Transfer timeout is an inactivity timeout; add an absolute deadline too.
+    QTimer::singleShot(10000, reply, [reply]() { if (!reply->isFinished()) reply->abort(); });
+    connect(reply, &QNetworkReply::finished, this, [this, reply, sub, selectProfile, profileEpoch, apiEpoch]() {
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        const QByteArray raw = reply->readAll();
-        const QString networkError =
-            reply->error() == QNetworkReply::NoError ? QString() : reply->errorString();
+        const QByteArray raw = reply->isOpen() ? reply->readAll() : QByteArray();
         reply->deleteLater();
-        if (m_profileReply == reply) {
-            m_profileReply.clear();
-            setBusy(false);
-        }
+        if (m_profileReply == reply) m_profileReply.clear();
         if (apiEpoch != m_apiEpoch || profileEpoch != m_profileEpoch) return;
-
+        if (sub != subscriptionUrl()) { if (selectProfile) profileInstallResult(false); return; }
         if (status >= 200 && status < 300) {
-            const QStringList profiles = parseSubscriptionProfiles(raw);
-            updateCountriesFromProfiles(profiles);
-            // Account refresh may update the list, but must never replace the
-            // user's imported server or change the engine's persisted default.
-            if (!selectProfile) return;
-            const QString selected = chooseProfile(profiles);
-            if (!selected.isEmpty()) {
-                m_settings->setValue("Conf/flintLastProfile", selected);
-                m_settings->setValue("Conf/flintLastProfileName", profileName(selected));
-                const QString selectedCode = countryCodeForName(profileName(selected));
-                m_settings->setValue("Conf/flintLastProfileCountry",
-                                     selectedCountry() == "AUTO"
-                                         ? QStringLiteral("AUTO")
-                                         : (selectedCode.isEmpty() ? selectedCountry() : selectedCode));
-                setError(QString());
-                emit profileReady(selected);
-                setAssist(QStringLiteral("Подписка Flint"),
-                          QStringLiteral("Профиль загружен. Можно подключаться."));
-                return;
+            const auto profiles = parseSubscriptionProfiles(raw);
+            if (!profiles.isEmpty()) {
+                m_settings->setValue("Conf/flintCachedProfiles", profiles.join('\n').toUtf8());
+                m_settings->setValue("Conf/flintCachedProfilesUrl", sub);
+                updateCountriesFromProfiles(profiles);
+                if (!selectProfile) return;
+                const QString selected = chooseProfile(profiles);
+                if (!selected.isEmpty()) { publishProfile(selected); return; }
             }
-            setError(QStringLiteral("В подписке Flint не найден поддерживаемый профиль."));
-        } else {
-            setError(networkError.isEmpty()
-                ? QStringLiteral("Не удалось загрузить профиль Flint.")
-                : networkError);
         }
-
+        // A failed background refresh never blocks Connect or replaces a
+        // usable local profile with an English network error.
         if (!selectProfile) return;
-        const QString cached = m_settings->value("Conf/flintLastProfile").toString().trimmed();
-        const QString cachedCountry =
-            m_settings->value("Conf/flintLastProfileCountry", "AUTO").toString().toUpper();
-        const QString wanted = selectedCountry().toUpper();
-        const bool cacheMatches = (wanted == "AUTO") || (cachedCountry == wanted);
-        if (isProfileUri(cached) && cacheMatches) {
-            emit profileReady(cached);
-            setAssist(QStringLiteral("Резервный профиль"),
-                      QStringLiteral("Сервер подписки отвечает медленно. Использую последний рабочий профиль."));
-        } else if (wanted != "AUTO") {
-            setError(QStringLiteral("Не удалось загрузить выбранную локацию. Повторите позже."));
-        }
+        const QString selected = chooseProfile(cachedProfiles());
+        if (!selected.isEmpty()) { publishProfile(selected); return; }
+        setProfilePreparing(false);
+        setError(QStringLiteral("Сервер подписки не ответил. Выберите сохранённый сервер или повторите обновление."));
+        emit profilePreparationFinished(false);
     });
 }
 

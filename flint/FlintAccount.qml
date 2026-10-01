@@ -4,6 +4,7 @@ import QtQuick.Layouts
 
 Popup {
     id: panel
+    FlintDevices { id: devicesPanel; parent: panel.parent }
     objectName: "flintAccountPanel"
     property int section: 0
     property var config: ({})
@@ -157,6 +158,7 @@ Popup {
                         }
                     }
                     FlintButton { text: "Обновить подписки"; enabled: !panel.pending.subscriptions; onClicked: { panel.request("subscriptions", "GET", "/subscriptions"); FlintController.refresh() } }
+                    FlintButton { text: "Устройства подписки"; onClicked: { panel.close(); devicesPanel.open() } }
                     FlintButton { visible: panel.config.purchasesEnabled === true; primary: true; text: "Купить подписку"; onClicked: panel.section = 1 }
                 }
                 ColumnLayout {

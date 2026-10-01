@@ -33,6 +33,7 @@ class FlintController : public QObject
     Q_PROPERTY(QString assistReply READ assistReply NOTIFY assistChanged)
     Q_PROPERTY(QString assistTitle READ assistTitle NOTIFY assistChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
+    Q_PROPERTY(bool profilePreparing READ profilePreparing NOTIFY profilePreparingChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
     Q_PROPERTY(bool apiOnline READ apiOnline NOTIFY apiStatusChanged)
     Q_PROPERTY(QString apiBase READ apiBase NOTIFY apiBaseChanged)
@@ -55,6 +56,10 @@ public:
     void syncSavedServers(const QVariantList &servers, const QString &defaultServerId);
     void setManagedProfileServerId(const QString &serverId);
     Q_INVOKABLE void cancelProfileImport();
+    bool profilePreparing() const { return m_profilePreparing; }
+    void profileInstallResult(bool success);
+    void markProfileConnected();
+    Q_INVOKABLE bool tryNextAutomaticProfile();
     bool ruDirectEnabled() const;
     QString assistReply() const { return m_assistReply; }
     QString assistTitle() const { return m_assistTitle; }
@@ -79,7 +84,7 @@ public slots:
     void checkTelegramLogin();
     void setSelectedCountry(const QString &value);
     void setRuDirectEnabled(bool enabled);
-    void importSubscription(bool selectProfile = true);
+    void importSubscription(bool selectProfile = true, bool forceRefresh = false);
     void askAssist(const QString &message);
 
 signals:
@@ -95,6 +100,8 @@ signals:
     void lastErrorChanged();
     void apiStatusChanged();
     void profileReady(const QString &uri);
+    void profilePreparingChanged();
+    void profilePreparationFinished(bool success);
     void apiBaseChanged();
     void accountResponse(const QString &id, int status, const QVariantMap &data, const QString &error);
 
@@ -117,6 +124,9 @@ private:
     bool validSubscriptionUrl(const QString &value) const;
     QStringList parseSubscriptionProfiles(const QByteArray &raw) const;
     QString chooseProfile(const QStringList &profiles);
+    QStringList cachedProfiles() const;
+    void publishProfile(const QString &profile);
+    void setProfilePreparing(bool preparing);
     void updateCountriesFromProfiles(const QStringList &profiles);
     static QString profileName(const QString &uri);
     static QString b64url(const QByteArray &in);
@@ -129,6 +139,9 @@ private:
     QString m_defaultServerId;
     int m_profileEpoch = 0;
     QPointer<QNetworkReply> m_profileReply;
+    bool m_profilePreparing = false;
+    QStringList m_attemptedProfiles;
+    QString m_pendingProfile;
     QString m_email;
     QString m_telegramUsername;
     QString m_telegramBotUrl;

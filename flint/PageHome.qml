@@ -17,7 +17,14 @@ PageType {
     property color line: "#46637A"
     property color warning: "#FFC56D"
     FlintAccount { id: servicePopup; parent: root }
-    property int connectWaitTicks: 0
+    FlintDevices { id: devicesPopup; parent: root }
+    property bool connectRequested: false
+    property bool awaitingProfile: false
+    property bool retryPending: false
+    property bool autoConnection: false
+    property bool sawConnectionProgress: false
+    property int retryWaitTicks: 0
+    readonly property bool connectionPending: connectRequested || FlintController.profilePreparing || ConnectionController.isConnectionInProgress
     property bool telegramRequested: false
     property string telegramError: ""
     property string previousTelegramUrl: ""
@@ -53,7 +60,7 @@ PageType {
     }
 
     function chooseLocation(location) {
-        if (ConnectionController.isConnected || ConnectionController.isConnectionInProgress) {
+        if (ConnectionController.isConnected || root.connectionPending) {
             PageController.showNotificationMessage("Отключите Flint перед сменой локации.")
             return
         }
@@ -215,35 +222,77 @@ PageType {
     }
 
     function beginConnect() {
-        if (ServersUiController.getServersCount() > 0) {
-            ConnectionController.connectButtonClicked()
-            return
-        }
-        if (!FlintController.loggedIn || !FlintController.subscriptionActive) {
+        if (root.connectionPending) { cancelConnection(); return }
+        if (ServersUiController.getServersCount() === 0 && !FlintController.subscriptionActive) {
             accountPopup.open()
             return
         }
-
-        connectWaitTicks = 0
-        FlintController.importSubscription()
-        connectWait.start()
+        connectRequested = true
+        autoConnection = FlintController.subscriptionActive && FlintController.selectedCountry === "AUTO" && !FlintController.selectedSavedServerId
+        if (FlintController.subscriptionActive && !FlintController.selectedSavedServerId) {
+            awaitingProfile = true
+            FlintController.importSubscription()
+        } else startTunnel()
     }
 
+    function startTunnel() {
+        if (!connectRequested) return
+        sawConnectionProgress = false
+        connectionDeadline.restart()
+        ConnectionController.connectButtonClicked()
+    }
+
+    function cancelConnection() {
+        connectRequested = false; awaitingProfile = false; retryPending = false
+        connectionDeadline.stop(); retryWait.stop()
+        FlintController.cancelProfileImport()
+        if (ConnectionController.isConnected || ConnectionController.isConnectionInProgress) ConnectionController.closeConnection()
+    }
+
+    function retryConnection() {
+        if (!connectRequested || retryPending) return
+        connectionDeadline.stop()
+        retryPending = true; retryWaitTicks = 0
+        ConnectionController.closeConnection()
+        retryWait.start()
+    }
+
+    Timer { id: connectionDeadline; interval: 30000; onTriggered: root.retryConnection() }
     Timer {
-        id: connectWait
-        interval: 300
-        repeat: true
+        id: retryWait; interval: 100; repeat: true
         onTriggered: {
-            root.connectWaitTicks++
-            if (ServersUiController.getServersCount() > 0) {
-                stop()
-                ConnectionController.connectButtonClicked()
+            if (ConnectionController.isConnectionInProgress || ConnectionController.isConnected) {
+                if (++root.retryWaitTicks < 100) return
+                root.cancelConnection()
+                PageController.showNotificationMessage("Не удалось завершить подключение. Повторите попытку.")
                 return
             }
-            if (root.connectWaitTicks >= 30) {
-                stop()
-                PageController.showNotificationMessage("Не удалось подготовить профиль Flint. Откройте аккаунт и нажмите «Обновить».")
+            stop(); root.retryPending = false; root.awaitingProfile = true
+            if (root.autoConnection && FlintController.tryNextAutomaticProfile()) return
+            root.cancelConnection()
+            PageController.showNotificationMessage("Сервер не ответил. Выберите другую локацию или обновите профиль в аккаунте.")
+        }
+    }
+    Connections {
+        target: ConnectionController
+        function onConnectionStateChanged() {
+            if (ConnectionController.isConnected) {
+                root.connectRequested = false; root.awaitingProfile = false; root.retryPending = false
+                connectionDeadline.stop(); retryWait.stop()
+            } else if (root.connectRequested && !root.awaitingProfile) {
+                if (ConnectionController.isConnectionInProgress) root.sawConnectionProgress = true
+                else if (root.sawConnectionProgress) root.retryConnection()
             }
+        }
+        function onConnectionErrorOccurred(error) { if (root.connectRequested) root.retryConnection() }
+    }
+    Connections {
+        target: FlintController
+        function onProfilePreparationFinished(success) {
+            if (!root.awaitingProfile || !root.connectRequested) return
+            root.awaitingProfile = false
+            if (success) root.startTunnel()
+            else root.cancelConnection()
         }
     }
 
@@ -407,12 +456,13 @@ PageType {
                 objectName: "connectButton"
                 Layout.fillWidth: true
                 Layout.preferredHeight: 58 * root.u
-                enabled: !FlintController.busy && !ConnectionController.isConnectionInProgress
-                text: ConnectionController.isConnectionInProgress ? "ПОДКЛЮЧЕНИЕ…" : (ConnectionController.isConnected ? "ОТКЛЮЧИТЬ" : "ПОДКЛЮЧИТЬСЯ")
+                enabled: true
+                text: root.connectionPending ? "ОТМЕНИТЬ" : (ConnectionController.isConnected ? "ОТКЛЮЧИТЬ" : "ПОДКЛЮЧИТЬСЯ")
                 opacity: enabled ? 1 : 0.7
                 onClicked: {
-                    if (ConnectionController.isConnected)
-                        ConnectionController.connectButtonClicked()
+                    if (root.connectionPending) root.cancelConnection()
+                    else if (ConnectionController.isConnected)
+                        ConnectionController.closeConnection()
                     else
                         root.beginConnect()
                 }
@@ -473,7 +523,7 @@ PageType {
                         color: ConnectionController.isConnected ? root.mint : "#8297AA"
                     }
                     Text {
-                        text: ConnectionController.isConnectionInProgress ? "Подключение…" : (ConnectionController.isConnected ? "Защищено" : "Отключён")
+                        text: FlintController.profilePreparing ? "Подготовка профиля…" : root.retryPending ? "Проверка другого сервера…" : root.connectRequested || ConnectionController.isConnectionInProgress ? "Подключение…" : (ConnectionController.isConnected ? "Защищено" : "Отключён")
                         color: ConnectionController.isConnected ? root.mint : root.muted
                         font.pixelSize: 12 * root.u
                     }
@@ -580,13 +630,13 @@ PageType {
                         }
                         Text {
                             width: parent.width
-                            text: FlintController.loggedIn ? FlintController.sessionsCount + " устройств" : "Войти в аккаунт"
+                            text: FlintController.loggedIn ? "Устройства и доступ" : "Войти в аккаунт"
                             color: FlintController.subscriptionActive ? root.mint : root.muted
                             font.pixelSize: 12 * root.u
                             elide: Text.ElideRight
                         }
                     }
-                    MouseArea { anchors.fill: parent; onClicked: accountPopup.open() }
+                    MouseArea { anchors.fill: parent; onClicked: { if (FlintController.loggedIn) devicesPopup.open(); else accountPopup.open() } }
                 }
 
                 Tile {
@@ -756,7 +806,7 @@ PageType {
                 }
 
                 Text {
-                    text: "Устройств: " + FlintController.sessionsCount
+                    text: "Сеансов входа: " + FlintController.sessionsCount
                     color: root.muted
                 }
 
@@ -770,7 +820,7 @@ PageType {
                     Layout.fillWidth: true
                     text: "Подготовить профиль"
                     enabled: FlintController.subscriptionActive
-                    onClicked: FlintController.importSubscription()
+                    onClicked: FlintController.importSubscription(true, true)
                 }
 
                 FlintButton {
@@ -1063,7 +1113,7 @@ PageType {
 
             Text {
                 Layout.fillWidth: true
-                text: "После добавления устройство появится в семейной подписке автоматически."
+                text: "Это общий ключ подписки. Устройства с этим ключом нельзя отключить по отдельности."
                 color: root.muted
                 font.pixelSize: 11
                 wrapMode: Text.Wrap
@@ -1115,7 +1165,7 @@ PageType {
             }
 
             Text { text: "Настройки Flint"; color: root.ink; font.pixelSize: 21; font.bold: true }
-            Text { text: "Flint Android 8.10.3"; color: root.muted }
+            Text { text: "Flint Android 8.10.4"; color: root.muted }
 
             FlintButton {
                 Layout.fillWidth: true
