@@ -52,7 +52,7 @@ QString countryCodeForName(const QString &name)
     const QList<CountryHint> table = {
         {QStringLiteral("FI"), QStringLiteral("Финляндия"),
          {QStringLiteral("финлянд"), QStringLiteral("finland"), QStringLiteral("helsinki"), QStringLiteral("🇫🇮")}},
-{QStringLiteral("DE"), QStringLiteral("Германия"),
+        {QStringLiteral("DE"), QStringLiteral("Германия"),
          {QStringLiteral("герман"), QStringLiteral("germany"), QStringLiteral("deutsch"), QStringLiteral("frankfurt"), QStringLiteral("🇩🇪")}},
         {QStringLiteral("NL"), QStringLiteral("Нидерланды"),
          {QStringLiteral("нидерланд"), QStringLiteral("netherlands"), QStringLiteral("holland"), QStringLiteral("amsterdam"), QStringLiteral("🇳🇱")}},

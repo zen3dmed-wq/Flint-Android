@@ -278,7 +278,7 @@ PageType {
         if (!isTv) return
         var point = item.mapToItem(main, 0, 0)
         if(point.y < viewport.contentY) viewport.contentY = Math.max(0, point.y - 12)
-        elseif(point.y + item.height > viewport.contentY + viewport.height) viewport.contentY = Math.min(viewport.contentHeight - viewport.height, point.y + item.height - viewport.height + 12)
+        else if(point.y + item.height > viewport.contentY + viewport.height) viewport.contentY = Math.min(viewport.contentHeight - viewport.height, point.y + item.height - viewport.height + 12)
     }
     function moveHomeFocus(step) {
         var controls = [homeSettingsButton, importQrButton, importClipboardButton, connectBtn, homePurchaseButton, tvPairButton, homeSubscriptionButton, locationTile, directTile, familyTile, supportTile]
@@ -1025,7 +1025,7 @@ PageType {
 
                 Text {
                     Layout.fillWidth: true
-text: root.accountTitle()
+                    text: root.accountTitle()
                     color: root.ink
                     font.pixelSize: 16
                     font.bold: true
@@ -1449,7 +1449,7 @@ text: root.accountTitle()
             }
         }
     }
-}
+    }
 
     Popup {
         id: importPopup

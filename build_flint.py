@@ -262,7 +262,7 @@ member = '    FlintController* m_flintController;\n'
 member_anchor = '    UpdateUiController* m_updateUiController;\n'
 if member not in s:
     if member_anchor not in s:
-        raiseRuntimeError("CoreController member anchor changed")
+        raise RuntimeError("CoreController member anchor changed")
     s = s.replace(member_anchor, member_anchor + member, 1)
 hdr.write_text(s, encoding="utf-8")
 
