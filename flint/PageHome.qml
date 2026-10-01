@@ -27,7 +27,7 @@ PageType {
     property color card: "#DE0A1C2D"
     property color line: "#46637A"
     property color warning: "#FFC56D"
-    FlintAccount { id: servicePopup; parent: root }
+    FlintAccount { id: servicePopup; parent: root; onAddDeviceRequested: familyQrPopup.open() }
     FlintDevices { id: devicesPopup; parent: root; onAddDeviceRequested: familyQrPopup.open() }
     FlintSites { id: sitesPopup; parent: root }
     FlintSubscriptions { id: subscriptionsPopup; parent: root }
@@ -278,7 +278,7 @@ PageType {
         if (!isTv) return
         var point = item.mapToItem(main, 0, 0)
         if(point.y < viewport.contentY) viewport.contentY = Math.max(0, point.y - 12)
-        else if(point.y + item.height > viewport.contentY + viewport.height) viewport.contentY = Math.min(viewport.contentHeight - viewport.height, point.y + item.height - viewport.height + 12)
+        elseif(point.y + item.height > viewport.contentY + viewport.height) viewport.contentY = Math.min(viewport.contentHeight - viewport.height, point.y + item.height - viewport.height + 12)
     }
     function moveHomeFocus(step) {
         var controls = [homeSettingsButton, importQrButton, importClipboardButton, connectBtn, homePurchaseButton, tvPairButton, homeSubscriptionButton, locationTile, directTile, familyTile, supportTile]
@@ -1025,7 +1025,7 @@ PageType {
 
                 Text {
                     Layout.fillWidth: true
-                    text: root.accountTitle()
+text: root.accountTitle()
                     color: root.ink
                     font.pixelSize: 16
                     font.bold: true
@@ -1154,7 +1154,7 @@ PageType {
             ListView {
                 id: locationList
                 objectName: "locationList"
-Layout.fillWidth: true
+                Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
                 spacing: 10
@@ -1449,7 +1449,7 @@ Layout.fillWidth: true
             }
         }
     }
-    }
+}
 
     Popup {
         id: importPopup

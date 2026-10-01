@@ -10,7 +10,8 @@ Popup {
         id: identityPanel; parent: panel.parent
         onProfileUpdated: function(value) { panel.profile = value; if (panel.opened) panel.reload() }
     }
-    FlintDevices { id: devicesPanel; parent: panel.parent }
+    signal addDeviceRequested()
+    FlintDevices { id: devicesPanel; parent: panel.parent; onAddDeviceRequested: panel.addDeviceRequested() }
     FlintSubscriptions { id: subscriptionsPanel; parent: panel.parent }
     objectName: "flintAccountPanel"
     property int section: 0
