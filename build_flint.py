@@ -2,6 +2,7 @@
 from pathlib import Path
 import shutil
 import sys
+from patch_android_identity import apply as apply_android_identity
 
 root = Path(sys.argv[1]).resolve()
 flint = Path(__file__).resolve().parent / "flint"
@@ -19,12 +20,12 @@ def replace(path, old, new, required=True):
 replace(
     "CMakeLists.txt",
     'set(AMNEZIAVPN_VERSION 5.0.3.0 CACHE STRING "Client app version")',
-    'set(AMNEZIAVPN_VERSION 8.10.0 CACHE STRING "Client app version")'
+    'set(AMNEZIAVPN_VERSION 8.10.1 CACHE STRING "Client app version")'
 )
 replace(
     "CMakeLists.txt",
     'set(APP_ANDROID_VERSION_CODE 2163)',
-    'set(APP_ANDROID_VERSION_CODE 2170)'
+    'set(APP_ANDROID_VERSION_CODE 2171)'
 )
 replace(
     "client/cmake/branding/common.cmake",
@@ -208,6 +209,7 @@ mt = mt.replace('android:roundIcon="@mipmap/icon_round"', 'android:roundIcon="@d
 mt = mt.replace('android:roundIcon="@drawable/ic_amnezia_round"', 'android:roundIcon="@drawable/flint_launcher"')
 # Keep the FileProvider authority aligned with the stable engine namespace.
 manifest.write_text(mt, encoding="utf-8")
+apply_android_identity(root, flint)
 
 # Remove remaining user-visible Amnezia naming from Android system dialogs.
 for rel in ["client/android/res/values/strings.xml",
@@ -327,4 +329,4 @@ assert 'parseSubscriptionProfiles' in (root / "client/ui/controllers/flintContro
 assert 'flintProfileServerId' in (root / "client/core/controllers/coreController.cpp").read_text(encoding="utf-8")
 assert 'clearQtCaches();' in (root / "client/amneziaApplication.cpp").read_text(encoding="utf-8")
 
-print("Flint Android 8.10.0 startup-safe patch applied and statically verified")
+print("Flint Android 8.10.1 startup-safe patch applied and statically verified")

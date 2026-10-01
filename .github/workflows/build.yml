@@ -1,4 +1,4 @@
-name: Build Flint Android 8.10.0
+name: Build Flint Android 8.10.1
 
 on:
   pull_request:
@@ -90,10 +90,11 @@ jobs:
           git clone --recursive --branch 5.0.3.0 \
             https://github.com/amnezia-vpn/amnezia-client.git amnezia-client
 
-      - name: Apply Flint Android 8.10.0
+      - name: Apply Flint Android 8.10.1
         shell: bash
         run: |
           python3 build_flint.py amnezia-client
+          python3 tests/test_android_identity.py amnezia-client
 
       - name: Verify Flint source before build
         shell: bash
@@ -150,20 +151,20 @@ jobs:
           find amnezia-client/deploy -type f -name '*.apk' -print -exec cp -f {} dist/ \;
           APK=$(find dist -maxdepth 1 -name '*.apk' | head -n 1)
           test -n "$APK"
-          mv "$APK" dist/Flint-v8.10.0-Android-arm64.apk
-          sha256sum dist/Flint-v8.10.0-Android-arm64.apk > dist/Flint-v8.10.0-Android-arm64.apk.sha256
+          mv "$APK" dist/Flint-v8.10.1-Android-arm64.apk
+          sha256sum dist/Flint-v8.10.1-Android-arm64.apk > dist/Flint-v8.10.1-Android-arm64.apk.sha256
 
       - name: Verify APK identity
         shell: bash
         run: |
           set -euo pipefail
-          APK=dist/Flint-v8.10.0-Android-arm64.apk
+          APK=dist/Flint-v8.10.1-Android-arm64.apk
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           "$AAPT" dump badging "$APK" | tee dist/aapt-badging.txt
           "$AAPT" dump xmltree "$APK" AndroidManifest.xml | tee dist/aapt-manifest.txt
           grep -F "package: name='app.flint.vpn'" dist/aapt-badging.txt
           grep -F "application-label:'Flint'" dist/aapt-badging.txt
-          grep -F "versionName='8.10.0'" dist/aapt-badging.txt
+          grep -F "versionName='8.10.1'" dist/aapt-badging.txt
           grep -F "org.amnezia.vpn.AmneziaApplication" dist/aapt-manifest.txt
           grep -F "org.amnezia.vpn.AmneziaActivity" dist/aapt-manifest.txt
           unzip -t "$APK"
@@ -172,10 +173,10 @@ jobs:
       - name: Upload Flint APK
         uses: actions/upload-artifact@v4
         with:
-          name: Flint-v8.10.0-Android-arm64
+          name: Flint-v8.10.1-Android-arm64
           path: |
-            dist/Flint-v8.10.0-Android-arm64.apk
-            dist/Flint-v8.10.0-Android-arm64.apk.sha256
+            dist/Flint-v8.10.1-Android-arm64.apk
+            dist/Flint-v8.10.1-Android-arm64.apk.sha256
             dist/aapt-badging.txt
             dist/aapt-manifest.txt
           retention-days: 14
