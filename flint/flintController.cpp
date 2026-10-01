@@ -21,7 +21,7 @@ void FlintController::requestHomeWidget()
 {
 #ifdef Q_OS_ANDROID
     auto activity = QNativeInterface::QAndroidApplication::context();
-    if (activity.isValid()) activity.callMethod<void>("requestFlintWidget", "()V");
+    if (activity.isValid()) activity.callMethod<void>("requestFlintWidget");
 #endif
 }
 
@@ -945,3 +945,4 @@ void FlintController::askAssist(const QString &message)
                   QStringLiteral("Обновите аккаунт или повторите подключение."));
     }
 }
+
