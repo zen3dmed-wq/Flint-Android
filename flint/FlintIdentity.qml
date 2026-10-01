@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "FlintFocus.js" as FlintFocus
 
 Popup {
     id: panel
@@ -50,7 +51,7 @@ Popup {
         if (Date.now() >= expiresAt) { linkId = ""; botUrl = ""; error = "Время подтверждения истекло. Начните привязку заново."; return }
         request("complete", "POST", "/me/telegram/bot/complete", {loginId: linkId})
     }
-    onOpened: { generation++; pending = {}; error = ""; message = ""; profile = {}; reload() }
+    onOpened: { if(SettingsController.isOnTv()) Qt.callLater(function() { FlintFocus.firstButton(panel.contentItem) }); generation++; pending = {}; error = ""; message = ""; profile = {}; reload() }
     onClosed: { generation++; pending = {}; linkId = ""; botUrl = ""; emailPassword.text = "" }
     Connections {
         target: FlintController

@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "FlintFocus.js" as FlintFocus
 
 Popup {
     id: panel
@@ -85,7 +86,7 @@ Popup {
         var template = config.flintIntegration ? config.flintIntegration.referralUrlTemplate : ""
         return template && template.indexOf("{code}") >= 0 ? template.replace("{code}", encodeURIComponent(referrals.code || "")) : (referrals.code || "")
     }
-    onOpened: { purchase = FlintController.clientDraft("purchase"); supportText.text = FlintController.clientDraft("support").text || ""; reload() }
+    onOpened: { if(SettingsController.isOnTv()) Qt.callLater(function() { FlintFocus.firstButton(panel.contentItem) }); purchase = FlintController.clientDraft("purchase"); supportText.text = FlintController.clientDraft("support").text || ""; reload() }
     onSectionChanged: { error = ""; message = ""; loadSection() }
     TextEdit { id: clipboard; visible: false }
     Connections {

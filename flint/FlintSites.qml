@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "FlintFocus.js" as FlintFocus
 
 Popup {
     id: panel
@@ -23,7 +24,7 @@ Popup {
     function changed() {
         feedback = "Сохранено. " + (ConnectionController.isConnected ? "Переподключите VPN, чтобы применить изменения." : "Изменения применятся при подключении.")
     }
-    onOpened: { feedback = ""; IpSplitTunnelingController.setRouteMode(2); IpSplitTunnelingController.updateModel() }
+    onOpened: { if(SettingsController.isOnTv()) Qt.callLater(function() { FlintFocus.firstButton(panel.contentItem) }); feedback = ""; IpSplitTunnelingController.setRouteMode(2); IpSplitTunnelingController.updateModel() }
     Connections {
         target: IpSplitTunnelingController
         function onFinished(message) { if (panel.opened) { if (panel.submitting) siteInput.clear(); panel.changed() } }

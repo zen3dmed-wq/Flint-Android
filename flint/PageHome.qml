@@ -5,6 +5,7 @@ import QtQuick.Dialogs
 
 import Style 1.0
 import "./"
+import "FlintFocus.js" as FlintFocus
 import "../Controls2"
 
 PageType {
@@ -187,6 +188,7 @@ PageType {
     }
     Popup {
         id: qrSourcePopup
+        onOpened: if(root.isTv) Qt.callLater(function() { FlintFocus.firstButton(qrSourcePopup.contentItem) })
         objectName: "qrSourcePopup"
         parent: root
         width: Math.min(root.width - 32, 360)
@@ -309,6 +311,7 @@ PageType {
     }
     Popup {
         id: tvPairPopup; objectName: "tvPairPopup"; parent: root
+        onOpened: if(root.isTv) Qt.callLater(function() { FlintFocus.firstButton(tvPairPopup.contentItem) })
         width: Math.min(root.width - 32, 560); height: Math.min(root.height - 24, 690)
         anchors.centerIn: parent; padding: 22; modal: true; focus: true
         background: Rectangle { radius: 24; color: "#081827"; border.color: root.line }
@@ -879,6 +882,7 @@ PageType {
 
     Popup {
         id: accountPopup
+        onOpened: if(root.isTv) Qt.callLater(function() { FlintFocus.firstButton(accountPopup.contentItem) })
         objectName: "accountPopup"
         x: Math.round((root.width - width) / 2)
         y: Math.round((root.height - height) / 2)
@@ -896,6 +900,7 @@ PageType {
         }
 
         contentItem: ScrollView {
+            property bool flintFocusScope: true
             id: accountScroll
             clip: true
             contentWidth: availableWidth
@@ -1079,6 +1084,7 @@ PageType {
 
     Popup {
         id: countryPopup
+        onOpened: if(root.isTv) Qt.callLater(function() { FlintFocus.firstButton(countryPopup.contentItem) })
         x: Math.round((root.width - width) / 2)
         y: Math.round((root.height - height) / 2)
         width: Math.min(root.width - 28, 430)
@@ -1116,6 +1122,17 @@ PageType {
 
                 delegate: FlintButton {
                     id: locationButton
+                    Keys.onPressed: function(event) {
+                        if (!root.isTv) return
+                        if (event.key === Qt.Key_Down || event.key === Qt.Key_Up) {
+                            locationList.currentIndex = Math.max(0, Math.min(locationList.count-1, index + (event.key === Qt.Key_Down ? 1 : -1)))
+                            locationList.positionViewAtIndex(locationList.currentIndex, ListView.Contain)
+                            Qt.callLater(function() { if(locationList.currentItem) locationList.currentItem.forceActiveFocus() })
+                            event.accepted = true
+                        } else if ([Qt.Key_Select, Qt.Key_Return, Qt.Key_Enter].indexOf(event.key) >= 0) { locationButton.clicked(); event.accepted = true }
+                        else if (event.key === Qt.Key_Right || event.key === Qt.Key_Left) event.accepted = popupFocus(event.key === Qt.Key_Right)
+                    }
+                    required property int index
                     required property var modelData
                     width: ListView.view.width
                     height: 64
@@ -1230,6 +1247,7 @@ PageType {
 
     Popup {
         id: familyQrPopup
+        onOpened: if(root.isTv) Qt.callLater(function() { FlintFocus.firstButton(familyQrPopup.contentItem) })
         x: Math.round((root.width - width) / 2)
         y: Math.round((root.height - height) / 2)
         width: Math.min(root.width - 28, 430)
@@ -1315,6 +1333,7 @@ PageType {
 
     Popup {
         id: settingsPopup
+        onOpened: if(root.isTv) Qt.callLater(function() { FlintFocus.firstButton(settingsPopup.contentItem) })
         x: Math.round((root.width - width) / 2)
         y: Math.round((root.height - height) / 2)
         width: Math.min(root.width - 28, 440)
@@ -1330,6 +1349,7 @@ PageType {
         }
 
         contentItem: ScrollView {
+            property bool flintFocusScope: true
             id: settingsScroll
             clip: true
             contentWidth: availableWidth
@@ -1392,6 +1412,7 @@ PageType {
 
     Popup {
         id: importPopup
+        onOpened: if(root.isTv) Qt.callLater(function() { FlintFocus.firstButton(importPopup.contentItem) })
         objectName: "importPopup"
         x: (root.width - width) / 2
         y: PageController.safeAreaTopMargin + 12
@@ -1403,6 +1424,7 @@ PageType {
         onClosed: { if (!root.importBusy) { importText.text = ""; root.qrImageRequest = ""; root.qrImageReading = false } }
         background: Rectangle { radius: 23; color: "#FC081827"; border.width: 1; border.color: root.line }
         contentItem: ScrollView {
+            property bool flintFocusScope: true
             id: importScroll
             clip: true
             contentWidth: availableWidth
@@ -1507,6 +1529,7 @@ PageType {
 
     Popup {
         id: apiSetupPopup
+        onOpened: if(root.isTv) Qt.callLater(function() { FlintFocus.firstButton(apiSetupPopup.contentItem) })
         x: (root.width - width) / 2
         y: PageController.safeAreaTopMargin + 16
         width: Math.min(root.width - 24, 470)
@@ -1514,6 +1537,7 @@ PageType {
         modal: true; focus: true
         background: Rectangle { radius: 20; color: "#FD081827"; border.color: root.line }
         contentItem: ScrollView {
+            property bool flintFocusScope: true
             id: apiSetupScroll; clip: true; contentWidth: availableWidth
             ColumnLayout {
                 width: apiSetupScroll.availableWidth; spacing: 14

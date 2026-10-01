@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "FlintFocus.js" as FlintFocus
 import "DeviceRows.js" as DeviceRows
 
 Popup {
