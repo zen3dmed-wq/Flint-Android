@@ -16,6 +16,10 @@ PageType {
     property bool tvPairWaiting: false
     property bool tvPairReceivedLogin: false
     property string tvPairMessage: ""
+    readonly property bool wideHome: width > height * 1.2
+    readonly property bool denseHome: viewport.height < 700 || wideHome
+    readonly property real homeGap: wideHome && viewport.height < 400 ? 4 : (denseHome ? 6 : 10)
+    readonly property real tileHeight: wideHome && viewport.height < 400 ? 52 : (denseHome ? 56 : 80)
     property real u: Math.max(0.86, Math.min(1.0, width / 412))
     property color ink: "#F8FBFF"
     property color muted: "#B7C9DA"
@@ -489,7 +493,7 @@ PageType {
 
     component Tile: Rectangle {
         Layout.fillWidth: true
-        Layout.preferredHeight: 100 * root.u
+        Layout.preferredHeight: root.tileHeight
         Layout.minimumHeight: Layout.preferredHeight
         Layout.maximumHeight: Layout.preferredHeight
         radius: 17 * root.u
@@ -512,21 +516,26 @@ PageType {
         anchors.bottom: parent.bottom
         anchors.topMargin: PageController.safeAreaTopMargin + 8
         anchors.bottomMargin: PageController.safeAreaBottomMargin + 8
-        width: Math.min(parent.width - 28, root.isTv ? 680 : 480)
-        contentHeight: main.implicitHeight
+        width: Math.min(parent.width - 28, root.wideHome ? 1120 : 480)
+        contentHeight: height
         boundsBehavior: Flickable.StopAtBounds
-        interactive: contentHeight > height
+        interactive: false
         clip: true
 
-        ColumnLayout {
+        GridLayout {
             id: main
             objectName: "mainLayout"
             width: viewport.width
-            spacing: 10 * root.u
+            height: viewport.height
+            columns: root.wideHome ? 2 : 1
+            columnSpacing: 16
+            rowSpacing: root.homeGap
+            uniformCellWidths: true
 
             RowLayout {
+                Layout.columnSpan: main.columns
                 Layout.fillWidth: true
-                Layout.preferredHeight: 48 * root.u
+                Layout.preferredHeight: root.denseHome ? 44 : 48
                 spacing: 10 * root.u
                 Image {
                     source: "qrc:/ui/qml/Assets/flint-logo.png"
@@ -578,11 +587,21 @@ PageType {
                 }
             }
 
+            ColumnLayout {
+                id: connectionSection
+                objectName: "connectionSection"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.minimumHeight: 0
+                spacing: root.homeGap
+
             Item {
                 id: emblemStage
                 objectName: "emblemStage"
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.max(120 * root.u, Math.min(280 * root.u, viewport.height - 576 * root.u))
+                Layout.fillHeight: true
+                Layout.minimumHeight: 0
+                Layout.preferredHeight: 180
                 Image {
                     id: mainEmblem
                     objectName: "mainEmblem"
@@ -598,7 +617,7 @@ PageType {
                     anchors.left: parent.left
                     y: mainEmblem.y
                     width: Math.min(110 * root.u, parent.width * 0.28)
-                    height: 38 * root.u
+                    height: 44
                     leftPadding: 8; rightPadding: 8; font.pixelSize: 12 * root.u
                     text: "QR-код"
                     enabled: !root.importBusy && !root.qrImageReading
@@ -619,19 +638,20 @@ PageType {
 
             ColumnLayout {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 60 * root.u
-                spacing: 3 * root.u
+                Layout.preferredHeight: root.denseHome ? 26 : 50
+                spacing: 3
                 Text {
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignHCenter
                     text: ConnectionController.isConnected ? "Вы защищены" : "Вы не защищены"
                     color: ConnectionController.isConnected ? root.mint : root.ink
-                    font.pixelSize: 26 * root.u
+                    font.pixelSize: root.denseHome ? 21 : 26
                     font.bold: true
                 }
                 Text {
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignHCenter
+                    visible: !root.denseHome
                     text: ConnectionController.isConnected ? "Flint Guard контролирует соединение" : "Подключитесь, чтобы защитить свои данные"
                     color: root.muted
                     font.pixelSize: 12 * root.u
@@ -643,7 +663,7 @@ PageType {
                 id: connectBtn
                 objectName: "connectButton"
                 Layout.fillWidth: true
-                Layout.preferredHeight: 58 * root.u
+                Layout.preferredHeight: root.denseHome ? 48 : 56
                 enabled: true
                 text: root.connectionPending ? "ОТМЕНИТЬ" : (ConnectionController.isConnected ? "ОТКЛЮЧИТЬ" : "ПОДКЛЮЧИТЬСЯ")
                 opacity: enabled ? 1 : 0.7
@@ -687,7 +707,7 @@ PageType {
                 id: guardPanel
                 objectName: "guardPanel"
                 Layout.fillWidth: true
-                Layout.preferredHeight: 40 * root.u
+                Layout.preferredHeight: root.denseHome ? 28 : 36
                 radius: 14 * root.u
                 color: "#E20A1A2A"
                 border.width: 1
@@ -724,16 +744,27 @@ PageType {
                 id: homePurchaseButton
                 objectName: "homePurchaseButton"
                 Layout.fillWidth: true
-                Layout.preferredHeight: 44 * root.u
+                Layout.preferredHeight: 44
                 text: "Купить / продлить подписку"
                 onClicked: root.openPurchase()
             }
+
+            }
+
+            ColumnLayout {
+                id: accountSection
+                objectName: "accountSection"
+                Layout.fillWidth: true
+                Layout.fillHeight: root.wideHome
+                Layout.alignment: Qt.AlignTop
+                spacing: root.homeGap
 
             FlintButton {
                 id: tvPairButton
                 objectName: "tvPairButton"
                 visible: root.isTv
                 Layout.fillWidth: true
+                Layout.preferredHeight: 44
                 text: "Добавить с помощью QR"
                 onClicked: root.startTvPairing()
             }
@@ -743,26 +774,29 @@ PageType {
                 objectName: "homeSubscriptionButton"
                 visible: FlintController.loggedIn
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.max(86, subscriptionLabels.implicitHeight + 22)
+                Layout.preferredHeight: root.denseHome ? 70 : 84
+                topPadding: 6; bottomPadding: 6
+                leftPadding: 12; rightPadding: 12
                 Accessible.name: "Выбрать подписку"
                 contentItem: ColumnLayout {
-                    id: subscriptionLabels; spacing: 4
+                    id: subscriptionLabels; spacing: 2
                     RowLayout {
                         Layout.fillWidth: true
-                        Text { text: Usage.title(FlintController.selectedSubscription); color: root.ink; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true }
+                        Text { text: Usage.title(FlintController.selectedSubscription); font.pixelSize: root.denseHome ? 12 : 14; color: root.ink; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true }
                         Text { text: "Сменить ›"; color: root.mint; font.pixelSize: 12 }
                     }
-                    FlintTrafficBar { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight; subscription: FlintController.selectedSubscription; textColor: root.muted }
+                    FlintTrafficBar { compact: root.denseHome; Layout.fillWidth: true; Layout.preferredHeight: implicitHeight; subscription: FlintController.selectedSubscription; textColor: root.muted }
                 }
                 onClicked: subscriptionsPopup.open()
             }
 
             GridLayout {
+                id: featureGrid
                 objectName: "featureGrid"
                 Layout.fillWidth: true
                 columns: 2
-                columnSpacing: 10 * root.u
-                rowSpacing: 10 * root.u
+                columnSpacing: root.homeGap
+                rowSpacing: root.homeGap
                 uniformCellWidths: true
 
                 Tile {
@@ -770,12 +804,12 @@ PageType {
                     activate: function() { root.openLocations() }
                     Column {
                         anchors.fill: parent
-                        anchors.margins: 12 * root.u
-                        spacing: 10 * root.u
+                        anchors.margins: root.denseHome ? 8 : 12
+                        spacing: root.denseHome ? 2 : 8
                         Row {
                             width: parent.width
                             spacing: 8 * root.u
-                            Glyph { pathData: "M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0zM15 10a3 3 0 1 1-6 0 3 3 0 0 1 6 0" }
+                            Glyph { width: root.denseHome ? 20 : 24; pathData: "M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0zM15 10a3 3 0 1 1-6 0 3 3 0 0 1 6 0" }
                             Text {
                                 width: parent.width - 32 * root.u
                                 anchors.verticalCenter: parent.verticalCenter
@@ -786,7 +820,7 @@ PageType {
                                 elide: Text.ElideRight
                             }
                         }
-                        Text { text: FlintController.selectedSavedServerId ? "Добавленный сервер" : "Сервер подписки"; color: root.muted; font.pixelSize: 12 * root.u }
+                        Text { text: FlintController.selectedSavedServerId ? "Добавленный сервер" : "Сервер подписки"; color: root.muted; font.pixelSize: root.denseHome ? 11 : 12 }
                     }
                     MouseArea {
                         anchors.fill: parent
@@ -797,54 +831,35 @@ PageType {
                 Tile {
                     id: directTile
                     activate: function() { sitesPopup.open() }
-                    Column {
+                    Item {
                         anchors.fill: parent
-                        anchors.margins: 12 * root.u
-                        spacing: 8 * root.u
-                        Row {
-                            spacing: 8 * root.u
-                            Text { width: 24 * root.u; text: "РФ"; color: root.mint; font.bold: true; font.pixelSize: 13 * root.u }
-                            Text { text: "Сайты РФ"; color: root.ink; font.bold: true; font.pixelSize: 13 * root.u; MouseArea { anchors.fill: parent; onClicked: sitesPopup.open() } }
+                        anchors.leftMargin: 8; anchors.rightMargin: 8
+                        Column {
+                            id: directLabels
+                            anchors.left: parent.left; anchors.right: ruSwitch.left
+                            anchors.rightMargin: 4; anchors.verticalCenter: parent.verticalCenter
+                            spacing: 2
+                            Text { width: parent.width; text: "Сайты РФ"; color: root.ink; font.bold: true; font.pixelSize: 13 * root.u; elide: Text.ElideRight }
+                            Text { width: parent.width; text: "Правила →"; color: FlintController.ruDirectEnabled ? root.mint : root.muted; font.pixelSize: 11; elide: Text.ElideRight }
                         }
-                        RowLayout {
-                            width: parent.width
-                            spacing: 4 * root.u
-                            Text {
-                                Layout.fillWidth: true
-                                Layout.minimumWidth: 0
-                                text: "Правила и сайты →"
-                                MouseArea { anchors.fill: parent; onClicked: sitesPopup.open() }
-                                color: FlintController.ruDirectEnabled ? root.mint : root.muted
-                                font.pixelSize: 11 * root.u
+                        MouseArea { anchors.fill: directLabels; onClicked: sitesPopup.open() }
+                        Switch {
+                            id: ruSwitch
+                            objectName: "russianSwitch"
+                            anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                            width: 44; height: 44; padding: 0
+                            checked: FlintController.ruDirectEnabled
+                            Accessible.name: "Российские сайты напрямую"
+                            contentItem: Item {}
+                            indicator: Rectangle {
+                                width: 44; height: 24; y: (ruSwitch.height - height) / 2
+                                radius: 12; color: ruSwitch.checked ? root.mint : "#3D5364"
+                                Rectangle { x: ruSwitch.checked ? 23 : 3; y: 3; width: 18; height: 18; radius: 9; color: "#F8FBFF" }
                             }
-                            Switch {
-                                id: ruSwitch
-                                objectName: "russianSwitch"
-                                Layout.preferredWidth: 44
-                                Layout.minimumWidth: 44
-                                Layout.maximumWidth: 44
-                                Layout.preferredHeight: 36
-                                padding: 0
-                                checked: FlintController.ruDirectEnabled
-                                Accessible.name: "Российские сайты напрямую"
-                                contentItem: Item {}
-                                indicator: Rectangle {
-                                    width: 44; height: 24
-                                    y: (ruSwitch.height - height) / 2
-                                    radius: 12
-                                    color: ruSwitch.checked ? root.mint : "#3D5364"
-                                    Rectangle {
-                                        x: ruSwitch.checked ? 23 : 3
-                                        y: 3
-                                        width: 18; height: 18; radius: 9
-                                        color: "#F8FBFF"
-                                    }
-                                }
-                                onToggled: {
-                                    FlintController.ruDirectEnabled = checked
-                                    IpSplitTunnelingController.setRouteMode(2)
-                                    IpSplitTunnelingController.toggleSplitTunneling(checked)
-                                }
+                            onToggled: {
+                                FlintController.ruDirectEnabled = checked
+                                IpSplitTunnelingController.setRouteMode(2)
+                                IpSplitTunnelingController.toggleSplitTunneling(checked)
                             }
                         }
                     }
@@ -855,18 +870,18 @@ PageType {
                     activate: function() { FlintController.loggedIn ? devicesPopup.open() : accountPopup.open() }
                     Column {
                         anchors.fill: parent
-                        anchors.margins: 12 * root.u
-                        spacing: 10 * root.u
+                        anchors.margins: root.denseHome ? 8 : 12
+                        spacing: root.denseHome ? 2 : 8
                         Row {
                             spacing: 8 * root.u
-                            Glyph { pathData: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8" }
+                            Glyph { width: root.denseHome ? 20 : 24; pathData: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8" }
                             Text { anchors.verticalCenter: parent.verticalCenter; text: "Устройства"; color: root.ink; font.bold: true; font.pixelSize: 13 * root.u }
                         }
                         Text {
                             width: parent.width
                             text: FlintController.loggedIn ? "Устройства и доступ" : "Войти в аккаунт"
                             color: FlintController.subscriptionActive ? root.mint : root.muted
-                            font.pixelSize: 12 * root.u
+                            font.pixelSize: root.denseHome ? 11 : 12
                             elide: Text.ElideRight
                         }
                     }
@@ -878,18 +893,18 @@ PageType {
                     activate: function() { FlintController.loggedIn ? (servicePopup.section = 3, servicePopup.open()) : accountPopup.open() }
                     Column {
                         anchors.fill: parent
-                        anchors.margins: 12 * root.u
-                        spacing: 10 * root.u
+                        anchors.margins: root.denseHome ? 8 : 12
+                        spacing: root.denseHome ? 2 : 8
                         Row {
                             spacing: 8 * root.u
-                            Image { width: 24 * root.u; height: width; source: "qrc:/ui/qml/Assets/flint-logo.png" }
+                            Image { width: root.denseHome ? 20 : 24; height: width; source: "qrc:/ui/qml/Assets/flint-logo.png" }
                             Text { anchors.verticalCenter: parent.verticalCenter; text: "Поддержка"; color: root.ink; font.bold: true; font.pixelSize: 13 * root.u }
                         }
                         Text {
                             width: parent.width
                             text: FlintController.apiOnline ? "Flint готов помочь" : "Работаем офлайн"
                             color: FlintController.apiOnline ? root.mint : root.warning
-                            font.pixelSize: 12 * root.u
+                            font.pixelSize: root.denseHome ? 11 : 12
                             elide: Text.ElideRight
                         }
                     }
@@ -905,7 +920,10 @@ PageType {
                 text: root.displayBackendError
                 color: "#FF9A9A"
                 font.pixelSize: 11 * root.u
-                wrapMode: Text.Wrap
+                elide: Text.ElideRight
+                maximumLineCount: 1
+                MouseArea { anchors.fill: parent; onClicked: PageController.showNotificationMessage(root.displayBackendError) }
+            }
             }
         }
     }
@@ -1398,7 +1416,7 @@ PageType {
             }
 
             Text { text: "Настройки Flint"; color: root.ink; font.pixelSize: 21; font.bold: true }
-            Text { text: "Flint Android 8.10.7"; color: root.muted }
+            Text { text: "Flint Android 8.10.8"; color: root.muted }
 
             FlintButton {
                 Layout.fillWidth: true

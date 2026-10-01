@@ -25,12 +25,12 @@ def replace(path, old, new, required=True):
 replace(
     "CMakeLists.txt",
     'set(AMNEZIAVPN_VERSION 5.0.3.0 CACHE STRING "Client app version")',
-    'set(AMNEZIAVPN_VERSION 8.10.7 CACHE STRING "Client app version")'
+    'set(AMNEZIAVPN_VERSION 8.10.8 CACHE STRING "Client app version")'
 )
 replace(
     "CMakeLists.txt",
     'set(APP_ANDROID_VERSION_CODE 2163)',
-    'set(APP_ANDROID_VERSION_CODE 2177)'
+    'set(APP_ANDROID_VERSION_CODE 2178)'
 )
 replace(
     "client/cmake/branding/common.cmake",
@@ -379,7 +379,7 @@ assert 'parseSubscriptionProfiles' in (root / "client/ui/controllers/flintContro
 assert 'flintProfileServerId' in (root / "client/core/controllers/coreController.cpp").read_text(encoding="utf-8")
 assert 'clearQtCaches();' in (root / "client/amneziaApplication.cpp").read_text(encoding="utf-8")
 
-print("Flint Android 8.10.7 startup-safe patch applied and statically verified")
+print("Flint Android 8.10.8 startup-safe patch applied and statically verified")
 
 apply_vpn_permission(root)
 
