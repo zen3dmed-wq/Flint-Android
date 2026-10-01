@@ -25,7 +25,7 @@ def apply(root, bundle_id, team, render_icons=True):
         p.write_text(s.replace(old, new), encoding='utf-8')
 
     group = 'group.' + bundle_id
-    edit('CMakeLists.txt', 'set(AMNEZIAVPN_VERSION 8.10.7 CACHE', 'set(AMNEZIAVPN_VERSION 8.10.7.2176 CACHE')
+    edit('CMakeLists.txt', 'set(AMNEZIAVPN_VERSION 8.10.7 CACHE', 'set(AMNEZIAVPN_VERSION 8.10.7.2177 CACHE')
     edit('cmake/platform_settings.cmake', 'set(CONAN_INSTALL_BUILD_CONFIGURATIONS Release Debug MinSizeRel RelWithDebInfo)',
          'set(CONAN_INSTALL_BUILD_CONFIGURATIONS ${CMAKE_CONFIGURATION_TYPES})')
     apple = 'client/cmake/branding/apple.cmake'
