@@ -33,7 +33,7 @@ void FlintController::requestHomeWidget()
 
 namespace {
 const QString kApiBase = QStringLiteral("https://flintmain.ru/api/v1");
-const QString kVersion = QStringLiteral("8.10.5");
+const QString kVersion = QStringLiteral("8.10.6");
 
 bool isProfileUri(const QString &s)
 {
@@ -204,13 +204,33 @@ void FlintController::accountRequest(const QString &id, const QString &method, c
                                      const QVariantMap &body, const QString &key)
 {
     static const QRegularExpression allowed(QStringLiteral(
-        "^/(config|me(/sessions)?|subscriptions(/[A-Za-z0-9_-]+/devices(/[A-Za-z0-9_-]+)?)?|plans|payment-methods|orders(/[A-Za-z0-9_-]+(/(payment-link|cancel))?)?|referrals(/apply)?|support/tickets(/[A-Za-z0-9_-]+)?)$"));
+        "^/(config|me(/sessions(/[A-Za-z0-9_-]{1,128})?)?|subscriptions(/[A-Za-z0-9_-]+/devices(/[A-Za-z0-9_-]+)?)?|plans|payment-methods|orders(/[A-Za-z0-9_-]+(/(payment-link|cancel))?)?|referrals(/apply)?|support/tickets(/[A-Za-z0-9_-]+)?)$"));
     static const QRegularExpression deviceDelete(QStringLiteral("^/subscriptions/[A-Za-z0-9_-]+/devices/[A-Za-z0-9_-]+$"));
-    if (!allowed.match(path).hasMatch() || (method != "GET" && method != "POST" && !(method == "DELETE" && deviceDelete.match(path).hasMatch()))) {
+    static const QRegularExpression sessionDelete(QStringLiteral("^/me/sessions/[A-Za-z0-9_-]{1,128}$"));
+    const bool isSession = sessionDelete.match(path).hasMatch();
+    if (!allowed.match(path).hasMatch() || (isSession && method != "DELETE") || (method != "GET" && method != "POST" && !(method == "DELETE" && (deviceDelete.match(path).hasMatch() || isSession)))) {
         emit accountResponse(id, 400, {}, QStringLiteral("Операция API не поддерживается")); return;
     }
     if (method == "POST" && (path == "/orders" || path == "/support/tickets") && key.isEmpty()) {
         emit accountResponse(id, 400, {}, QStringLiteral("Не указан ключ повторного запроса")); return;
+    }
+    if (isSession) {
+        authorizedGet("/me/sessions", [this, id, method, path, body, key](int status, const QByteArray &raw, const QString &error) {
+            if (status != 200) { emit accountResponse(id, status, {}, error.isEmpty() ? QStringLiteral("Не удалось проверить список входов") : error); return; }
+            const QString target = path.section('/', -1);
+            const auto items = QJsonDocument::fromJson(raw).object().value("items").toArray();
+            for (const auto &value : items) {
+                const auto session = value.toObject();
+                if (session.value("id").toString() != target) continue;
+                if (!session.contains("isCurrent") || session.value("isCurrent").toBool(true)) {
+                    emit accountResponse(id, 400, {}, QStringLiteral("Текущий вход защищён. Для выхода используйте настройки аккаунта.")); return;
+                }
+                accountRequestImpl(id, method, path, body, key, true);
+                return;
+            }
+            emit accountResponse(id, 404, {}, QStringLiteral("Вход уже завершён или не принадлежит вашему аккаунту. Обновите список."));
+        });
+        return;
     }
     accountRequestImpl(id, method, path, body, key, true);
 }
@@ -244,7 +264,8 @@ void FlintController::accountRequestImpl(const QString &id, const QString &metho
             error = document.object().value("detail").toString();
             if (error.isEmpty()) error = status == 0 ? QStringLiteral("Нет ответа сервера. Повторите запрос.")
                 : QStringLiteral("Операция недоступна на подключённом API (HTTP %1).").arg(status);
-        } else if (status != 204 && !document.isObject()) error = QStringLiteral("Некорректный ответ API");
+        } else if (method == "DELETE" && path.startsWith("/me/sessions/") && status != 204) error = QStringLiteral("Сервер ещё не подтвердил завершение входа");
+        else if (status != 204 && !document.isObject()) error = QStringLiteral("Некорректный ответ API");
         emit accountResponse(id, status, document.object().toVariantMap(), error);
     });
 }

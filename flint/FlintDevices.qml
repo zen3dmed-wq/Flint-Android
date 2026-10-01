@@ -12,9 +12,13 @@ Popup {
     property var sessions: []
     property var pending: ({})
     property var confirmTarget: ({})
+    property var sessionTarget: ({})
+    property string sessionNotice: ""
+    readonly property bool sessionBusy: Object.keys(pending).some(function(k) { return pending[k].kind.indexOf("session-revoke-") === 0 })
     property int generation: 0
     property string subscriptionId: ""
     property bool canManage: false
+    property bool deviceUnsupported: false
     property string notice: ""
     property string error: ""
     readonly property color ink: "#F8FBFF"
@@ -35,7 +39,8 @@ Popup {
         FlintController.accountRequest(id, method, path, {}, "")
     }
     function reload() {
-        generation++; pending = {}; canManage = false; devices = []; profile = {}; error = ""; notice = ""
+        generation++; pending = {}; canManage = false; deviceUnsupported = false; devices = []; sessions = []; profile = {}; error = ""; notice = ""; sessionNotice = ""
+        sessionConfirmation.close(); sessionTarget = {}
         if (!FlintController.loggedIn) return
         request("me", "GET", "/me")
         request("sessions", "GET", "/me/sessions")
@@ -61,8 +66,21 @@ Popup {
         var date = new Date(value)
         return isNaN(date.getTime()) ? "Нет данных" : Qt.formatDateTime(date, "dd.MM.yyyy HH:mm")
     }
+    function askSessionRevoke(session) {
+        if (!session || session.isCurrent || !session.id || sessionBusy) return
+        sessionTarget = session
+        sessionConfirmation.open()
+    }
+    function revokeSessionConfirmed() {
+        var target = sessionTarget
+        if (sessionBusy || !target.id || target.isCurrent) return
+        var present = sessions.some(function(group) { return group.items.some(function(item) { return item.id === target.id && !item.isCurrent }) })
+        if (!present) return
+        request("session-revoke-" + target.id, "DELETE", "/me/sessions/" + encodeURIComponent(target.id), target)
+        sessionConfirmation.close()
+    }
     onOpened: reload()
-    onClosed: { generation++; pending = {}; confirmation.close(); confirmTarget = {} }
+    onClosed: { generation++; pending = {}; confirmation.close(); sessionConfirmation.close(); confirmTarget = {}; sessionTarget = {} }
     Connections {
         target: FlintController
         function onAuthChanged() {
@@ -78,13 +96,19 @@ Popup {
             if (failure) {
                 if (kind.indexOf("list-") === 0) {
                     panel.canManage = false; panel.devices = []
+                    panel.deviceUnsupported = status === 404 || status === 501
                     panel.notice = status === 403 ? "Управлять устройствами может только владелец основной подписки." :
-                        (status === 404 || status === 501 ? "Ваш API пока не поддерживает отдельное отключение VPN-устройств. Вход в аккаунт выполнен, но серверную интеграцию ещё нужно подключить." : "Не удалось загрузить устройства: " + failure + ". Повторите обновление списка.")
+                        (status === 404 || status === 501 ? "Вход и подписка работают. Отключение VPN на отдельном устройстве пока недоступно на сервере Flint. Ниже можно управлять входами в свой аккаунт." : "Не удалось загрузить устройства: " + failure + ". Повторите обновление списка.")
                 } else panel.error = failure
                 return
             }
             if (kind === "me") { panel.profile = data; panel.loadDevices() }
-            if (kind === "sessions") panel.sessions = DeviceRows.uniqueSessions(data.items || [])
+            if (kind === "sessions") panel.sessions = DeviceRows.groupSessions(data.items || [])
+            if (kind.indexOf("session-revoke-") === 0) {
+                if (status !== 204) { panel.error = "Сервер ещё не подтвердил завершение входа. Обновите список."; return }
+                panel.sessionNotice = "Вход завершён. Ранее выданный VPN-ключ этим действием не отзывается."
+                panel.request("sessions", "GET", "/me/sessions")
+            }
             if (kind === "subscriptions") {
                 panel.subscriptions = (data.items || []).map(function(s) { return {id:s.id, name:s.plan ? s.plan.name : "Подписка", status:s.status} })
                 if (!panel.subscriptions.some(function(s) { return s.id === panel.subscriptionId }))
@@ -92,6 +116,7 @@ Popup {
                 panel.loadDevices()
             }
             if (kind.indexOf("list-") === 0) {
+                panel.deviceUnsupported = false
                 panel.canManage = !!panel.profile.id && data.ownerUserId === panel.profile.id && data.subscriptionId === panel.subscriptionId && data.canManageDevices === true
                 panel.devices = panel.canManage ? (data.items || []) : []
                 panel.notice = panel.canManage ? "Только вы, как владелец подписки, можете отключать устройства." : "Управление доступно только владельцу основной подписки."
@@ -108,11 +133,11 @@ Popup {
         spacing: 12
         RowLayout {
             Layout.fillWidth: true
-            Text { Layout.fillWidth: true; text: "Устройства"; color: panel.ink; font.pixelSize: 23; font.bold: true }
+            Text { Layout.fillWidth: true; text: panel.deviceUnsupported ? "Входы в аккаунт" : "Устройства"; color: panel.ink; font.pixelSize: 23; font.bold: true; wrapMode: Text.Wrap }
             FlintButton { text: "×"; implicitWidth: 40; font.pixelSize: 24; subtle: true; onClicked: panel.close() }
         }
         FlintChoice {
-            Layout.fillWidth: true; visible: panel.subscriptions.length > 1
+            Layout.fillWidth: true; visible: panel.subscriptions.length > 1 && !panel.deviceUnsupported
             model: panel.subscriptions; textRole: "name"
             onActivated: { panel.subscriptionId = panel.subscriptions[currentIndex].id; panel.loadDevices() }
         }
@@ -140,24 +165,57 @@ Popup {
                     }
                 }
                 Text { Layout.topMargin: 12; text: "СЕАНСЫ ВХОДА В АККАУНТ"; color: panel.muted; font.pixelSize: 11; font.letterSpacing: 1 }
-                Text { Layout.fillWidth: true; text: "Сеанс входа не означает, что VPN сейчас подключён. Устройства с общим QR-ключом здесь не отображаются."; color: panel.muted; font.pixelSize: 12; wrapMode: Text.Wrap }
+                Text { Layout.fillWidth: true; text: "Входы собраны по системе устройства. Откройте группу, чтобы завершить ненужный вход. Это список входов в аккаунт, а не активных VPN-подключений."; color: panel.muted; font.pixelSize: 12; wrapMode: Text.Wrap }
+                Text { Layout.fillWidth: true; visible: !!panel.sessionNotice; text: panel.sessionNotice; color: "#57E4B0"; wrapMode: Text.Wrap }
                 Repeater {
                     model: panel.sessions
                     Rectangle {
+                        id: groupCard
+                        objectName: "loginSessionGroup"
                         required property var modelData
+                        property bool expanded: false
                         Layout.fillWidth: true; implicitHeight: sessionBody.implicitHeight + 28
                         radius: 16; color: "#102635"; border.color: "#2B4A5E"
                         ColumnLayout {
                             id: sessionBody; anchors.fill: parent; anchors.margins: 14; spacing: 7
-                            Text { Layout.fillWidth: true; text: (modelData.model || modelData.platform || "Устройство") + (modelData.isCurrent ? " · это устройство" : ""); textFormat: Text.PlainText; color: panel.ink; font.bold: true; wrapMode: Text.Wrap }
-                            Text { Layout.fillWidth: true; text: (modelData.platform || "") + " " + (modelData.osVersion || "") + " · Flint " + (modelData.appVersion || "—"); color: panel.muted; wrapMode: Text.Wrap; font.pixelSize: 12 }
-                            Text { Layout.fillWidth: true; text: "Вход / обновление сеанса: " + panel.dateText(modelData.lastActiveAt); color: panel.muted; wrapMode: Text.Wrap; font.pixelSize: 12 }
+                            Text { Layout.fillWidth: true; text: "Входы: " + groupCard.modelData.model; textFormat: Text.PlainText; color: panel.ink; font.bold: true; wrapMode: Text.Wrap }
+                            Text { Layout.fillWidth: true; text: "Сеансов: " + groupCard.modelData.items.length + (groupCard.modelData.isCurrent ? " · здесь текущий вход" : ""); color: panel.muted; wrapMode: Text.Wrap; font.pixelSize: 12 }
+                            Text { Layout.fillWidth: true; visible: !groupCard.modelData.verifiedIdentity && groupCard.modelData.items.length > 1; text: "Здесь могут быть входы с разных устройств."; color: panel.muted; wrapMode: Text.Wrap; font.pixelSize: 12 }
+                            FlintButton { text: groupCard.expanded ? "Свернуть входы" : "Показать входы"; onClicked: groupCard.expanded = !groupCard.expanded }
+                            Repeater {
+                                model: groupCard.expanded ? groupCard.modelData.items : []
+                                ColumnLayout {
+                                    required property var modelData
+                                    Layout.fillWidth: true; Layout.topMargin: 10; spacing: 7
+                                    Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: "#345468" }
+                                    Text { Layout.fillWidth: true; text: modelData.model || modelData.platform || "Устройство"; textFormat: Text.PlainText; color: panel.ink; wrapMode: Text.Wrap }
+                                    Text { Layout.fillWidth: true; text: "Flint " + (modelData.appVersion || "—") + (modelData.isCurrent ? " · текущий вход" : ""); color: panel.ink; wrapMode: Text.Wrap }
+                                    Text { Layout.fillWidth: true; text: "Последняя активность: " + panel.dateText(modelData.lastActiveAt); color: panel.muted; wrapMode: Text.Wrap; font.pixelSize: 12 }
+                                    FlintButton { text: "Завершить вход"; visible: !modelData.isCurrent; enabled: !panel.sessionBusy; onClicked: panel.askSessionRevoke(modelData) }
+                                }
+                            }
                         }
                     }
                 }
             }
         }
         FlintButton { Layout.fillWidth: true; text: "Обновить список"; onClicked: panel.reload() }
+    }
+    Popup {
+        id: sessionConfirmation; parent: panel.parent; width: Math.min(parent.width - 40, 400)
+        x: (parent.width-width)/2; y: Math.max(PageController.safeAreaTopMargin, (parent.height-height)/2)
+        padding: 20; modal: true; focus: true
+        background: Rectangle { radius: 20; color: "#102635"; border.color: "#57E4B0" }
+        contentItem: ColumnLayout {
+            spacing: 16
+            Text { Layout.fillWidth: true; text: "Завершить этот вход?"; color: panel.ink; font.pixelSize: 20; wrapMode: Text.Wrap }
+            Text { Layout.fillWidth: true; text: "Flint " + (panel.sessionTarget.appVersion || "—") + " · " + panel.dateText(panel.sessionTarget.lastActiveAt); color: panel.ink; wrapMode: Text.Wrap }
+            Text { Layout.fillWidth: true; text: "Для доступа к аккаунту с этого входа потребуется войти снова. Уже выданный VPN-ключ продолжит работать. Текущий вход и остальные сеансы сохранятся."; color: panel.muted; wrapMode: Text.Wrap }
+            RowLayout {
+                FlintButton { text: "Отмена"; onClicked: sessionConfirmation.close() }
+                FlintButton { text: "Завершить"; primary: true; onClicked: panel.revokeSessionConfirmed() }
+            }
+        }
     }
     Popup {
         id: confirmation; parent: panel.parent; width: Math.min(parent.width - 40, 400)

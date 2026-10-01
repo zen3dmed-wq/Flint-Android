@@ -47,7 +47,36 @@ private slots:
         controller.accountRequest("bad", "DELETE", "/subscriptions", {}, "");
         QCOMPARE(responses.last().at(1).toInt(), 400);
         controller.accountRequest("session", "DELETE", "/me/sessions/current", {}, "");
-        QCOMPARE(responses.last().at(1).toInt(), 400);
+        QTRY_COMPARE_WITH_TIMEOUT(responses.size(), 3, 2000);
+        QVERIFY(!responses.last().at(3).toString().isEmpty());
+    }
+    void sessionRevokeChecksInventoryProtectsCurrentAndRequires204() {
+        QTcpServer server; QVERIFY(server.listen(QHostAddress::LocalHost));
+        int deletes = 0; int deleteStatus = 204;
+        connect(&server, &QTcpServer::newConnection, &server, [&]() {
+            auto *socket = server.nextPendingConnection();
+            connect(socket, &QTcpSocket::readyRead, socket, [&,socket]() {
+                const auto request = socket->readAll();
+                QByteArray body; QByteArray status = "200 OK";
+                if (request.startsWith("GET /me/sessions ")) body = R"({"items":[{"id":"current","isCurrent":true},{"id":"old","isCurrent":false}]})";
+                else { ++deletes; status = deleteStatus == 204 ? "204 No Content" : "202 Accepted"; body = deleteStatus == 204 ? "" : "{}"; }
+                socket->write("HTTP/1.1 " + status + "\r\nContent-Length: " + QByteArray::number(body.size()) + "\r\nConnection: close\r\n\r\n" + body); socket->disconnectFromHost();
+            });
+        });
+        QTemporaryDir dir; SecureQSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
+        settings.setValue("Conf/flintStartupSchema", 999);
+        settings.setValue("Conf/flintApiBase", QString("http://127.0.0.1:%1").arg(server.serverPort()));
+        settings.setValue("Conf/flintRefreshToken", "TEST"); settings.setValue("Conf/flintAccessToken", "TEST");
+        FlintController controller(&settings); QSignalSpy responses(&controller, &FlintController::accountResponse);
+        for (const QString &id : {"current", "foreign", "old"}) {
+            const auto before = responses.size(); controller.accountRequest(id,"DELETE","/me/sessions/"+id,{},"");
+            QTRY_COMPARE_WITH_TIMEOUT(responses.size(),before+1,2000);
+            QCOMPARE(responses.last().at(1).toInt(), id == "current" ? 400 : id == "foreign" ? 404 : 204);
+        }
+        QCOMPARE(deletes,1);
+        deleteStatus=202; controller.accountRequest("pending","DELETE","/me/sessions/old",{},"");
+        QTRY_COMPARE_WITH_TIMEOUT(responses.size(),4,2000);
+        QVERIFY(!responses.last().at(3).toString().isEmpty());
     }
     void autoUsesCachedWorkingProfileAndHasBoundedAlternatives() {
         QTemporaryDir dir;

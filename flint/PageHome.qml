@@ -1167,7 +1167,7 @@ PageType {
             }
 
             Text { text: "Настройки Flint"; color: root.ink; font.pixelSize: 21; font.bold: true }
-            Text { text: "Flint Android 8.10.5"; color: root.muted }
+            Text { text: "Flint Android 8.10.6"; color: root.muted }
 
             FlintButton {
                 Layout.fillWidth: true
