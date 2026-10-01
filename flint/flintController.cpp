@@ -265,7 +265,6 @@ QString FlintController::ensureDeviceId()
     if (id.isEmpty()) {
         id = QUuid::createUuid().toString(QUuid::WithoutBraces);
         m_settings->setValue("Conf/flintDeviceId", id);
-        m_settings->sync();
     }
     return id;
 }

@@ -140,6 +140,19 @@ new = ('encryptedKeys({ "Servers/serversList", "Conf/flintAccessToken", '
        '"Conf/flintTelegramVerifier", "Conf/flintTelegramLoginId" })')
 if old in s:
     s = s.replace(old, new, 1)
+# Persist the installation identity before any login request can use it. The
+# secure wrapper has no public sync(); flush its underlying QSettings while
+# setValue still holds its existing mutex.
+identity_flush = '''    m_cache.insert(key, value);
+    if (key == QStringLiteral("Conf/flintDeviceId")) {
+        m_settings.sync();
+    }'''
+if identity_flush not in s:
+    anchor = '    m_cache.insert(key, value);'
+    if s.count(anchor) != 1:
+        raise RuntimeError("SecureQSettings identity persistence anchor changed")
+    s = s.replace(anchor, identity_flush, 1)
+assert identity_flush in s
 secure.write_text(s, encoding="utf-8")
 
 # Install Flint API controller and the phone UI.
