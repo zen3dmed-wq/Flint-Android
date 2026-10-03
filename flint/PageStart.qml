@@ -6,6 +6,8 @@ import "../Controls2"
 
 PageType {
     id: root
+    enableTimer: false
+    focus: true
     property bool isControlsDisabled: false
 
     Rectangle {
@@ -22,6 +24,7 @@ PageType {
 
     Loader {
         id: flintLoader
+        focus: true
         anchors.fill: parent
         asynchronous: false
         source: "PageHome.qml"
