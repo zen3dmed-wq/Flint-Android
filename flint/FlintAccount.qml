@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import "FlintFocus.js" as FlintFocus
+import "FlintPlans.js" as Plans
 
 Popup {
     id: panel
@@ -18,6 +19,8 @@ Popup {
     property var config: ({})
     property var subscriptions: []
     property var plans: []
+    property int selectedPlanIndex: -1
+    onPlansChanged: { if (selectedPlanIndex < 0 || selectedPlanIndex >= plans.length) selectedPlanIndex = plans.length ? 0 : -1 }
     property var methods: []
     property var referrals: ({})
     property var tickets: []
@@ -63,8 +66,8 @@ Popup {
     function pay() {
         error = ""; message = ""
         if (!purchase.key) {
-            if (planChoice.currentIndex < 0 || methodChoice.currentIndex < 0) { error = "Выберите тариф и способ оплаты"; return }
-            purchase = { key: FlintController.newRequestKey(), body: { planId: plans[planChoice.currentIndex].id, provider: methods[methodChoice.currentIndex].id }, startedAt: Date.now() }
+            if (panel.selectedPlanIndex < 0 || methodChoice.currentIndex < 0) { error = "Выберите тариф и способ оплаты"; return }
+            purchase = { key: FlintController.newRequestKey(), body: { planId: plans[panel.selectedPlanIndex].id, provider: methods[methodChoice.currentIndex].id }, startedAt: Date.now() }
             FlintController.saveClientDraft("purchase", purchase)
         }
         request("purchase", "POST", "/orders", purchase.body, purchase.key)
@@ -179,10 +182,29 @@ Popup {
                     visible: FlintController.loggedIn && panel.section === 1; Layout.fillWidth: true
                     Text { Layout.fillWidth: true; visible: !panel.config.purchasesEnabled; text: "Покупки пока недоступны на подключённом API."; color: panel.muted; wrapMode: Text.Wrap }
                     Text { Layout.fillWidth: true; textFormat: Text.PlainText; text: "Покупка для: " + (panel.profile.email || (panel.profile.telegram && panel.profile.telegram.username ? "@" + panel.profile.telegram.username : "текущего аккаунта Flint")); color: panel.mint; wrapMode: Text.WrapAnywhere }
-                    Text { Layout.fillWidth: true; text: "После оплаты подписка появится на всех ваших устройствах. Достаточно входа по почте или Telegram; второй способ можно добавить позже."; color: panel.muted; wrapMode: Text.Wrap }
+                    Text { Layout.fillWidth: true; text: "Все тарифы перед вами. Выгода рассчитана относительно самого короткого тарифа в той же валюте."; color: panel.muted; wrapMode: Text.Wrap }
                     Text { text: "ТАРИФ"; font.pixelSize: 11; font.letterSpacing: 1.2; color: panel.muted; Layout.topMargin: 16 }
-                    FlintChoice { id: planChoice; Layout.fillWidth: true; model: panel.plans; textRole: "name"; enabled: panel.config.purchasesEnabled === true && !panel.purchase.key }
-                    Text { Layout.fillWidth: true; color: panel.mint; font.pixelSize: 24; font.bold: true; Layout.topMargin: 8; text: planChoice.currentIndex >= 0 && panel.plans[planChoice.currentIndex] ? panel.plans[planChoice.currentIndex].price.amount + " " + panel.plans[planChoice.currentIndex].price.currency : "Тарифы не загружены" }
+                    GridLayout {
+                        Layout.fillWidth: true; columns: 2; columnSpacing: 10; rowSpacing: 10
+                        Repeater { model: panel.plans
+                            FlintButton {
+                                objectName: "purchasePlanCard"
+                                required property var modelData
+                                required property int index
+                                Layout.fillWidth: true; Layout.preferredWidth: 1
+                                implicitHeight: Math.max(116, planLabels.implicitHeight + 24)
+                                highlighted: panel.selectedPlanIndex === index; retainHighlight: true
+                                enabled: panel.config.purchasesEnabled === true && !panel.purchase.key
+                                onClicked: panel.selectedPlanIndex = index
+                                contentItem: ColumnLayout {
+                                    id: planLabels; spacing: 5
+                                    Text { Layout.fillWidth: true; text: modelData.name; textFormat: Text.PlainText; wrapMode: Text.Wrap; color: parent.parent.highlighted ? "#052A20" : panel.ink; font.bold: true; font.pixelSize: 14 }
+                                    Text { text: modelData.price.amount + " " + modelData.price.currency; color: parent.parent.highlighted ? "#052A20" : panel.ink; font.bold: true; font.pixelSize: 20 }
+                                    Text { Layout.fillWidth: true; text: Plans.benefit(modelData, panel.plans); wrapMode: Text.Wrap; color: parent.parent.highlighted ? "#164C3C" : panel.mint; font.pixelSize: 11 }
+                                }
+                            }
+                        }
+                    }
                     Text { text: "СПОСОБ ОПЛАТЫ"; font.pixelSize: 11; font.letterSpacing: 1.2; color: panel.muted; Layout.topMargin: 12 }
                     FlintChoice { id: methodChoice; Layout.fillWidth: true; model: panel.methods; textRole: "title"; enabled: panel.config.purchasesEnabled === true && !panel.purchase.key }
                     FlintButton { Layout.fillWidth: true; visible: !panel.purchase.order; enabled: panel.config.purchasesEnabled === true && !panel.pending.purchase; primary: true; text: panel.purchase.key ? "Повторить запрос заказа" : "Перейти к оплате"; onClicked: panel.pay() }

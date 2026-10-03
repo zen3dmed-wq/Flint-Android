@@ -5,6 +5,7 @@ Button {
     id: control
     property bool primary: false
     property bool subtle: false
+    property bool retainHighlight: false
     activeFocusOnTab: true
     function popupFocus(forward) {
         var scope = parent
@@ -42,7 +43,7 @@ Button {
     }
     background: Rectangle {
         radius: 13
-        color: !control.enabled ? "#142B3A" : ((control.primary || control.highlighted) ? (control.down ? "#36C997" : "#57E4B0") : (control.down ? "#21495B" : (control.subtle ? "transparent" : "#142E40")))
+        color: !control.enabled && !(control.highlighted && control.retainHighlight) ? "#142B3A" : ((control.primary || control.highlighted) ? (control.down ? "#36C997" : "#57E4B0") : (control.down ? "#21495B" : (control.subtle ? "transparent" : "#142E40")))
         border.color: control.activeFocus ? "#57E4B0" : ((control.primary || control.highlighted) ? color : "#2B4A5E")
         border.width: control.subtle && !control.activeFocus ? 0 : 1
         Behavior on color { ColorAnimation { duration: 100 } }

@@ -42,7 +42,7 @@ PageType {
     property bool autoConnection: false
     property bool sawConnectionProgress: false
     property int retryWaitTicks: 0
-    readonly property bool connectionPending: connectRequested || FlintController.profilePreparing || ConnectionController.isConnectionInProgress
+    readonly property bool connectionPending: queuedLocation !== null || connectRequested || FlintController.profilePreparing || ConnectionController.isConnectionInProgress
     property bool telegramRequested: false
     property string telegramError: ""
     property string previousTelegramUrl: ""
@@ -55,6 +55,7 @@ PageType {
         : backendError
     onBackendErrorChanged: { if (backendError.length > 0) telegramRequested = false }
     property bool qrScanning: false
+    property int externalImportCount: 0
     property bool importReady: false
     property bool importBusy: false
     property bool qrImageReading: false
@@ -80,34 +81,45 @@ PageType {
         return result
     }
 
-    function chooseLocation(location) {
-        if (ConnectionController.isConnected || root.connectionPending) {
-            PageController.showNotificationMessage("Отключите Flint перед сменой локации.")
-            return
-        }
+    property var queuedLocation: null
+    property int switchWaitTicks: 0
+    function applyLocation(location, reconnect) {
         if (location.kind === "saved") {
             if (ServersUiController.getServerIndexById(location.id) < 0) return
             FlintController.cancelProfileImport()
             ServersUiController.setDefaultServer(location.id)
             ServersUiController.setProcessedServerId(location.id)
-        } else {
-            FlintController.selectedCountry = location.code
-            FlintController.importSubscription()
-        }
-        countryPopup.close()
+        } else FlintController.selectedCountry = location.code
+        if (reconnect) beginConnect()
+        else if (location.kind !== "saved") FlintController.importSubscription()
     }
-
-    function openLocations() {
-        if (ConnectionController.isConnected || ConnectionController.isConnectionInProgress) {
-            PageController.showNotificationMessage("Отключите Flint перед сменой локации.")
-            return
+    function chooseLocation(location) {
+        if (root.connectionPending || queuedLocation) return
+        countryPopup.close()
+        if (ConnectionController.isConnected) {
+            queuedLocation = location; switchWaitTicks = 0
+            ConnectionController.closeConnection(); locationSwitch.start()
+        } else applyLocation(location, false)
+    }
+    Timer {
+        id: locationSwitch; interval: 100; repeat: true
+        onTriggered: {
+            if (!root.queuedLocation) { stop(); return }
+            if (ConnectionController.isConnected || ConnectionController.isConnectionInProgress) {
+                if (++root.switchWaitTicks < 150) return
+                stop(); root.queuedLocation = null
+                PageController.showNotificationMessage("Не удалось завершить старое соединение. Повторите смену сервера."); return
+            }
+            stop(); var target = root.queuedLocation; root.queuedLocation = null
+            root.applyLocation(target, true)
         }
+    }
+    function openLocations() {
         if (FlintController.subscriptionActive || FlintController.savedServers.length > 0) {
             countryPopup.open()
+            FlintController.refreshServerHealth()
             if (FlintController.subscriptionActive) FlintController.importSubscription(false)
-        } else {
-            accountPopup.open()
-        }
+        } else accountPopup.open()
     }
 
     function telegramAppUrl(url) {
@@ -184,6 +196,14 @@ PageType {
     }
     Connections {
         target: FlintController
+        function onExternalImportPrepared(count, error) {
+            root.importBusy=false;root.externalImportCount=count;root.importReady=count>0;root.importError=error
+        }
+        function onManualImportFinished(count, error) {
+            root.importBusy=false;root.importReady=false;root.externalImportCount=0
+            if(error){root.importError=error;return}
+            importPopup.close();PageController.showNotificationMessage("Добавлено серверов: "+count)
+        }
         function onQrImageDecoded(requestId, text, error) {
             if (!root.qrImageReading || requestId !== root.qrImageRequest) return
             root.qrImageReading = false
@@ -222,6 +242,8 @@ PageType {
         importReady = false
         var value = importText.text.trim()
         if (!value) { importError = "Вставьте ключ подключения."; return }
+        externalImportCount = 0
+        if (/^https:\/\//i.test(value)) { importBusy=true; FlintController.prepareExternalImport(value); return }
         if (ImportController.extractConfigFromData(value)) {
             importReady = true
             importCloaking.checked = false
@@ -247,6 +269,7 @@ PageType {
         if (!importReady || importBusy) return
         importBusy = true
         importError = ""
+        if (externalImportCount > 0) { FlintController.commitExternalImport(); return }
         if (ImportController.isNativeWireGuardConfig && importCloaking.checked)
             ImportController.processNativeWireGuardConfig()
         ImportController.importConfig()
@@ -256,6 +279,13 @@ PageType {
 
     Connections {
         target: ImportController
+        function onFlintSubscriptionQr(url) {
+            if (!root.qrScanning) return
+            root.qrScanning = false
+            importText.text = url
+            importPopup.open()
+            root.parseImport()
+        }
         function onQrDecodingFinished() {
             if (!root.qrScanning) return
             root.qrScanning = false
@@ -352,6 +382,23 @@ PageType {
     }
 
     function openSettings() { settingsPopup.open() }
+    function startInitialization() {
+        FlintController.initializeServers()
+        PageController.showNotificationMessage("Автонастройка серверов запущена. Результаты появятся в списке серверов.")
+    }
+    Timer {
+        interval: 45000 + Math.floor(Math.random() * 15000); repeat: true
+        running: ConnectionController.isConnected && FlintController.selectedCountry === "AUTO" && !FlintController.selectedSavedServerId && Qt.application.state === Qt.ApplicationActive
+        onTriggered: if (!root.connectionPending) FlintController.refreshServerHealth()
+    }
+    Connections {
+        target: FlintController
+        function onAutomaticReconnectRequested() {
+            if (ConnectionController.isConnected && !root.connectionPending && FlintController.selectedCountry === "AUTO" && !FlintController.selectedSavedServerId)
+                root.chooseLocation({kind:"country",code:"AUTO",name:"Автоматически"})
+        }
+        function onInitializationFinished() { PageController.showNotificationMessage("Автонастройка завершена. Откройте серверы для просмотра результатов.") }
+    }
 
     function accountTitle() {
         if (FlintController.telegramUsername.length > 0)
@@ -396,6 +443,7 @@ PageType {
     }
 
     function cancelConnection() {
+        queuedLocation = null; locationSwitch.stop()
         connectRequested = false; awaitingProfile = false; retryPending = false
         connectionDeadline.stop(); retryWait.stop()
         FlintController.cancelProfileImport()
@@ -423,6 +471,7 @@ PageType {
             stop(); root.retryPending = false; root.awaitingProfile = true
             if (root.autoConnection && FlintController.tryNextAutomaticProfile()) return
             root.cancelConnection()
+            if (root.autoConnection) FlintController.initializeServers()
             PageController.showNotificationMessage("Сервер не ответил. Выберите другую локацию или обновите профиль в аккаунте.")
         }
     }
@@ -1176,11 +1225,17 @@ PageType {
                     required property int index
                     required property var modelData
                     width: ListView.view.width
-                    height: 64
+                    height: 78
+                    enabled: !root.connectionPending
                     text: modelData.name
                     highlighted: modelData.kind === "saved"
                         ? FlintController.selectedSavedServerId === modelData.id
                         : !FlintController.selectedSavedServerId && FlintController.selectedCountry === modelData.code
+                    background: Rectangle {
+                        radius: 13
+                        color: (FlintController.healthRevision >= 0 && FlintController.serverUnavailable(modelData.code || modelData.id)) ? "#35404A" : (locationButton.highlighted ? "#57E4B0" : "#142E40")
+                        border.color: locationButton.activeFocus ? root.mint : "#46637A"
+                    }
                     contentItem: ColumnLayout {
         property bool flintFocusScope: true
                         spacing: 3
@@ -1190,19 +1245,24 @@ PageType {
                             textFormat: Text.PlainText
                             font.pixelSize: 15
                             font.weight: Font.DemiBold
-                            color: locationButton.highlighted ? "#052A20" : root.ink
+                            color: locationButton.highlighted && !(FlintController.healthRevision >= 0 && FlintController.serverUnavailable(modelData.code || modelData.id)) ? "#052A20" : root.ink
                             elide: Text.ElideRight
                         }
                         Text {
-                            text: modelData.code === "AUTO" ? "Выбор доступного сервера" : modelData.kind === "saved" ? "Добавлен вручную" : Usage.title(FlintController.selectedSubscription)
+                            text: { var revision = FlintController.healthRevision; return modelData.code === "AUTO" ? "По доступности, задержке и загрузке" : FlintController.serverHealthText(modelData.code || modelData.id) }
                             font.pixelSize: 11
-                            color: locationButton.highlighted ? "#164C3C" : root.muted
+                            color: locationButton.highlighted && !(FlintController.healthRevision >= 0 && FlintController.serverUnavailable(modelData.code || modelData.id)) ? "#164C3C" : root.muted
                         }
                     }
                     onClicked: root.chooseLocation(modelData)
                 }
             }
 
+            RowLayout {
+                Layout.fillWidth: true
+                FlintButton { text: "Проверить"; enabled: !FlintController.healthBusy; onClicked: FlintController.refreshServerHealth() }
+                FlintButton { text: "Автонастройка"; enabled: !root.connectionPending; onClicked: { countryPopup.close(); root.startInitialization() } }
+            }
             FlintButton {
                 text: "Закрыть"
                 Layout.alignment: Qt.AlignRight
@@ -1409,7 +1469,7 @@ PageType {
             }
 
             Text { text: "Настройки Flint"; color: root.ink; font.pixelSize: 21; font.bold: true }
-            Text { text: "Flint Android 8.10.10"; color: root.muted }
+            Text { text: "Flint Android 8.10.11"; color: root.muted }
 
             FlintButton {
                 Layout.fillWidth: true
@@ -1527,7 +1587,7 @@ PageType {
                     Text { text: "Профиль распознан"; color: root.mint; font.bold: true; font.pixelSize: 17 }
                     Text {
                         Layout.fillWidth: true
-                        text: ImportController.configFileName || "Новое VPN-подключение"
+                        text: root.externalImportCount > 0 ? "Серверов в подписке: " + root.externalImportCount : (ImportController.configFileName || "Новое VPN-подключение")
                         color: root.ink
                         wrapMode: Text.Wrap
                     }

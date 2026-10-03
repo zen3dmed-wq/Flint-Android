@@ -29,6 +29,7 @@ Popup {
                 required property int index
                 width: list.width; height: Math.max(136, labels.implicitHeight + 24)
                 highlighted: FlintController.selectedSubscriptionId === modelData.id
+                retainHighlight: true
                 enabled: modelData.status === "active" && !ConnectionController.isConnected && !ConnectionController.isConnectionInProgress && !FlintController.profilePreparing
                 Accessible.name: Usage.title(modelData) + (highlighted ? ", выбрана" : "")
                 Keys.onPressed: function(event) {
@@ -43,8 +44,8 @@ Popup {
                 }
                 contentItem: ColumnLayout {
                     id: labels; spacing: 4
-                    Text { text: Usage.title(modelData) + (FlintController.selectedSubscriptionId === modelData.id ? " · выбрана" : ""); color: subscriptionButton.highlighted && subscriptionButton.enabled ? "#052A20" : "#F8FBFF"; font.bold: true; wrapMode: Text.Wrap; Layout.fillWidth: true }
-                    FlintTrafficBar { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight; subscription: modelData; textColor: subscriptionButton.highlighted && subscriptionButton.enabled ? "#164C3C" : "#B7C9DA" }
+                    Text { text: Usage.title(modelData) + (FlintController.selectedSubscriptionId === modelData.id ? " · выбрана" : ""); color: subscriptionButton.highlighted ? "#052A20" : "#F8FBFF"; font.bold: true; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                    FlintTrafficBar { Layout.fillWidth: true; Layout.preferredHeight: implicitHeight; subscription: modelData; textColor: subscriptionButton.highlighted ? "#164C3C" : "#B7C9DA" }
                 }
                 onClicked: { if (FlintController.selectSubscription(modelData.id)) { FlintController.importSubscription(); panel.close() } else panel.feedback = FlintController.lastError }
             }

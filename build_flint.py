@@ -8,8 +8,10 @@ from patch_direct_sites import apply as apply_direct_sites
 from patch_qr_images import apply as apply_qr_images
 from patch_vpn_permission import apply as apply_vpn_permission
 from patch_routing import apply as apply_routing
+from patch_flint_qr_subscription import apply as apply_flint_qr_subscription
 
 root = Path(sys.argv[1]).resolve()
+apply_flint_qr_subscription(root)
 flint = Path(__file__).resolve().parent / "flint"
 
 def replace(path, old, new, required=True):
@@ -25,12 +27,12 @@ def replace(path, old, new, required=True):
 replace(
     "CMakeLists.txt",
     'set(AMNEZIAVPN_VERSION 5.0.3.0 CACHE STRING "Client app version")',
-    'set(AMNEZIAVPN_VERSION 8.10.10 CACHE STRING "Client app version")'
+    'set(AMNEZIAVPN_VERSION 8.10.11 CACHE STRING "Client app version")'
 )
 replace(
     "CMakeLists.txt",
     'set(APP_ANDROID_VERSION_CODE 2163)',
-    'set(APP_ANDROID_VERSION_CODE 2180)'
+    'set(APP_ANDROID_VERSION_CODE 2181)'
 )
 replace(
     "client/cmake/branding/common.cmake",
@@ -141,7 +143,7 @@ s = secure.read_text(encoding="utf-8")
 old = 'encryptedKeys({ "Servers/serversList" })'
 new = ('encryptedKeys({ "Servers/serversList", "Conf/flintAccessToken", '
        '"Conf/flintRefreshToken", "Conf/flintSubscriptionUrl", "Conf/flintDraft/purchase", "Conf/flintDraft/support", '
-       '"Conf/flintTelegramVerifier", "Conf/flintTelegramLoginId" })')
+       '"Conf/flintTelegramVerifier", "Conf/flintTelegramLoginId", "Conf/flintManualImports", "Conf/flintCachedProfiles", "Conf/flintLastProfile", "Conf/flintInstalledProfile", "Conf/flintWorkingProfile" })')
 if old in s:
     s = s.replace(old, new, 1)
 # Persist the installation identity before any login request can use it. The
@@ -160,6 +162,9 @@ assert identity_flush in s
 secure.write_text(s, encoding="utf-8")
 
 # Install Flint API controller and the phone UI.
+shutil.copy2(flint / "flintSubscriptionFetch.h", root / "client/ui/controllers/flintSubscriptionFetch.h")
+shutil.copy2(flint / "flintHealth.cpp", root / "client/ui/controllers/flintHealth.cpp")
+shutil.copy2(flint / "FlintProbe.kt", root / "client/android/src/org/amnezia/vpn/FlintProbe.kt")
 shutil.copy2(flint / "flintController.h",
              root / "client/ui/controllers/flintController.h")
 shutil.copy2(flint / "flintController.cpp",
@@ -169,7 +174,7 @@ shutil.copy2(flint / "PageHome.qml",
 shutil.copy2(flint / "PageStart.qml",
              root / "client/ui/qml/Pages2/PageStart.qml")
 
-for name in ("FlintAccount.qml", "FlintIdentity.qml", "FlintButton.qml", "FlintField.qml", "FlintChoice.qml", "FlintDevices.qml", "FlintSites.qml", "DeviceRows.js", "FlintFocus.js", "FlintUsage.js", "FlintSubscriptions.qml", "FlintTrafficBar.qml"):
+for name in ("FlintAccount.qml", "FlintIdentity.qml", "FlintButton.qml", "FlintField.qml", "FlintChoice.qml", "FlintDevices.qml", "FlintSites.qml", "DeviceRows.js", "FlintFocus.js", "FlintUsage.js", "FlintPlans.js", "FlintSubscriptions.qml", "FlintTrafficBar.qml"):
     shutil.copy2(flint / name, root / "client/ui/qml/Pages2" / name)
 # Flint's user-visible assets. The Amnezia engine remains internal only.
 qml_assets = root / "client/ui/qml/Assets"
@@ -179,7 +184,7 @@ for asset in ["flint-dog.svg", "flint-background.svg", "flint-main.png", "flint-
 
 qml_qrc = root / "client/ui/qml/qml.qrc"
 qrc = qml_qrc.read_text(encoding="utf-8")
-for name in ("FlintAccount.qml", "FlintIdentity.qml", "FlintButton.qml", "FlintField.qml", "FlintChoice.qml", "FlintDevices.qml", "FlintSites.qml", "DeviceRows.js", "FlintFocus.js", "FlintUsage.js", "FlintSubscriptions.qml", "FlintTrafficBar.qml"):
+for name in ("FlintAccount.qml", "FlintIdentity.qml", "FlintButton.qml", "FlintField.qml", "FlintChoice.qml", "FlintDevices.qml", "FlintSites.qml", "DeviceRows.js", "FlintFocus.js", "FlintUsage.js", "FlintPlans.js", "FlintSubscriptions.qml", "FlintTrafficBar.qml"):
     qrc = qrc.replace("    </qresource>", f"        <file>Pages2/{name}</file>\n    </qresource>", 1)
 for asset in ["flint-dog.svg", "flint-background.svg", "flint-main.png", "flint-background.jpg", "flint-logo.svg", "flint-logo.png"]:
     entry = f"        <file>Assets/{asset}</file>\n"
@@ -335,6 +340,7 @@ if 'setQmlContextProperty("FlintController"' not in s:
         '        m_flintController->profileInstallResult(true);\n'
         '    });\n'
     )
+    block += '    connect(m_flintController, &FlintController::manualProfilesReady, this, [this](const QStringList &profiles) {\n        int imported=0,existing=0,failed=0;\n        QVariantMap seen=m_settings->value("Conf/flintManualImports").toMap();\n        for(const auto &uri:profiles) {\n            const QString id=seen.value(uri).toString();\n            if(!id.isEmpty() && m_serversUiController->getServerIndexById(id)>=0){++existing;continue;}\n            QStringList before;for(int i=0;i<m_serversUiController->getServersCount();++i)before<<m_serversUiController->getServerId(i);\n            if(!m_importController->extractConfigFromData(uri)){++failed;continue;}\n            m_importController->importConfig();m_serversUiController->updateModel();\n            QString added;for(int i=0;i<m_serversUiController->getServersCount();++i){auto serverId=m_serversUiController->getServerId(i);if(!before.contains(serverId)){added=serverId;break;}}\n            if(!added.isEmpty()){seen[uri]=added;++imported;}else ++failed;\n        }\n        m_settings->setValue("Conf/flintManualImports",seen);\n        emit m_flintController->manualImportFinished(imported,failed?QStringLiteral("Не удалось добавить %1 серверов. Добавлено: %2.").arg(failed).arg(imported):(existing&&!imported?QStringLiteral("Эти серверы уже есть в списке."):QString()));\n    });\n'
     s = s.replace(anchor, block, 1)
 cpp.write_text(s, encoding="utf-8")
 
@@ -379,7 +385,7 @@ assert 'parseSubscriptionProfiles' in (root / "client/ui/controllers/flintContro
 assert 'flintProfileServerId' in (root / "client/core/controllers/coreController.cpp").read_text(encoding="utf-8")
 assert 'clearQtCaches();' in (root / "client/amneziaApplication.cpp").read_text(encoding="utf-8")
 
-print("Flint Android 8.10.10 startup-safe patch applied and statically verified")
+print("Flint Android 8.10.11 startup-safe patch applied and statically verified")
 
 apply_vpn_permission(root)
 

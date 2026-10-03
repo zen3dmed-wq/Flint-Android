@@ -3,10 +3,10 @@ import shutil
 
 def apply(root: Path, assets: Path):
     shutil.copy2(assets/'flintRouting.h', root/'client/ui/controllers/flintRouting.h')
-    for name in ['flint-routing-catalog.json', 'flint-routing-LICENSES.txt']:
+    for name in ['flint-routing-catalog.json', 'flint-routing-LICENSES.txt', 'flint-import-proxies.json']:
         shutil.copy2(assets/name, root/'client/ui/qml/Assets'/name)
     p=root/'client/ui/qml/qml.qrc'; s=p.read_text(encoding='utf-8')
-    for name in ['flint-routing-catalog.json', 'flint-routing-LICENSES.txt']:
+    for name in ['flint-routing-catalog.json', 'flint-routing-LICENSES.txt', 'flint-import-proxies.json']:
         s=s.replace('    </qresource>', f'        <file>Assets/{name}</file>\n    </qresource>',1)
     p.write_text(s,encoding='utf-8')
     p=root/'client/core/repositories/secureAppSettingsRepository.h'; s=p.read_text(encoding='utf-8')

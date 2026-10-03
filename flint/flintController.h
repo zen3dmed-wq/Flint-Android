@@ -35,6 +35,8 @@ class FlintController : public QObject
     Q_PROPERTY(QVariantList countries READ countries NOTIFY countriesChanged)
     Q_PROPERTY(QVariantList savedServers READ savedServers NOTIFY savedServersChanged)
     Q_PROPERTY(QString selectedSavedServerId READ selectedSavedServerId NOTIFY savedServersChanged)
+    Q_PROPERTY(int healthRevision MEMBER m_healthRevision NOTIFY healthChanged)
+    Q_PROPERTY(bool healthBusy MEMBER m_healthBusy NOTIFY healthChanged)
     Q_PROPERTY(QString routingSummary READ routingSummary NOTIFY routingChanged)
     Q_PROPERTY(bool ruDirectEnabled READ ruDirectEnabled WRITE setRuDirectEnabled NOTIFY ruDirectEnabledChanged)
     Q_PROPERTY(QString assistReply READ assistReply NOTIFY assistChanged)
@@ -58,6 +60,12 @@ public:
     QVariantList subscriptions() const { return m_subscriptions; }
     QString selectedSubscriptionId() const;
     QVariantMap selectedSubscription() const;
+    Q_INVOKABLE QString serverHealthText(const QString &key) const;
+    Q_INVOKABLE bool serverUnavailable(const QString &key) const;
+    Q_INVOKABLE void prepareExternalImport(const QString &url);
+    Q_INVOKABLE void commitExternalImport();
+    Q_INVOKABLE void refreshServerHealth();
+    Q_INVOKABLE void initializeServers();
     Q_INVOKABLE bool selectSubscription(const QString &id);
     void setVpnActive(bool active) { m_vpnActive = active; }
     void updateTraffic(quint64 received, quint64 sent) { m_receivedBytes = received; m_sentBytes = sent; emit trafficChanged(); }
@@ -104,6 +112,12 @@ public slots:
     void askAssist(const QString &message);
 
 signals:
+    void externalImportPrepared(int count, const QString &error);
+    void manualProfilesReady(const QStringList &profiles);
+    void manualImportFinished(int count, const QString &error);
+    void healthChanged();
+    void initializationFinished();
+    void automaticReconnectRequested();
     void routingChanged();
     void trafficChanged();
     void vpnPermissionDenied();
@@ -126,6 +140,17 @@ signals:
     void qrImageDecoded(const QString &requestId, const QString &text, const QString &error);
 
 private:
+    void runServerHealth(bool initialize);
+    QString healthKey(const QString &key) const;
+    void loadServerTelemetry();
+    void evaluateAutomaticSwitch();
+    QString bestHealthyProfile(const QStringList &profiles) const;
+    QString withWorkingFingerprint(const QString &profile) const;
+    QVariantMap m_health;
+    bool m_healthBusy = false;
+    int m_healthRevision = 0, m_badHealthSamples = 0;
+    qint64 m_connectedAt = 0;
+    QString m_pendingBaseProfile;
     quint64 m_receivedBytes = 0, m_sentBytes = 0;
     QVariantList m_subscriptions;
     bool m_vpnActive = false;
@@ -163,7 +188,10 @@ private:
     QVariantList m_savedServers;
     QString m_defaultServerId;
     int m_profileEpoch = 0;
-    QPointer<QNetworkReply> m_profileReply;
+    QPointer<QObject> m_profileReply;
+    QStringList m_pendingManualProfiles;
+    QPointer<QObject> m_externalImport;
+    int m_externalImportEpoch=0;
     bool m_profilePreparing = false;
     QStringList m_attemptedProfiles;
     QString m_pendingProfile;

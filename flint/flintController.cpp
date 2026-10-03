@@ -1,4 +1,5 @@
 #include "flintController.h"
+#include "flintSubscriptionFetch.h"
 #include "flintDirectSites.h"
 #include "flintRouting.h"
 
@@ -132,6 +133,7 @@ FlintController::FlintController(SecureQSettings *settings, QObject *parent)
 
     m_subscriptions = QJsonDocument::fromJson(m_settings->value("Conf/flintSubscriptions").toByteArray()).array().toVariantList();
     ensureDeviceId();
+    if (m_settings->value("Conf/flintHealthScope").toString() == subscriptionUrl()) m_health=m_settings->value("Conf/flintHealth").toMap();
     m_subscriptionActive = validSubscriptionUrl(subscriptionUrl());
     m_email = m_settings->value("Conf/flintEmail").toString();
     m_telegramUsername = m_settings->value("Conf/flintTelegramUsername").toString();
@@ -507,6 +509,8 @@ QString FlintController::chooseProfile(const QStringList &profiles)
 
     const QString wanted = selectedCountry().trimmed().toUpper();
     if (wanted.isEmpty() || wanted == "AUTO") {
+        const QString best=bestHealthyProfile(profiles);
+        if(!best.isEmpty())return best;
         const QString lastWorking = m_settings->value("Conf/flintWorkingProfile").toString();
         if (profiles.contains(lastWorking)) return lastWorking;
         const QString lastUsed = m_settings->value("Conf/flintLastProfile").toString();
@@ -1017,7 +1021,8 @@ void FlintController::setProfilePreparing(bool preparing)
 void FlintController::cancelProfileImport()
 {
     ++m_profileEpoch;
-    if (m_profileReply) m_profileReply->abort();
+    if (m_profileReply) static_cast<FlintSubscriptionFetch*>(m_profileReply.data())->cancel();
+    m_profileReply.clear();
     setProfilePreparing(false);
 }
 
@@ -1029,14 +1034,15 @@ QStringList FlintController::cachedProfiles() const
 
 void FlintController::publishProfile(const QString &profile)
 {
-    m_pendingProfile = profile;
+    m_pendingBaseProfile = profile;
+    m_pendingProfile = withWorkingFingerprint(profile);
     if (!m_attemptedProfiles.contains(profile)) m_attemptedProfiles.append(profile);
     m_settings->setValue("Conf/flintLastProfile", profile);
     m_settings->setValue("Conf/flintLastProfileUrl", subscriptionUrl());
     m_settings->setValue("Conf/flintLastProfileCountry", selectedCountry());
     setError({});
     setProfilePreparing(true);
-    emit profileReady(profile);
+    emit profileReady(m_pendingProfile);
     // CoreController confirms the actual import before the UI starts a tunnel.
 }
 
@@ -1050,8 +1056,9 @@ void FlintController::profileInstallResult(bool success)
 
 void FlintController::markProfileConnected()
 {
+    m_connectedAt=QDateTime::currentMSecsSinceEpoch();m_badHealthSamples=0;
     if (!m_pendingProfile.isEmpty() && m_defaultServerId == m_settings->value("Conf/flintProfileServerId").toString())
-        m_settings->setValue("Conf/flintWorkingProfile", m_pendingProfile);
+        m_settings->setValue("Conf/flintWorkingProfile", m_pendingBaseProfile);
 }
 
 bool FlintController::tryNextAutomaticProfile()
@@ -1097,45 +1104,41 @@ void FlintController::importSubscription(bool selectProfile, bool forceRefresh)
             return;
         }
     }
-    QNetworkRequest req{QUrl(sub)};
-    req.setRawHeader("User-Agent", QByteArray("Flint/") + kVersion.toUtf8());
-    req.setRawHeader("X-Client", QByteArray("android/") + kVersion.toUtf8());
-    req.setTransferTimeout(8000);
     if (selectProfile) setProfilePreparing(true);
-    const int profileEpoch = m_profileEpoch;
-    const int apiEpoch = m_apiEpoch;
-    auto *reply = m_net.get(req);
-    m_profileReply = reply;
-    // Transfer timeout is an inactivity timeout; add an absolute deadline too.
-    QTimer::singleShot(10000, reply, [reply]() { if (!reply->isFinished()) reply->abort(); });
-    connect(reply, &QNetworkReply::finished, this, [this, reply, sub, selectProfile, profileEpoch, apiEpoch]() {
-        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        const QByteArray raw = reply->isOpen() ? reply->readAll() : QByteArray();
-        reply->deleteLater();
-        if (m_profileReply == reply) m_profileReply.clear();
-        if (apiEpoch != m_apiEpoch || profileEpoch != m_profileEpoch) return;
-        if (sub != subscriptionUrl()) { if (selectProfile) profileInstallResult(false); return; }
-        if (status >= 200 && status < 300) {
-            const auto profiles = parseSubscriptionProfiles(raw);
-            if (!profiles.isEmpty()) {
-                m_settings->setValue("Conf/flintCachedProfiles", profiles.join('\n').toUtf8());
-                m_settings->setValue("Conf/flintCachedProfilesUrl", sub);
-                updateCountriesFromProfiles(profiles);
-                if (!selectProfile) return;
-                const QString selected = chooseProfile(profiles);
-                if (!selected.isEmpty()) { publishProfile(selected); return; }
-            }
+    const int profileEpoch=m_profileEpoch,apiEpoch=m_apiEpoch;
+    m_profileReply=new FlintSubscriptionFetch(this,QUrl(sub),[this](const QByteArray &raw){return !parseSubscriptionProfiles(raw).isEmpty();},[this,sub,selectProfile,profileEpoch,apiEpoch](QByteArray raw){
+        if(apiEpoch!=m_apiEpoch||profileEpoch!=m_profileEpoch)return;
+        m_profileReply.clear();
+        if(sub!=subscriptionUrl()){if(selectProfile)profileInstallResult(false);return;}
+        auto profiles=parseSubscriptionProfiles(raw);
+        if(!profiles.isEmpty()) {
+            m_settings->setValue("Conf/flintCachedProfiles",profiles.join('\n').toUtf8());
+            m_settings->setValue("Conf/flintCachedProfilesUrl",sub);updateCountriesFromProfiles(profiles);
+            const QString hash=QString::fromLatin1(QCryptographicHash::hash(profiles.join('\n').toUtf8(),QCryptographicHash::Sha256).toHex());
+            if(m_settings->value("Conf/flintInitializedProfiles").toString()!=hash){m_settings->setValue("Conf/flintInitializedProfiles",hash);QTimer::singleShot(0,this,&FlintController::initializeServers);}
+            if(!selectProfile)return;
+            auto selected=chooseProfile(profiles);if(!selected.isEmpty()){publishProfile(selected);return;}
         }
-        // A failed background refresh never blocks Connect or replaces a
-        // usable local profile with an English network error.
-        if (!selectProfile) return;
-        const QString selected = chooseProfile(cachedProfiles());
-        if (!selected.isEmpty()) { publishProfile(selected); return; }
-        setProfilePreparing(false);
-        setError(QStringLiteral("Сервер подписки не ответил. Выберите сохранённый сервер или повторите обновление."));
-        emit profilePreparationFinished(false);
+        if(!selectProfile)return;
+        auto selected=chooseProfile(cachedProfiles());if(!selected.isEmpty()){publishProfile(selected);return;}
+        setProfilePreparing(false);setError(QStringLiteral("Прямая загрузка и резервные прокси недоступны. Попробуйте другую сеть или сохранённый сервер."));emit profilePreparationFinished(false);
     });
 }
+void FlintController::prepareExternalImport(const QString &value) {
+    QUrl url(value);m_pendingManualProfiles.clear();
+    if(m_externalImport)static_cast<FlintSubscriptionFetch*>(m_externalImport.data())->cancel();
+    const int request=++m_externalImportEpoch;
+    if(url.scheme()!="https"||url.host().isEmpty()||!url.userInfo().isEmpty()){emit externalImportPrepared(0,QStringLiteral("Нужна HTTPS-ссылка подписки."));return;}
+    const auto epoch=m_apiEpoch;
+    m_externalImport=new FlintSubscriptionFetch(this,url,[this](const QByteArray &raw){return !parseSubscriptionProfiles(raw).isEmpty();},[this,epoch,request](QByteArray raw){
+        if(request!=m_externalImportEpoch)return;
+        m_externalImport.clear();
+        if(epoch!=m_apiEpoch){emit externalImportPrepared(0,QStringLiteral("Аккаунт изменился. Повторите импорт."));return;}
+        m_pendingManualProfiles=parseSubscriptionProfiles(raw);
+        emit externalImportPrepared(m_pendingManualProfiles.size(),m_pendingManualProfiles.isEmpty()?QStringLiteral("Подписка недоступна напрямую и через резервные прокси."):QString());
+    });
+}
+void FlintController::commitExternalImport() {auto profiles=m_pendingManualProfiles;m_pendingManualProfiles.clear();if(!profiles.isEmpty())emit manualProfilesReady(profiles);}
 
 void FlintController::askAssist(const QString &message)
 {

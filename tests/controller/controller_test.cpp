@@ -11,6 +11,32 @@ class ControllerTests : public QObject {
     Q_OBJECT
 private slots:
 
+    void healthChecksClosedPortAndKeepsManualSelection() {
+        QTemporaryDir dir; SecureQSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
+        settings.setValue("Conf/flintStartupSchema",999);
+        QTcpServer server; QVERIFY(server.listen(QHostAddress::LocalHost));
+        auto closedPort=server.serverPort();server.close();
+        const QString profile=QString("vless://test@127.0.0.1:%1#Local").arg(closedPort);
+        settings.setValue("Conf/flintSubscriptionUrl",profile);
+        FlintController c(&settings);c.importSubscription();c.profileInstallResult(true);
+        const QString key=c.countries().last().toMap().value("code").toString();
+        c.setSelectedCountry(key);c.setVpnActive(true);
+        QSignalSpy switches(&c,&FlintController::automaticReconnectRequested);
+        c.refreshServerHealth();QTRY_VERIFY_WITH_TIMEOUT(!c.property("healthBusy").toBool(),5000);
+        QVERIFY(c.serverUnavailable(key));QVERIFY(c.serverHealthText(key).contains(QStringLiteral("Недоступен")));
+        QCOMPARE(switches.size(),0);QCOMPARE(c.selectedCountry(),key);
+    }
+
+    void staleHealthDoesNotMarkServerUnavailable() {
+        QTemporaryDir dir; SecureQSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
+        settings.setValue("Conf/flintStartupSchema",999);
+        settings.setValue("Conf/flintHealthScope",QString());
+        QVariantMap h{{"available",false},{"checkedAt",QDateTime::currentMSecsSinceEpoch()-121000}};
+        settings.setValue("Conf/flintHealth",QVariantMap{{"SERVER:old",h}});
+        FlintController c(&settings);
+        QVERIFY(!c.serverUnavailable("SERVER:old"));QVERIFY(c.serverHealthText("SERVER:old").contains(QStringLiteral("Не проверен")));
+    }
+
     void everySubscriptionNodeHasStableSelectionIncludingUnknownCountries() {
         QTemporaryDir dir; SecureQSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
         settings.setValue("Conf/flintStartupSchema",999);
