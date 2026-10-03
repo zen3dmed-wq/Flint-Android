@@ -356,6 +356,7 @@ QString FlintController::selectedCountry() const
 
 QString FlintController::routingSummary() const
 {
+    if (!automaticRoutingEnabled()) return QStringLiteral("Вручную: напрямую идут только добавленные сайты");
     auto policy = QJsonDocument::fromJson(m_settings->value("Conf/flintRouting").toByteArray()).object();
     const bool remote = !policy.isEmpty();
     if (!remote) policy = FlintRouting::defaults();
@@ -363,6 +364,17 @@ QString FlintController::routingSummary() const
     for (const auto &kind : {"geosite", "geoip"})
         for (const auto &group : policy.value(kind).toArray()) groups.append(QString(kind) + ":" + group.toString());
     return (remote ? QStringLiteral("Правила из API: ") : QStringLiteral("Встроенные правила: ")) + groups.join(", ");
+}
+
+bool FlintController::automaticRoutingEnabled() const
+{
+    return m_settings->value("Conf/flintAutomaticRouting", true).toBool();
+}
+void FlintController::setAutomaticRoutingEnabled(bool enabled)
+{
+    if (automaticRoutingEnabled() == enabled) return;
+    m_settings->setValue("Conf/flintAutomaticRouting", enabled);
+    emit routingChanged();
 }
 
 bool FlintController::ruDirectEnabled() const

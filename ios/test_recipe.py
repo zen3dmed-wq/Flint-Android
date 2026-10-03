@@ -15,7 +15,7 @@ controller=(root/'client/ui/controllers/flintController.cpp').read_text(encoding
 assert '"android/"' not in controller and '"ios/"' in controller
 assert 'd["platform"] = "ios";' in controller
 home=(root/'client/ui/qml/Pages2/PageHome.qml').read_text(encoding='utf-8')
-assert 'Flint iOS 8.10.11' in home
+assert 'Flint iOS 8.10.12' in home
 assert 'FlintDevices {' in home and 'cancelConnection' in home
 assert 'profilePreparationFinished' in controller and 'markProfileConnected' in controller
 assert 'FlintDevices.qml' in (root/'client/ui/qml/qml.qrc').read_text(encoding='utf-8')

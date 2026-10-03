@@ -10,6 +10,22 @@
 class ControllerTests : public QObject {
     Q_OBJECT
 private slots:
+    void automaticSplitRoutingDefaultsAndPersists() {
+        QTemporaryDir dir; SecureQSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
+        settings.setValue("Conf/flintStartupSchema",999);
+        FlintController c(&settings); QVERIFY(c.automaticRoutingEnabled());
+        QSignalSpy changed(&c,&FlintController::routingChanged);
+        c.setAutomaticRoutingEnabled(false); QCOMPARE(changed.size(),1);
+        QVERIFY(c.routingSummary().contains(QStringLiteral("Вручную")));
+        FlintController reopened(&settings); QVERIFY(!reopened.automaticRoutingEnabled());
+        QVERIFY(FlintRouting::defaults().value("geoip").toArray().contains("ru"));
+        QVERIFY(FlintRouting::defaults().value("geosite").toArray().contains("tld-ru"));
+        auto manual=FlintRouting::manual(); QVERIFY(FlintRouting::valid(manual));
+        auto config=FlintRouting::apply({{"outbounds",QJsonArray{QJsonObject{{"tag","proxy"},{"protocol","vless"}}}}},manual,{"example.org"});
+        auto rules=config.value("routing").toObject().value("rules").toArray();
+        QCOMPARE(rules.size(),1); QCOMPARE(rules.first().toObject().value("domain").toArray(),QJsonArray{"domain:example.org"});
+        QCOMPARE(config.value("outbounds").toArray().first().toObject().value("tag").toString(),QString("proxy"));
+    }
 
     void healthChecksClosedPortAndKeepsManualSelection() {
         QTemporaryDir dir; SecureQSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);

@@ -38,6 +38,7 @@ class FlintController : public QObject
     Q_PROPERTY(int healthRevision MEMBER m_healthRevision NOTIFY healthChanged)
     Q_PROPERTY(bool healthBusy MEMBER m_healthBusy NOTIFY healthChanged)
     Q_PROPERTY(QString routingSummary READ routingSummary NOTIFY routingChanged)
+    Q_PROPERTY(bool automaticRoutingEnabled READ automaticRoutingEnabled WRITE setAutomaticRoutingEnabled NOTIFY routingChanged)
     Q_PROPERTY(bool ruDirectEnabled READ ruDirectEnabled WRITE setRuDirectEnabled NOTIFY ruDirectEnabledChanged)
     Q_PROPERTY(QString assistReply READ assistReply NOTIFY assistChanged)
     Q_PROPERTY(QString assistTitle READ assistTitle NOTIFY assistChanged)
@@ -92,6 +93,8 @@ public:
     Q_INVOKABLE bool setApiBase(const QString &base);
     Q_INVOKABLE void requestHomeWidget();
     Q_INVOKABLE void decodeQrImage(const QString &url, const QString &requestId);
+    bool automaticRoutingEnabled() const;
+    void setAutomaticRoutingEnabled(bool enabled);
     Q_INVOKABLE QString normalizeDirectSite(const QString &value) const;
     Q_INVOKABLE QString newRequestKey() const;
     Q_INVOKABLE QVariantMap clientDraft(const QString &name) const;

@@ -1,8 +1,15 @@
 import QtQuick
 import QtQuick.Controls
+import "FlintFocus.js" as FlintFocus
 
 TextField {
     id: control
+    activeFocusOnTab: true
+    Keys.onPressed: function(event) {
+        if (event.key === Qt.Key_Up || event.key === Qt.Key_Down)
+            event.accepted = FlintFocus.move(control, event.key === Qt.Key_Down)
+        else if (event.key === Qt.Key_Select) { Qt.inputMethod.show(); event.accepted = true }
+    }
     implicitHeight: 52
     padding: 15
     font.pixelSize: 14

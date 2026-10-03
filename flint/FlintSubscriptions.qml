@@ -6,6 +6,7 @@ import "FlintFocus.js" as FlintFocus
 
 Popup {
     id: panel
+        Shortcut { sequence: "Back"; enabled: panel.activeFocus; onActivated: panel.close() }
     objectName: "flintSubscriptionsPanel"
     property string feedback: ""
     width: Math.min(parent.width - 24, 560)
@@ -13,7 +14,7 @@ Popup {
     x: (parent.width - width) / 2; y: PageController.safeAreaTopMargin + 12
     padding: 18; modal: true; focus: true
     background: Rectangle { radius: 23; color: "#FD081827"; border.color: "#46637A" }
-    onOpened: { feedback = ""; FlintController.refresh(); if (SettingsController.isOnTv()) Qt.callLater(function() { FlintFocus.firstButton(panel.contentItem) }) }
+    onOpened: { feedback = ""; FlintController.refresh(); Qt.callLater(function() { FlintFocus.firstButton(panel.contentItem) }) }
     contentItem: ColumnLayout {
         property bool flintFocusScope: true
         spacing: 12
@@ -33,8 +34,7 @@ Popup {
                 enabled: modelData.status === "active" && !ConnectionController.isConnected && !ConnectionController.isConnectionInProgress && !FlintController.profilePreparing
                 Accessible.name: Usage.title(modelData) + (highlighted ? ", выбрана" : "")
                 Keys.onPressed: function(event) {
-                    if (!SettingsController.isOnTv()) return
-                    if ([Qt.Key_Select, Qt.Key_Return, Qt.Key_Enter].indexOf(event.key) >= 0) { subscriptionButton.clicked(); event.accepted = true }
+                                        if ([Qt.Key_Select, Qt.Key_Return, Qt.Key_Enter].indexOf(event.key) >= 0) { subscriptionButton.clicked(); event.accepted = true }
                     else if (event.key === Qt.Key_Left || event.key === Qt.Key_Right) event.accepted = popupFocus(event.key === Qt.Key_Right)
                     else if (event.key === Qt.Key_Down || event.key === Qt.Key_Up) {
                         list.currentIndex = Math.max(0, Math.min(list.count - 1, index + (event.key === Qt.Key_Down ? 1 : -1)))

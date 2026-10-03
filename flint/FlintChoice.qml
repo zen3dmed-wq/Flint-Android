@@ -1,8 +1,21 @@
 import QtQuick
 import QtQuick.Controls
+import "FlintFocus.js" as FlintFocus
 
 ComboBox {
     id: control
+    activeFocusOnTab: true
+    Keys.onReleased: function(event) {
+        if ([Qt.Key_Select,Qt.Key_Enter,Qt.Key_Return].indexOf(event.key)>=0) event.accepted=true
+    }
+    Keys.onPressed: function(event) {
+        if ([Qt.Key_Select,Qt.Key_Enter,Qt.Key_Return].indexOf(event.key)>=0) {
+            if (!event.isAutoRepeat) { if (control.popup.visible) { if(control.highlightedIndex>=0) { control.currentIndex=control.highlightedIndex;control.activated(control.currentIndex) };control.popup.close() } else control.popup.open() }
+            event.accepted=true
+        } else if (event.key===Qt.Key_Back && control.popup.visible) { control.popup.close();event.accepted=true }
+        else if (!control.popup.visible && [Qt.Key_Down,Qt.Key_Right,Qt.Key_Up,Qt.Key_Left].indexOf(event.key)>=0)
+            event.accepted=FlintFocus.move(control,event.key===Qt.Key_Down || event.key===Qt.Key_Right)
+    }
     implicitHeight: 54
     font.pixelSize: 15
     leftPadding: 16; rightPadding: 40

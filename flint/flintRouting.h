@@ -16,8 +16,12 @@ inline QJsonObject catalog() {
     return data;
 }
 inline QJsonObject defaults() {
-    return {{"version", 1}, {"geosite", QJsonArray{"category-ru"}},
-            {"geoip", QJsonArray{"private"}}, {"domains", QJsonArray{"domain:zakupki.gov.ru"}}, {"ips", QJsonArray{}}};
+    return {{"version", 1}, {"geosite", QJsonArray{"category-ru", "tld-ru"}},
+            {"geoip", QJsonArray{"ru", "private"}}, {"domains", QJsonArray{"domain:zakupki.gov.ru"}}, {"ips", QJsonArray{}}};
+}
+inline QJsonObject manual() {
+    return {{"version", 1}, {"geosite", QJsonArray{}}, {"geoip", QJsonArray{}},
+            {"domains", QJsonArray{}}, {"ips", QJsonArray{}}};
 }
 inline bool valid(const QJsonObject &policy) {
     if (policy.value("version").toInt() != 1) return false;

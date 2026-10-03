@@ -6,6 +6,7 @@ import "FlintPlans.js" as Plans
 
 Popup {
     id: panel
+        Shortcut { sequence: "Back"; enabled: panel.activeFocus; onActivated: panel.close() }
     property var profile: ({})
     FlintIdentity {
         id: identityPanel; parent: panel.parent
@@ -20,7 +21,7 @@ Popup {
     property var subscriptions: []
     property var plans: []
     property int selectedPlanIndex: -1
-    onPlansChanged: { if (selectedPlanIndex < 0 || selectedPlanIndex >= plans.length) selectedPlanIndex = plans.length ? 0 : -1 }
+    onPlansChanged: { if (selectedPlanIndex < 0 || selectedPlanIndex >= plans.length || !Plans.available(plans[selectedPlanIndex])) selectedPlanIndex = Plans.firstAvailable(plans) }
     property var methods: []
     property var referrals: ({})
     property var tickets: []
@@ -67,6 +68,7 @@ Popup {
         error = ""; message = ""
         if (!purchase.key) {
             if (panel.selectedPlanIndex < 0 || methodChoice.currentIndex < 0) { error = "Выберите тариф и способ оплаты"; return }
+            if (!Plans.available(plans[panel.selectedPlanIndex])) { error = "Предложение завершено. Обновите список тарифов."; return }
             purchase = { key: FlintController.newRequestKey(), body: { planId: plans[panel.selectedPlanIndex].id, provider: methods[methodChoice.currentIndex].id }, startedAt: Date.now() }
             FlintController.saveClientDraft("purchase", purchase)
         }
@@ -92,7 +94,7 @@ Popup {
         var template = config.flintIntegration ? config.flintIntegration.referralUrlTemplate : ""
         return template && template.indexOf("{code}") >= 0 ? template.replace("{code}", encodeURIComponent(referrals.code || "")) : (referrals.code || "")
     }
-    onOpened: { if(SettingsController.isOnTv()) Qt.callLater(function() { FlintFocus.firstButton(panel.contentItem) }); purchase = FlintController.clientDraft("purchase"); supportText.text = FlintController.clientDraft("support").text || ""; reload() }
+    onOpened: { Qt.callLater(function() { FlintFocus.firstButton(panel.contentItem) }); purchase = FlintController.clientDraft("purchase"); supportText.text = FlintController.clientDraft("support").text || ""; reload() }
     onSectionChanged: { error = ""; message = ""; loadSection() }
     TextEdit { id: clipboard; visible: false }
     Connections {
@@ -182,7 +184,7 @@ Popup {
                     visible: FlintController.loggedIn && panel.section === 1; Layout.fillWidth: true
                     Text { Layout.fillWidth: true; visible: !panel.config.purchasesEnabled; text: "Покупки пока недоступны на подключённом API."; color: panel.muted; wrapMode: Text.Wrap }
                     Text { Layout.fillWidth: true; textFormat: Text.PlainText; text: "Покупка для: " + (panel.profile.email || (panel.profile.telegram && panel.profile.telegram.username ? "@" + panel.profile.telegram.username : "текущего аккаунта Flint")); color: panel.mint; wrapMode: Text.WrapAnywhere }
-                    Text { Layout.fillWidth: true; text: "Все тарифы перед вами. Выгода рассчитана относительно самого короткого тарифа в той же валюте."; color: panel.muted; wrapMode: Text.Wrap }
+                    Text { Layout.fillWidth: true; text: "Выберите тариф. Цена, скидка и лимит трафика учитывают предложения для вашего аккаунта."; color: panel.muted; wrapMode: Text.Wrap }
                     Text { text: "ТАРИФ"; font.pixelSize: 11; font.letterSpacing: 1.2; color: panel.muted; Layout.topMargin: 16 }
                     GridLayout {
                         Layout.fillWidth: true; columns: 2; columnSpacing: 10; rowSpacing: 10
@@ -194,13 +196,14 @@ Popup {
                                 Layout.fillWidth: true; Layout.preferredWidth: 1
                                 implicitHeight: Math.max(116, planLabels.implicitHeight + 24)
                                 highlighted: panel.selectedPlanIndex === index; retainHighlight: true
-                                enabled: panel.config.purchasesEnabled === true && !panel.purchase.key
+                                enabled: panel.config.purchasesEnabled === true && !panel.purchase.key && Plans.available(modelData)
                                 onClicked: panel.selectedPlanIndex = index
                                 contentItem: ColumnLayout {
                                     id: planLabels; spacing: 5
                                     Text { Layout.fillWidth: true; text: modelData.name; textFormat: Text.PlainText; wrapMode: Text.Wrap; color: parent.parent.highlighted ? "#052A20" : panel.ink; font.bold: true; font.pixelSize: 14 }
                                     Text { text: modelData.price.amount + " " + modelData.price.currency; color: parent.parent.highlighted ? "#052A20" : panel.ink; font.bold: true; font.pixelSize: 20 }
                                     Text { Layout.fillWidth: true; text: Plans.benefit(modelData, panel.plans); wrapMode: Text.Wrap; color: parent.parent.highlighted ? "#164C3C" : panel.mint; font.pixelSize: 11 }
+                                    Text { Layout.fillWidth: true; text: Plans.details(modelData); visible: text.length > 0; wrapMode: Text.Wrap; color: parent.parent.highlighted ? "#164C3C" : panel.muted; font.pixelSize: 11 }
                                 }
                             }
                         }
@@ -226,7 +229,7 @@ Popup {
                 ColumnLayout {
                     visible: FlintController.loggedIn && panel.section === 3; Layout.fillWidth: true
                     Text { Layout.fillWidth: true; visible: !(panel.config.flintIntegration && panel.config.flintIntegration.supportEnabled); text: "Доставка обращений ещё не подключена. Администратор сможет включить её через API и админку."; color: panel.muted; wrapMode: Text.Wrap }
-                    TextArea { id: supportText; padding: 16; font.pixelSize: 14; Layout.topMargin: 10; Layout.fillWidth: true; Layout.preferredHeight: 140; color: panel.ink; placeholderTextColor: panel.muted; placeholderText: "Опишите проблему"; wrapMode: TextEdit.Wrap; enabled: !panel.pending.sendTicket; background: Rectangle { radius: 14; color: "#102635"; border.color: supportText.activeFocus ? panel.mint : "#2B4A5E" } }
+                    TextArea { id: supportText; activeFocusOnTab: true; Keys.onPressed: function(event) { if (event.key===Qt.Key_Select) { Qt.inputMethod.show();event.accepted=true } else if ((event.key===Qt.Key_Up || event.key===Qt.Key_Down) && !Qt.inputMethod.visible) event.accepted=FlintFocus.move(supportText,event.key===Qt.Key_Down) }; padding: 16; font.pixelSize: 14; Layout.topMargin: 10; Layout.fillWidth: true; Layout.preferredHeight: 140; color: panel.ink; placeholderTextColor: panel.muted; placeholderText: "Опишите проблему"; wrapMode: TextEdit.Wrap; enabled: !panel.pending.sendTicket; background: Rectangle { radius: 14; color: "#102635"; border.color: supportText.activeFocus ? panel.mint : "#2B4A5E" } }
                     FlintButton { primary: true; text: "Отправить в поддержку"; enabled: panel.config.flintIntegration !== undefined && panel.config.flintIntegration.supportEnabled === true && !panel.pending.sendTicket; onClicked: panel.sendTicket() }
                     FlintButton { text: "Обновить ответы"; enabled: panel.config.flintIntegration !== undefined && panel.config.flintIntegration.supportEnabled === true && !panel.pending.tickets; onClicked: panel.request("tickets", "GET", "/support/tickets") }
                     Repeater { model: panel.tickets

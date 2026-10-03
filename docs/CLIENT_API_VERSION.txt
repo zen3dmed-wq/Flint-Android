@@ -1,0 +1,5 @@
+﻿Flint Client API v1 — экспорт пользователя от 03.10.2026.
+Источник: swagger (4).json; Swagger UI https://flintmain.ru/swagger/index.html (с авторизацией).
+SHA-256: 56d282f9e8cc82cc76fd972284d759a460a0b079970dec0b50cf3e8db9586cec
+33 адреса API. Схема сохранена без изменения.
+Дополнительные методы админки (routing, server-health, support, VPN devices) не входят в этот экспорт и требуют отдельной интеграции.

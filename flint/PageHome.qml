@@ -11,6 +11,20 @@ import "../Controls2"
 
 PageType {
     id: root
+    // The upstream PageType timer targets legacy FocusControl elements and
+    // steals focus from Flint controls after the page has already appeared.
+    enableTimer: false
+    focus: true
+    onVisibleChanged: if (visible) Qt.callLater(restoreHomeFocus)
+    onActiveFocusChanged: if (activeFocus) Qt.callLater(restoreHomeFocus)
+
+    function restoreHomeFocus() {
+        if (!root.visible || hasOpenPopup()) return
+        var target = root.isTv && tvPairButton.visible ? tvPairButton : connectBtn
+        if (target.enabled) target.forceActiveFocus(Qt.TabFocusReason)
+    }
+    function homePopups() { return [qrSourcePopup, tvPairPopup, accountPopup, countryPopup, assistPopup, familyQrPopup, settingsPopup, importPopup, apiSetupPopup, sitesPopup, servicePopup, subscriptionsPopup, devicesPopup] }
+    function hasOpenPopup() { return homePopups().some(function(p) { return p.opened || p.visible }) }
 
     readonly property bool isTv: SettingsController.isOnTv()
     property bool tvPairWaiting: false
@@ -219,7 +233,8 @@ PageType {
     }
     Popup {
         id: qrSourcePopup
-        onOpened: if(root.isTv) Qt.callLater(function() { FlintFocus.firstButton(qrSourcePopup.contentItem) })
+        Shortcut { sequence: "Back"; enabled: qrSourcePopup.activeFocus; onActivated: qrSourcePopup.close() }
+        onOpened: Qt.callLater(function() { FlintFocus.firstButton(qrSourcePopup.contentItem) })
         objectName: "qrSourcePopup"
         parent: root
         width: Math.min(root.width - 32, 360)
@@ -314,12 +329,11 @@ PageType {
         var controls = [homeSettingsButton, importQrButton, importClipboardButton, connectBtn, homePurchaseButton, tvPairButton, homeSubscriptionButton, locationTile, directTile, familyTile, supportTile]
         controls = controls.filter(function(item) { return item.visible && item.enabled })
         var index = controls.findIndex(function(item) { return item.activeFocus })
-        if(index < 0) return false
-        var next = controls[(index + step + controls.length) % controls.length]
+        if (!controls.length) return false
+        var next = controls[index < 0 ? 0 : (index + step + controls.length) % controls.length]
         next.forceActiveFocus(); keepHomeFocusVisible(next); return true
     }
     Keys.onPressed: function(event) {
-        if(!root.isTv) return
         if(event.key === Qt.Key_Down || event.key === Qt.Key_Right) event.accepted = moveHomeFocus(1)
         else if(event.key === Qt.Key_Up || event.key === Qt.Key_Left) event.accepted = moveHomeFocus(-1)
     }
@@ -351,8 +365,10 @@ PageType {
         function onSubscriptionChanged() { root.finishTvPairing() }
     }
     Popup {
-        id: tvPairPopup; objectName: "tvPairPopup"; parent: root
-        onOpened: if(root.isTv) Qt.callLater(function() { FlintFocus.firstButton(tvPairPopup.contentItem) })
+        id: tvPairPopup
+        Shortcut { sequence: "Back"; enabled: tvPairPopup.activeFocus; onActivated: tvPairPopup.close() }
+ objectName: "tvPairPopup"; parent: root
+        onOpened: Qt.callLater(function() { FlintFocus.firstButton(tvPairPopup.contentItem) })
         width: Math.min(root.width - 32, 560); height: Math.min(root.height - 24, 690)
         anchors.centerIn: parent; padding: 22; modal: true; focus: true
         background: Rectangle { radius: 24; color: "#081827"; border.color: root.line }
@@ -514,7 +530,7 @@ PageType {
         IpSplitTunnelingController.setRouteMode(2)
         IpSplitTunnelingController.toggleSplitTunneling(FlintController.ruDirectEnabled)
         FlintController.refresh()
-        if(root.isTv) Qt.callLater(function() { tvPairButton.forceActiveFocus() })
+        Qt.callLater(root.restoreHomeFocus)
     }
 
     Image {
@@ -547,7 +563,7 @@ PageType {
         Layout.maximumHeight: Layout.preferredHeight
         radius: 17 * root.u
         color: root.card
-        border.width: 1
+        border.width: activeFocus ? 3 : 1
         border.color: activeFocus ? root.mint : root.line
         activeFocusOnTab: true
         property var activate: function() {}
@@ -894,6 +910,8 @@ PageType {
                         MouseArea { anchors.fill: directLabels; onClicked: sitesPopup.open() }
                         Switch {
                             id: ruSwitch
+                        activeFocusOnTab: true
+                        Keys.onPressed: function(event) { FlintFocus.toggleKey(this,event) }
                             objectName: "russianSwitch"
                             anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
                             width: 44; height: 44; padding: 0
@@ -979,7 +997,8 @@ PageType {
 
     Popup {
         id: accountPopup
-        onOpened: if(root.isTv) Qt.callLater(function() { FlintFocus.firstButton(accountPopup.contentItem) })
+        Shortcut { sequence: "Back"; enabled: accountPopup.activeFocus; onActivated: accountPopup.close() }
+        onOpened: Qt.callLater(function() { FlintFocus.firstButton(accountPopup.contentItem) })
         objectName: "accountPopup"
         x: Math.round((root.width - width) / 2)
         y: Math.round((root.height - height) / 2)
@@ -1174,7 +1193,8 @@ PageType {
 
     Popup {
         id: countryPopup
-        onOpened: if(root.isTv) Qt.callLater(function() { FlintFocus.firstButton(countryPopup.contentItem) })
+        Shortcut { sequence: "Back"; enabled: countryPopup.activeFocus; onActivated: countryPopup.close() }
+        onOpened: Qt.callLater(function() { FlintFocus.firstButton(countryPopup.contentItem) })
         x: Math.round((root.width - width) / 2)
         y: Math.round((root.height - height) / 2)
         width: Math.min(root.width - 28, 430)
@@ -1237,7 +1257,6 @@ PageType {
                         border.color: locationButton.activeFocus ? root.mint : "#46637A"
                     }
                     contentItem: ColumnLayout {
-        property bool flintFocusScope: true
                         spacing: 3
                         Text {
                             Layout.fillWidth: true
@@ -1273,6 +1292,7 @@ PageType {
 
     Popup {
         id: assistPopup
+        Shortcut { sequence: "Back"; enabled: assistPopup.activeFocus; onActivated: assistPopup.close() }
         x: Math.round((root.width - width) / 2)
         y: Math.round((root.height - height) / 2)
         width: Math.min(root.width - 28, 460)
@@ -1348,7 +1368,8 @@ PageType {
 
     Popup {
         id: familyQrPopup
-        onOpened: if(root.isTv) Qt.callLater(function() { FlintFocus.firstButton(familyQrPopup.contentItem) })
+        Shortcut { sequence: "Back"; enabled: familyQrPopup.activeFocus; onActivated: familyQrPopup.close() }
+        onOpened: Qt.callLater(function() { FlintFocus.firstButton(familyQrPopup.contentItem) })
         x: Math.round((root.width - width) / 2)
         y: Math.round((root.height - height) / 2)
         width: Math.min(root.width - 28, 430)
@@ -1434,7 +1455,8 @@ PageType {
 
     Popup {
         id: settingsPopup
-        onOpened: if(root.isTv) Qt.callLater(function() { FlintFocus.firstButton(settingsPopup.contentItem) })
+        Shortcut { sequence: "Back"; enabled: settingsPopup.activeFocus; onActivated: settingsPopup.close() }
+        onOpened: Qt.callLater(function() { FlintFocus.firstButton(settingsPopup.contentItem) })
         x: Math.round((root.width - width) / 2)
         y: Math.round((root.height - height) / 2)
         width: Math.min(root.width - 28, 440)
@@ -1469,7 +1491,7 @@ PageType {
             }
 
             Text { text: "Настройки Flint"; color: root.ink; font.pixelSize: 21; font.bold: true }
-            Text { text: "Flint Android 8.10.11"; color: root.muted }
+            Text { text: "Flint Android 8.10.12"; color: root.muted }
 
             FlintButton {
                 Layout.fillWidth: true
@@ -1513,7 +1535,8 @@ PageType {
 
     Popup {
         id: importPopup
-        onOpened: if(root.isTv) Qt.callLater(function() { FlintFocus.firstButton(importPopup.contentItem) })
+        Shortcut { sequence: "Back"; enabled: importPopup.activeFocus; onActivated: importPopup.close() }
+        onOpened: Qt.callLater(function() { FlintFocus.firstButton(importPopup.contentItem) })
         objectName: "importPopup"
         x: (root.width - width) / 2
         y: PageController.safeAreaTopMargin + 12
@@ -1600,6 +1623,8 @@ PageType {
                     }
                     CheckBox {
                         id: importCloaking
+                        activeFocusOnTab: true
+                        Keys.onPressed: function(event) { FlintFocus.toggleKey(this,event) }
                         Layout.fillWidth: true
                         visible: ImportController.isNativeWireGuardConfig
                         text: "Включить обфускацию WireGuard"
@@ -1630,7 +1655,8 @@ PageType {
 
     Popup {
         id: apiSetupPopup
-        onOpened: if(root.isTv) Qt.callLater(function() { FlintFocus.firstButton(apiSetupPopup.contentItem) })
+        Shortcut { sequence: "Back"; enabled: apiSetupPopup.activeFocus; onActivated: apiSetupPopup.close() }
+        onOpened: Qt.callLater(function() { FlintFocus.firstButton(apiSetupPopup.contentItem) })
         x: (root.width - width) / 2
         y: PageController.safeAreaTopMargin + 16
         width: Math.min(root.width - 24, 470)

@@ -11,7 +11,7 @@ def apply(root: Path, assets: Path):
     p.write_text(s,encoding='utf-8')
     p=root/'client/core/repositories/secureAppSettingsRepository.h'; s=p.read_text(encoding='utf-8')
     assert 'public:' in s
-    s=s.replace('public:', 'public:\n    QByteArray flintRoutingPolicy() const { return value("Conf/flintRouting").toByteArray(); }',1)
+    s=s.replace('public:', 'public:\n    bool flintAutomaticRouting() const { return value("Conf/flintAutomaticRouting", true).toBool(); }\n    QByteArray flintRoutingPolicy() const { return value("Conf/flintRouting").toByteArray(); }',1)
     p.write_text(s,encoding='utf-8')
     p=root/'client/vpnConnection.cpp'; s=p.read_text(encoding='utf-8')
     s='#include "ui/controllers/flintRouting.h"\n'+s
@@ -27,6 +27,7 @@ def apply(root: Path, assets: Path):
         auto native = QJsonDocument::fromJson(data.value(configKey::config).toString().toUtf8()).object();
         auto policy = QJsonDocument::fromJson(m_appSettingsRepository->flintRoutingPolicy()).object();
         if (policy.isEmpty()) policy = FlintRouting::defaults();
+        if (!m_appSettingsRepository->flintAutomaticRouting()) policy = FlintRouting::manual();
         if (!native.isEmpty() && FlintRouting::valid(policy)) {
             native = FlintRouting::apply(native, policy, m_appSettingsRepository->vpnSites(amnezia::RouteMode::VpnAllExceptSites).keys());
             data[configKey::config] = QString::fromUtf8(QJsonDocument(native).toJson(QJsonDocument::Compact));

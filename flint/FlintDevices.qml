@@ -6,6 +6,7 @@ import "DeviceRows.js" as DeviceRows
 
 Popup {
     id: panel
+        Shortcut { sequence: "Back"; enabled: panel.activeFocus; onActivated: panel.close() }
     objectName: "flintDevicesPanel"
     signal addDeviceRequested()
     property var profile: ({})
@@ -82,7 +83,7 @@ Popup {
         request("session-revoke-" + target.id, "DELETE", "/me/sessions/" + encodeURIComponent(target.id), target)
         sessionConfirmation.close()
     }
-    onOpened: reload()
+    onOpened: { reload(); Qt.callLater(function() { FlintFocus.firstButton(panel.contentItem) }) }
     onClosed: { generation++; pending = {}; confirmation.close(); sessionConfirmation.close(); confirmTarget = {}; sessionTarget = {} }
     Connections {
         target: FlintController
@@ -215,7 +216,10 @@ Popup {
         FlintButton { Layout.fillWidth: true; text: "Обновить список"; onClicked: panel.reload() }
     }
     Popup {
-        id: sessionConfirmation; parent: panel.parent; width: Math.min(parent.width - 40, 400)
+        id: sessionConfirmation
+        onOpened: Qt.callLater(function() { FlintFocus.firstButton(sessionConfirmation.contentItem) })
+        Shortcut { sequence: "Back"; enabled: sessionConfirmation.activeFocus; onActivated: sessionConfirmation.close() }
+ parent: panel.parent; width: Math.min(parent.width - 40, 400)
         x: (parent.width-width)/2; y: Math.max(PageController.safeAreaTopMargin, (parent.height-height)/2)
         padding: 20; modal: true; focus: true
         background: Rectangle { radius: 20; color: "#102635"; border.color: "#57E4B0" }
@@ -232,7 +236,10 @@ Popup {
         }
     }
     Popup {
-        id: confirmation; parent: panel.parent; width: Math.min(parent.width - 40, 400)
+        id: confirmation
+        onOpened: Qt.callLater(function() { FlintFocus.firstButton(confirmation.contentItem) })
+        Shortcut { sequence: "Back"; enabled: confirmation.activeFocus; onActivated: confirmation.close() }
+ parent: panel.parent; width: Math.min(parent.width - 40, 400)
         x: (parent.width-width)/2; y: Math.max(PageController.safeAreaTopMargin, (parent.height-height)/2)
         padding: 20; modal: true; focus: true
         background: Rectangle { radius: 20; color: "#102635"; border.color: "#57E4B0" }

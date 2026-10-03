@@ -1,4 +1,4 @@
-name: Build Flint Android 8.10.11
+name: Build Flint Android 8.10.12
 
 on:
   pull_request:
@@ -30,6 +30,8 @@ jobs:
           unzip -q /tmp/kotlin.zip -d /tmp/flint-kotlin
           /tmp/flint-kotlin/kotlinc/bin/kotlinc flint/widget/FlintWidgetModel.kt tests/widget/FlintWidgetModelTest.kt -include-runtime -d /tmp/flint-widget-tests.jar
           java -jar /tmp/flint-widget-tests.jar
+          /tmp/flint-kotlin/kotlinc/bin/kotlinc flint/FlintRemoteKeys.kt tests/widget/FlintRemoteKeysTest.kt -include-runtime -d /tmp/flint-remote-tests.jar
+          java -jar /tmp/flint-remote-tests.jar
   android:
     strategy:
       fail-fast: false
@@ -107,7 +109,7 @@ jobs:
           git clone --recursive --branch 5.0.3.0 \
             https://github.com/amnezia-vpn/amnezia-client.git amnezia-client
 
-      - name: Apply Flint Android 8.10.11
+      - name: Apply Flint Android 8.10.12
         shell: bash
         run: |
           python3 build_flint.py amnezia-client
@@ -168,20 +170,20 @@ jobs:
           find amnezia-client/deploy -type f -name '*.apk' -print -exec cp -f {} dist/ \;
           APK=$(find dist -maxdepth 1 -name '*.apk' | head -n 1)
           test -n "$APK"
-          mv "$APK" dist/Flint-v8.10.11-Android-${{ matrix.label }}.apk
-          sha256sum dist/Flint-v8.10.11-Android-${{ matrix.label }}.apk > dist/Flint-v8.10.11-Android-${{ matrix.label }}.apk.sha256
+          mv "$APK" dist/Flint-v8.10.12-Android-${{ matrix.label }}.apk
+          sha256sum dist/Flint-v8.10.12-Android-${{ matrix.label }}.apk > dist/Flint-v8.10.12-Android-${{ matrix.label }}.apk.sha256
 
       - name: Verify APK identity
         shell: bash
         run: |
           set -euo pipefail
-          APK=dist/Flint-v8.10.11-Android-${{ matrix.label }}.apk
+          APK=dist/Flint-v8.10.12-Android-${{ matrix.label }}.apk
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           "$AAPT" dump badging "$APK" | tee dist/aapt-badging.txt
           "$AAPT" dump xmltree "$APK" AndroidManifest.xml | tee dist/aapt-manifest.txt
           grep -F "package: name='app.flint.vpn'" dist/aapt-badging.txt
           grep -F "application-label:'Flint'" dist/aapt-badging.txt
-          grep -F "versionName='8.10.11'" dist/aapt-badging.txt
+          grep -F "versionName='8.10.12'" dist/aapt-badging.txt
           grep -F "org.amnezia.vpn.AmneziaApplication" dist/aapt-manifest.txt
           grep -F "org.amnezia.vpn.AmneziaActivity" dist/aapt-manifest.txt
           unzip -t "$APK"
@@ -190,10 +192,10 @@ jobs:
       - name: Upload Flint APK
         uses: actions/upload-artifact@v4
         with:
-          name: Flint-v8.10.11-Android-${{ matrix.label }}
+          name: Flint-v8.10.12-Android-${{ matrix.label }}
           path: |
-            dist/Flint-v8.10.11-Android-${{ matrix.label }}.apk
-            dist/Flint-v8.10.11-Android-${{ matrix.label }}.apk.sha256
+            dist/Flint-v8.10.12-Android-${{ matrix.label }}.apk
+            dist/Flint-v8.10.12-Android-${{ matrix.label }}.apk.sha256
             dist/aapt-badging.txt
             dist/aapt-manifest.txt
           retention-days: 14

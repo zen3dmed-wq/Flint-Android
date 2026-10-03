@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import "FlintFocus.js" as FlintFocus
 
 Button {
     id: control
@@ -7,26 +8,21 @@ Button {
     property bool subtle: false
     property bool retainHighlight: false
     activeFocusOnTab: true
+    Keys.onReleased: function(event) {
+        if ([Qt.Key_Select,Qt.Key_Enter,Qt.Key_Return].indexOf(event.key)>=0) event.accepted=true
+    }
     function popupFocus(forward) {
-        var scope = parent
-        while (scope && !(scope.hasOwnProperty("flintFocusScope") && scope.flintFocusScope)) scope = scope.parent
-        if (!scope) return false
-        var item = control
-        for (var i = 0; i < 256; i++) {
-            item = item.nextItemInFocusChain(forward)
-            if (!item || item === control) break
-            if (!item.visible || !item.enabled || !item.activeFocusOnTab) continue
-            var ancestor = item.parent
-            while (ancestor && ancestor !== scope) ancestor = ancestor.parent
-            if (ancestor === scope) { item.forceActiveFocus(Qt.TabFocusReason); return true }
-        }
-        return false
+        return FlintFocus.move(control, forward)
     }
     Keys.onPressed: function(event) {
-        if (!SettingsController.isOnTv()) return
-        if (event.key === Qt.Key_Select || event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { control.clicked(); event.accepted = true }
+        if (event.key === Qt.Key_Select || event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { if (!event.isAutoRepeat) control.clicked(); event.accepted = true }
         else if ([Qt.Key_Down, Qt.Key_Right, Qt.Key_Up, Qt.Key_Left].indexOf(event.key) >= 0)
             event.accepted = popupFocus(event.key === Qt.Key_Down || event.key === Qt.Key_Right)
+    }
+    Rectangle {
+        anchors.fill: parent; anchors.margins: -3; radius: 16
+        color: "transparent"; border.color: "#FFFFFF"; border.width: 3
+        visible: control.activeFocus; z: 2
     }
     implicitHeight: 48
     implicitWidth: Math.max(80, contentItem.implicitWidth + leftPadding + rightPadding)

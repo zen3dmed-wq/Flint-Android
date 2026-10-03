@@ -78,3 +78,34 @@ def apply(root: Path, assets: Path):
                             '.setSmallIcon(R.drawable.ic_flint_notification)')
     source = source.replace('serverName ?: "AmneziaVPN"', 'serverName ?: "Flint"')
     notification.write_text(source, encoding="utf-8")
+
+    shutil.copy2(assets / "FlintRemoteKeys.kt", android / "src/org/amnezia/vpn/FlintRemoteKeys.kt")
+    activity = android / "src/org/amnezia/vpn/AmneziaActivity.kt"
+    source = activity.read_text(encoding="utf-8")
+    old = 'fun isOnTv(): Boolean = applicationContext.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)'
+    assert old in source, "TV detection anchor changed"
+    source = source.replace(old, '''fun isOnTv(): Boolean = FlintRemoteKeys.isTelevision(
+        applicationContext.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK),
+        (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK) == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION,
+        applicationContext.packageManager.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN)
+    )''')
+    start = source.index('    override fun dispatchKeyEvent(event: KeyEvent): Boolean {')
+    end = source.index('    private external fun nativeGamepadKeyEvent', start)
+    source = source[:start] + '''    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val normalized = FlintRemoteKeys.normalizedKeyCode(event.keyCode)
+        if (normalized != null) {
+            val keyboardEvent = KeyEvent(
+                event.downTime, event.eventTime, event.action, normalized,
+                event.repeatCount, event.metaState, -1, event.scanCode,
+                event.flags, InputDevice.SOURCE_KEYBOARD
+            )
+            return super.dispatchKeyEvent(keyboardEvent)
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+''' + source[end:]
+    # The touchscreen refresh workaround switches Android back to touch mode.
+    source = source.replace('    fun sendTouch(x: Float, y: Float) {',
+                            '    fun sendTouch(x: Float, y: Float) {\n        if (isOnTv()) return')
+    activity.write_text(source, encoding="utf-8")
