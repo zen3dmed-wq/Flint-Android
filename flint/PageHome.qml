@@ -57,6 +57,17 @@ PageType {
     property bool sawConnectionProgress: false
     property int retryWaitTicks: 0
     readonly property bool connectionPending: queuedLocation !== null || connectRequested || FlintController.profilePreparing || ConnectionController.isConnectionInProgress
+    // Only VPN connection outcomes affect this state; account/import errors do not.
+    property bool connectionFailed: false
+    property bool cancellingConnection: false
+    property bool observedConnection: ConnectionController.isConnected || ConnectionController.isConnectionInProgress
+    readonly property string connectionVisualState: connectionFailed ? "error"
+        : cancellingConnection ? "idle"
+        : queuedLocation !== null || connectRequested || retryPending || ConnectionController.isConnectionInProgress ? "connecting"
+        : ConnectionController.isConnected ? "connected" : "idle"
+    readonly property color connectionStatusColor: connectionVisualState === "connected" ? "#4AE6A3"
+        : connectionVisualState === "connecting" ? "#F1C75B"
+        : connectionVisualState === "error" ? "#EF626B" : "#82909E"
     property bool telegramRequested: false
     property string telegramError: ""
     property string previousTelegramUrl: ""
@@ -111,6 +122,7 @@ PageType {
         if (root.connectionPending || queuedLocation) return
         countryPopup.close()
         if (ConnectionController.isConnected) {
+            connectionFailed = false; cancellingConnection = false
             queuedLocation = location; switchWaitTicks = 0
             ConnectionController.closeConnection(); locationSwitch.start()
         } else applyLocation(location, false)
@@ -122,6 +134,7 @@ PageType {
             if (ConnectionController.isConnected || ConnectionController.isConnectionInProgress) {
                 if (++root.switchWaitTicks < 150) return
                 stop(); root.queuedLocation = null
+                root.connectionFailed = true
                 PageController.showNotificationMessage("Не удалось завершить старое соединение. Повторите смену сервера."); return
             }
             stop(); var target = root.queuedLocation; root.queuedLocation = null
@@ -349,6 +362,7 @@ PageType {
         if(!tvPairWaiting || !tvPairReceivedLogin || !FlintController.loggedIn || !FlintController.subscriptionActive || !FlintController.subscriptionUrl) return
         tvPairWaiting = false; tvPairTimer.stop(); tvPairPopup.close()
         FlintController.selectedCountry = "AUTO"
+        connectionFailed = false; cancellingConnection = false
         connectRequested = true; autoConnection = true; awaitingProfile = true
         FlintController.importSubscription()
     }
@@ -444,6 +458,7 @@ PageType {
             accountPopup.open()
             return
         }
+        connectionFailed = false; cancellingConnection = false
         connectRequested = true
         autoConnection = FlintController.subscriptionActive && FlintController.selectedCountry === "AUTO" && !FlintController.selectedSavedServerId
         if (FlintController.subscriptionActive && !FlintController.selectedSavedServerId) {
@@ -460,11 +475,20 @@ PageType {
     }
 
     function cancelConnection() {
+        connectionFailed = false
+        observedConnection = false
+        cancellingConnection = ConnectionController.isConnected || ConnectionController.isConnectionInProgress
         queuedLocation = null; locationSwitch.stop()
         connectRequested = false; awaitingProfile = false; retryPending = false
         connectionDeadline.stop(); retryWait.stop()
         FlintController.cancelProfileImport()
         if (ConnectionController.isConnected || ConnectionController.isConnectionInProgress) ConnectionController.closeConnection()
+    }
+
+    function failConnection() {
+        cancelConnection()
+        cancellingConnection = false
+        connectionFailed = true
     }
 
     function retryConnection() {
@@ -481,13 +505,13 @@ PageType {
         onTriggered: {
             if (ConnectionController.isConnectionInProgress || ConnectionController.isConnected) {
                 if (++root.retryWaitTicks < 100) return
-                root.cancelConnection()
+                root.failConnection()
                 PageController.showNotificationMessage("Не удалось завершить подключение. Повторите попытку.")
                 return
             }
             stop(); root.retryPending = false; root.awaitingProfile = true
             if (root.autoConnection && FlintController.tryNextAutomaticProfile()) return
-            root.cancelConnection()
+            root.failConnection()
             if (root.autoConnection) FlintController.initializeServers()
             PageController.showNotificationMessage("Сервер не ответил. Выберите другую локацию или обновите профиль в аккаунте.")
         }
@@ -496,26 +520,35 @@ PageType {
         target: ConnectionController
         function onConnectionStateChanged() {
             if (ConnectionController.isConnected) {
+                root.observedConnection = true
+                root.connectionFailed = false; root.cancellingConnection = false
                 root.connectRequested = false; root.awaitingProfile = false; root.retryPending = false
                 connectionDeadline.stop(); retryWait.stop()
+            } else if (root.cancellingConnection) {
+                if (!ConnectionController.isConnectionInProgress) root.cancellingConnection = false
             } else if (root.connectRequested && !root.awaitingProfile) {
                 if (ConnectionController.isConnectionInProgress) root.sawConnectionProgress = true
                 else if (root.sawConnectionProgress) root.retryConnection()
             }
+            if (ConnectionController.isConnectionInProgress && !root.cancellingConnection)
+                root.observedConnection = true
         }
-        function onConnectionErrorOccurred(error) { if (root.connectRequested) root.retryConnection() }
+        function onConnectionErrorOccurred(error) {
+            if (root.connectRequested) root.retryConnection()
+            else if (root.observedConnection && !root.cancellingConnection) root.failConnection()
+        }
     }
     Connections {
         target: FlintController
         function onVpnPermissionDenied() {
-            root.cancelConnection()
+            root.failConnection()
             PageController.showNotificationMessage("Разрешение VPN не выдано. Подключение отменено.")
         }
         function onProfilePreparationFinished(success) {
             if (!root.awaitingProfile || !root.connectRequested) return
             root.awaitingProfile = false
             if (success) root.startTunnel()
-            else root.cancelConnection()
+            else root.failConnection()
         }
     }
 
@@ -674,7 +707,7 @@ PageType {
                     anchors.centerIn: parent
                     width: Math.min(parent.height, parent.width * 0.72)
                     height: width
-                    connected: ConnectionController.isConnected && !root.connectionPending
+                    status: root.connectionVisualState
                     animate: Qt.application.state === Qt.ApplicationActive
                 }
                 FlintButton {
@@ -736,18 +769,16 @@ PageType {
                 onClicked: {
                     if (root.connectionPending) root.cancelConnection()
                     else if (ConnectionController.isConnected)
-                        ConnectionController.closeConnection()
+                        root.cancelConnection()
                     else
                         root.beginConnect()
                 }
                 background: Rectangle {
+                    objectName: "connectionButtonBackground"
                     radius: height / 2
                     border.width: 1
-                    border.color: "#A8FFE0"
-                    gradient: Gradient {
-                        GradientStop { position: 0; color: connectBtn.pressed ? "#31C47D" : "#3EDB91" }
-                        GradientStop { position: 1; color: connectBtn.pressed ? "#62E6AD" : "#72EFC0" }
-                    }
+                    border.color: Qt.lighter(root.connectionStatusColor, 1.22)
+                    color: connectBtn.pressed ? Qt.darker(root.connectionStatusColor, 1.15) : root.connectionStatusColor
                 }
                 contentItem: Item {
                     Row {
@@ -756,12 +787,12 @@ PageType {
                         spacing: 12 * root.u
                         Glyph {
                             anchors.verticalCenter: parent.verticalCenter
-                            tint: "#052219"
+                            tint: "#081827"
                             pathData: "M12 3v9M6 5.6a8.5 8.5 0 1 0 12 0"
                         }
                         Text {
                             text: connectBtn.text
-                            color: "#052219"
+                            color: "#081827"
                             font.pixelSize: 18 * root.u
                             font.bold: true
                         }
@@ -1492,7 +1523,7 @@ PageType {
             }
 
             Text { text: "Настройки Flint"; color: root.ink; font.pixelSize: 21; font.bold: true }
-            Text { text: "Flint Android 8.10.13"; color: root.muted }
+            Text { text: "Flint Android 8.10.14"; color: root.muted }
 
             FlintButton {
                 Layout.fillWidth: true
