@@ -2,8 +2,16 @@
 from pathlib import Path
 import shutil
 import sys
+from patch_android_identity import apply as apply_android_identity
+from patch_android_widget import apply as apply_android_widget
+from patch_direct_sites import apply as apply_direct_sites
+from patch_qr_images import apply as apply_qr_images
+from patch_vpn_permission import apply as apply_vpn_permission
+from patch_routing import apply as apply_routing
+from patch_flint_qr_subscription import apply as apply_flint_qr_subscription
 
 root = Path(sys.argv[1]).resolve()
+apply_flint_qr_subscription(root)
 flint = Path(__file__).resolve().parent / "flint"
 
 def replace(path, old, new, required=True):
@@ -19,12 +27,12 @@ def replace(path, old, new, required=True):
 replace(
     "CMakeLists.txt",
     'set(AMNEZIAVPN_VERSION 5.0.3.0 CACHE STRING "Client app version")',
-    'set(AMNEZIAVPN_VERSION 8.9.10 CACHE STRING "Client app version")'
+    'set(AMNEZIAVPN_VERSION 8.10.12 CACHE STRING "Client app version")'
 )
 replace(
     "CMakeLists.txt",
     'set(APP_ANDROID_VERSION_CODE 2163)',
-    'set(APP_ANDROID_VERSION_CODE 2166)'
+    'set(APP_ANDROID_VERSION_CODE 2182)'
 )
 replace(
     "client/cmake/branding/common.cmake",
@@ -41,15 +49,15 @@ replace(
     'set(CLIENT_APP_INSTANCE_NAME "AmneziaVPNInstance" CACHE STRING "Single-instance local server name")',
     'set(CLIENT_APP_INSTANCE_NAME "FlintInstance" CACHE STRING "Single-instance local server name")'
 )
-# Keep the engine's Android package namespace intact. User-visible identity is
-# still Flint (label/icon/UI); this avoids JNI/package assumptions in the native bridge.
+# Keep the Java/JNI namespace intact while matching the installed Flint package ID.
 
 gradle = root / "client/android/build.gradle.kts"
 gs = gradle.read_text(encoding="utf-8")
-# Do NOT change applicationId: Qt/JNI bridge code is built around org.amnezia.vpn.
+# Components below are fully qualified under the engine's Java namespace.
 # CI builds an unsigned release APK; it is signed with Flint's private key
 # only after the artifact is downloaded into the private build environment.
 gs = gs.replace('signingConfig = signingConfigs["release"]', 'signingConfig = null')
+gs = gs.replace('applicationId = "org.amnezia.vpn"', 'applicationId = "app.flint.vpn"')
 gradle.write_text(gs, encoding="utf-8")
 
 # Russian services: keep the list deliberately small. Android split tunneling
@@ -126,18 +134,37 @@ if constructor_marker not in s:
     s = s.replace(old, new, 1)
     ctl.write_text(s, encoding="utf-8")
 
+apply_direct_sites(root)
+apply_qr_images(root)
+
 # Keep Flint tokens/subscription in the app's protected settings.
 secure = root / "client/secureQSettings.cpp"
 s = secure.read_text(encoding="utf-8")
 old = 'encryptedKeys({ "Servers/serversList" })'
 new = ('encryptedKeys({ "Servers/serversList", "Conf/flintAccessToken", '
-       '"Conf/flintRefreshToken", "Conf/flintSubscriptionUrl", '
-       '"Conf/flintTelegramVerifier", "Conf/flintTelegramLoginId" })')
+       '"Conf/flintRefreshToken", "Conf/flintSubscriptionUrl", "Conf/flintDraft/purchase", "Conf/flintDraft/support", '
+       '"Conf/flintTelegramVerifier", "Conf/flintTelegramLoginId", "Conf/flintManualImports", "Conf/flintCachedProfiles", "Conf/flintCachedProfilesUrl", "Conf/flintLastProfileUrl", "Conf/flintHealthScope", "Conf/flintSubscriptions", "Conf/flintLastProfile", "Conf/flintInstalledProfile", "Conf/flintWorkingProfile" })')
 if old in s:
     s = s.replace(old, new, 1)
+# Persist the installation identity before any login request can use it. The
+# secure wrapper has no public sync(); flush its underlying QSettings while
+# setValue still holds its existing mutex.
+identity_flush = '''    m_cache.insert(key, value);
+    if (key == QStringLiteral("Conf/flintDeviceId")) {
+        m_settings.sync();
+    }'''
+if identity_flush not in s:
+    anchor = '    m_cache.insert(key, value);'
+    if s.count(anchor) != 1:
+        raise RuntimeError("SecureQSettings identity persistence anchor changed")
+    s = s.replace(anchor, identity_flush, 1)
+assert identity_flush in s
 secure.write_text(s, encoding="utf-8")
 
 # Install Flint API controller and the phone UI.
+shutil.copy2(flint / "flintSubscriptionFetch.h", root / "client/ui/controllers/flintSubscriptionFetch.h")
+shutil.copy2(flint / "flintHealth.cpp", root / "client/ui/controllers/flintHealth.cpp")
+shutil.copy2(flint / "FlintProbe.kt", root / "client/android/xray/src/main/kotlin/FlintProbe.kt")
 shutil.copy2(flint / "flintController.h",
              root / "client/ui/controllers/flintController.h")
 shutil.copy2(flint / "flintController.cpp",
@@ -147,6 +174,8 @@ shutil.copy2(flint / "PageHome.qml",
 shutil.copy2(flint / "PageStart.qml",
              root / "client/ui/qml/Pages2/PageStart.qml")
 
+for name in ("FlintAccount.qml", "FlintIdentity.qml", "FlintButton.qml", "FlintField.qml", "FlintChoice.qml", "FlintDevices.qml", "FlintSites.qml", "DeviceRows.js", "FlintFocus.js", "FlintUsage.js", "FlintPlans.js", "FlintSubscriptions.qml", "FlintTrafficBar.qml"):
+    shutil.copy2(flint / name, root / "client/ui/qml/Pages2" / name)
 # Flint's user-visible assets. The Amnezia engine remains internal only.
 qml_assets = root / "client/ui/qml/Assets"
 qml_assets.mkdir(parents=True, exist_ok=True)
@@ -155,6 +184,8 @@ for asset in ["flint-dog.svg", "flint-background.svg", "flint-main.png", "flint-
 
 qml_qrc = root / "client/ui/qml/qml.qrc"
 qrc = qml_qrc.read_text(encoding="utf-8")
+for name in ("FlintAccount.qml", "FlintIdentity.qml", "FlintButton.qml", "FlintField.qml", "FlintChoice.qml", "FlintDevices.qml", "FlintSites.qml", "DeviceRows.js", "FlintFocus.js", "FlintUsage.js", "FlintPlans.js", "FlintSubscriptions.qml", "FlintTrafficBar.qml"):
+    qrc = qrc.replace("    </qresource>", f"        <file>Pages2/{name}</file>\n    </qresource>", 1)
 for asset in ["flint-dog.svg", "flint-background.svg", "flint-main.png", "flint-background.jpg", "flint-logo.svg", "flint-logo.png"]:
     entry = f"        <file>Assets/{asset}</file>\n"
     if entry.strip() not in qrc:
@@ -204,6 +235,8 @@ mt = mt.replace('android:roundIcon="@mipmap/icon_round"', 'android:roundIcon="@d
 mt = mt.replace('android:roundIcon="@drawable/ic_amnezia_round"', 'android:roundIcon="@drawable/flint_launcher"')
 # Keep the FileProvider authority aligned with the stable engine namespace.
 manifest.write_text(mt, encoding="utf-8")
+apply_android_identity(root, flint)
+apply_android_widget(root, flint)
 
 # Remove remaining user-visible Amnezia naming from Android system dialogs.
 for rel in ["client/android/res/values/strings.xml",
@@ -252,23 +285,51 @@ if 'setQmlContextProperty("FlintController"' not in s:
         anchor +
         '\n    m_flintController = new FlintController(m_settings, this);\n'
         '    setQmlContextProperty("FlintController", m_flintController);\n'
+        '    connect(m_vpnConnection.data(), &VpnConnection::bytesChanged, m_flintController, &FlintController::updateTraffic);\n' 
+        '    connect(m_connectionUiController, &ConnectionUiController::connectionStateChanged,\n'
+        '            m_flintController, [this]() {\n'
+        '        m_flintController->setVpnActive(m_connectionUiController->isConnected() || m_connectionUiController->isConnectionInProgress());\n'
+        '        if (m_connectionUiController->isConnected()) m_flintController->markProfileConnected();\n'
+        '    });\n'
+        '    connect(m_serversUiController, &ServersUiController::defaultServerIdChanged,\n'
+        '            m_flintController, [this](const QString &defaultId) {\n'
+        '        QVariantList servers;\n'
+        '        for (int i = 0; i < m_serversUiController->getServersCount(); ++i) {\n'
+        '            const QString id = m_serversUiController->getServerId(i);\n'
+        '            servers.append(QVariantMap{{"id", id}, {"name", m_serversUiController->serverName(id)}});\n'
+        '        }\n'
+        '        m_flintController->syncSavedServers(servers, defaultId);\n'
+        '    });\n'
         '    connect(m_flintController, &FlintController::profileReady,\n'
         '            this, [this](const QString &uri) {\n'
-        '        if (!m_importController || !m_serversUiController) return;\n'
+        '        if (!m_importController || !m_serversUiController) { m_flintController->profileInstallResult(false); return; }\n'
         '        if (m_connectionUiController &&\n'
         '            (m_connectionUiController->isConnected() || m_connectionUiController->isConnectionInProgress())) {\n'
         '            emit m_pageController->showNotificationMessage(QStringLiteral("Отключите Flint перед сменой локации."));\n'
+        '            m_flintController->profileInstallResult(false);\n'
         '            return;\n'
         '        }\n'
         '        const QString oldFlintId = m_settings->value("Conf/flintProfileServerId").toString();\n'
-        '        const int before = m_serversUiController->getServersCount();\n'
-        '        if (!m_importController->extractConfigFromData(uri)) return;\n'
+        '        if (!oldFlintId.isEmpty() && m_serversUiController->getServerIndexById(oldFlintId) >= 0 &&\n'
+        '            m_settings->value("Conf/flintInstalledProfile").toString() == uri) {\n'
+        '            m_serversUiController->setDefaultServer(oldFlintId);\n'
+        '            m_serversUiController->setProcessedServerId(oldFlintId);\n'
+        '            m_flintController->profileInstallResult(true);\n'
+        '            return;\n'
+        '        }\n'
+        '        QStringList previousIds;\n'
+        '        for (int i = 0; i < m_serversUiController->getServersCount(); ++i)\n'
+        '            previousIds.append(m_serversUiController->getServerId(i));\n'
+        '        if (!m_importController->extractConfigFromData(uri)) { m_flintController->profileInstallResult(false); return; }\n'
         '        m_importController->importConfig();\n'
         '        m_serversUiController->updateModel();\n'
-        '        const int after = m_serversUiController->getServersCount();\n'
-        '        if (after <= before) return;\n'
-        '        const QString newFlintId = m_serversUiController->getServerId(after - 1);\n'
-        '        if (newFlintId.isEmpty()) return;\n'
+        '        QString newFlintId;\n'
+        '        for (int i = 0; i < m_serversUiController->getServersCount(); ++i) {\n'
+        '            const QString id = m_serversUiController->getServerId(i);\n'
+        '            if (!previousIds.contains(id)) { newFlintId = id; break; }\n'
+        '        }\n'
+        '        if (newFlintId.isEmpty()) { m_flintController->profileInstallResult(false); return; }\n'
+        '        m_flintController->setManagedProfileServerId(newFlintId);\n'
         '        if (!oldFlintId.isEmpty() && oldFlintId != newFlintId &&\n'
         '            m_serversUiController->getServerIndexById(oldFlintId) >= 0) {\n'
         '            m_serversUiController->removeServer(oldFlintId);\n'
@@ -276,9 +337,10 @@ if 'setQmlContextProperty("FlintController"' not in s:
         '        m_serversUiController->updateModel();\n'
         '        m_serversUiController->setDefaultServer(newFlintId);\n'
         '        m_serversUiController->setProcessedServerId(newFlintId);\n'
-        '        m_settings->setValue("Conf/flintProfileServerId", newFlintId);\n'
+        '        m_flintController->profileInstallResult(true);\n'
         '    });\n'
     )
+    block += '    connect(m_flintController, &FlintController::manualProfilesReady, this, [this](const QStringList &profiles) {\n        int imported=0,existing=0,failed=0;\n        QVariantMap seen=m_settings->value("Conf/flintManualImports").toMap();\n        for(const auto &uri:profiles) {\n            const QString id=seen.value(uri).toString();\n            if(!id.isEmpty() && m_serversUiController->getServerIndexById(id)>=0){++existing;continue;}\n            QStringList before;for(int i=0;i<m_serversUiController->getServersCount();++i)before<<m_serversUiController->getServerId(i);\n            if(!m_importController->extractConfigFromData(uri)){++failed;continue;}\n            m_importController->importConfig();m_serversUiController->updateModel();\n            QString added;for(int i=0;i<m_serversUiController->getServersCount();++i){auto serverId=m_serversUiController->getServerId(i);if(!before.contains(serverId)){added=serverId;break;}}\n            if(!added.isEmpty()){seen[uri]=added;++imported;}else ++failed;\n        }\n        m_settings->setValue("Conf/flintManualImports",seen);\n        emit m_flintController->manualImportFinished(imported,failed?QStringLiteral("Не удалось добавить %1 серверов. Добавлено: %2.").arg(failed).arg(imported):(existing&&!imported?QStringLiteral("Эти серверы уже есть в списке."):QString()));\n    });\n'
     s = s.replace(anchor, block, 1)
 cpp.write_text(s, encoding="utf-8")
 
@@ -312,15 +374,19 @@ app_cpp.write_text(app_text, encoding="utf-8")
 assert 'android:label="Flint"' in manifest.read_text(encoding="utf-8")
 assert 'android:name="org.amnezia.vpn.AmneziaApplication"' in manifest.read_text(encoding="utf-8")
 assert 'android:name="org.amnezia.vpn.AmneziaActivity"' in manifest.read_text(encoding="utf-8")
-assert 'applicationId = "org.amnezia.vpn"' in gradle.read_text(encoding="utf-8")
+assert 'applicationId = "app.flint.vpn"' in gradle.read_text(encoding="utf-8")
 assert 'PageSetupWizardStart' not in (root / "client/ui/qml/Pages2/PageStart.qml").read_text(encoding="utf-8")
 assert 'source: "PageHome.qml"' in (root / "client/ui/qml/Pages2/PageStart.qml").read_text(encoding="utf-8")
 assert 'Loader {' in (root / "client/ui/qml/Pages2/PageStart.qml").read_text(encoding="utf-8")
-assert 'Flickable' not in (root / "client/ui/qml/Pages2/PageHome.qml").read_text(encoding="utf-8")
+assert 'Flickable' in (root / "client/ui/qml/Pages2/PageHome.qml").read_text(encoding="utf-8")
 assert 'zakupki.gov.ru' in repo.read_text(encoding="utf-8")
 assert '/auth/telegram/bot/start' in (root / "client/ui/controllers/flintController.cpp").read_text(encoding="utf-8")
 assert 'parseSubscriptionProfiles' in (root / "client/ui/controllers/flintController.cpp").read_text(encoding="utf-8")
 assert 'flintProfileServerId' in (root / "client/core/controllers/coreController.cpp").read_text(encoding="utf-8")
 assert 'clearQtCaches();' in (root / "client/amneziaApplication.cpp").read_text(encoding="utf-8")
 
-print("Flint Android 8.9.10 startup-safe patch applied and statically verified")
+print("Flint Android 8.10.12 startup-safe patch applied and statically verified")
+
+apply_vpn_permission(root)
+
+apply_routing(root, flint)

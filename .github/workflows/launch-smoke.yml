@@ -2,18 +2,12 @@ name: Flint Android launch smoke
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - '.github/workflows/launch-smoke.yml'
-      - 'scripts/smoke-launch.sh'
-      - 'flint/**'
-      - 'build_flint.py'
 
 permissions:
   contents: read
 
 concurrency:
-  group: flint-android-launch-smoke
+  group: flint-android-launch-smoke-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
