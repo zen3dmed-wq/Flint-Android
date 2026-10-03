@@ -2,7 +2,9 @@ package org.amnezia.vpn
 
 import android.content.Context
 import android.net.Uri
+import go.Seq
 import org.amnezia.vpn.protocol.xray.libXray.LibXray
+import org.amnezia.vpn.protocol.xray.libXray.Logger
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -16,12 +18,22 @@ import javax.net.ssl.HttpsURLConnection
 /** Runs in the app process. The actual VPN core lives in :amneziaXrayService.
  * No TUN adapter, routing edits, account tokens or TLS exceptions are involved. */
 object FlintProbe {
+    private var initialized = false
     @JvmStatic @Synchronized fun probe(context: Context, text: String, fingerprint: String): Long {
         val uri = Uri.parse(text)
         if (uri.scheme != "vless" || uri.getQueryParameter("security") !in listOf("reality", "tls")) return -2
         var configFile: File? = null
         var connection: HttpsURLConnection? = null
         try {
+            if (!initialized) {
+                Seq.setContext(context.applicationContext)
+                LibXray.initLogger(object : Logger {
+                    override fun warning(s: String) {}
+                    override fun error(s: String) {}
+                    override fun write(msg: ByteArray): Long = msg.size.toLong()
+                })
+                initialized = true
+            }
             val port = ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1")).use { it.localPort }
             val network = uri.getQueryParameter("type") ?: "tcp"
             val security = uri.getQueryParameter("security")!!

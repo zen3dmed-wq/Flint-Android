@@ -143,7 +143,7 @@ s = secure.read_text(encoding="utf-8")
 old = 'encryptedKeys({ "Servers/serversList" })'
 new = ('encryptedKeys({ "Servers/serversList", "Conf/flintAccessToken", '
        '"Conf/flintRefreshToken", "Conf/flintSubscriptionUrl", "Conf/flintDraft/purchase", "Conf/flintDraft/support", '
-       '"Conf/flintTelegramVerifier", "Conf/flintTelegramLoginId", "Conf/flintManualImports", "Conf/flintCachedProfiles", "Conf/flintLastProfile", "Conf/flintInstalledProfile", "Conf/flintWorkingProfile" })')
+       '"Conf/flintTelegramVerifier", "Conf/flintTelegramLoginId", "Conf/flintManualImports", "Conf/flintCachedProfiles", "Conf/flintCachedProfilesUrl", "Conf/flintLastProfileUrl", "Conf/flintHealthScope", "Conf/flintSubscriptions", "Conf/flintLastProfile", "Conf/flintInstalledProfile", "Conf/flintWorkingProfile" })')
 if old in s:
     s = s.replace(old, new, 1)
 # Persist the installation identity before any login request can use it. The
