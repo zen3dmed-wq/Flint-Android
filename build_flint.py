@@ -164,7 +164,7 @@ secure.write_text(s, encoding="utf-8")
 # Install Flint API controller and the phone UI.
 shutil.copy2(flint / "flintSubscriptionFetch.h", root / "client/ui/controllers/flintSubscriptionFetch.h")
 shutil.copy2(flint / "flintHealth.cpp", root / "client/ui/controllers/flintHealth.cpp")
-shutil.copy2(flint / "FlintProbe.kt", root / "client/android/src/org/amnezia/vpn/FlintProbe.kt")
+shutil.copy2(flint / "FlintProbe.kt", root / "client/android/xray/src/main/kotlin/FlintProbe.kt")
 shutil.copy2(flint / "flintController.h",
              root / "client/ui/controllers/flintController.h")
 shutil.copy2(flint / "flintController.cpp",
