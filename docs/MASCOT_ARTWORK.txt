@@ -1,0 +1,32 @@
+Flint 8.10.13 — facial-expression artwork
+
+Tool: built-in imagegen; edit of flint/flint-main.png, transparent PNG.
+Original happy emblem SHA-256:
+75a5fa50dd1f655961542d92607eea032bd1d4cb18a296bc399948cf44549547
+Generated expression source flint/flint-main-sad.png SHA-256:
+36274cf9fe8d3b5cb62d9974f8f7ed25156f3a3f73e846eff447af30a09e8d4a
+
+Only the inner face is composited over the unchanged original emblem in the
+application. The radial face mask is centred at (0.50, 0.455), radii
+(0.19, 0.185), opaque through 80% and transparent at its outer edge.
+The 300 ms opacity transition follows confirmed VPN connection state.
+Launcher icons, splash branding and the original PNG are unchanged.
+
+Final prompt:
+Use case: precise-object-edit. Edit target: the supplied existing FLINT husky
+mascot PNG. Create ONLY its VPN-disconnected facial-expression variant for an
+in-app crossfade animation. Keep the same original emblem pixel layout and
+identity: the circular turquoise glowing ring, internal background,
+wifi/lock/shield symbols, husky ears, fur pattern, head silhouette, eye
+locations, nose, paws, body, collar and earth medallion must remain unchanged
+in exact position, size, and style. Change only the small inner facial
+expression: close the wide smiling mouth and remove visible tongue, replace
+with a subtle gently downturned sad closed mouth; slightly sad eyes/brows
+without moving or resizing eyes. The husky should look mildly sad and
+endearing, not crying or angry. Preserve transparent outside background and
+the original centred square framing with the full halo visible. Do not redraw
+or redesign the emblem; retain all shapes, colours, textures and contours
+outside the inner face. No words, no labels, no additional decorations, no
+layout changes. Output as a transparent PNG, original source aspect ratio.
+This will align exactly over the original smiling image in the app, so
+registration is essential.

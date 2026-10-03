@@ -14,12 +14,12 @@ PageType {
     // The upstream PageType timer targets legacy FocusControl elements and
     // steals focus from Flint controls after the page has already appeared.
     enableTimer: false
-    focus: true
+    focus: isTv
     onVisibleChanged: if (visible) Qt.callLater(restoreHomeFocus)
     onActiveFocusChanged: if (activeFocus) Qt.callLater(restoreHomeFocus)
 
     function restoreHomeFocus() {
-        if (!root.visible || hasOpenPopup()) return
+        if (!root.isTv || !root.visible || hasOpenPopup()) return
         var target = root.isTv && tvPairButton.visible ? tvPairButton : connectBtn
         if (target.enabled) target.forceActiveFocus(Qt.TabFocusReason)
     }
@@ -326,6 +326,7 @@ PageType {
         else if(point.y + item.height > viewport.contentY + viewport.height) viewport.contentY = Math.min(viewport.contentHeight - viewport.height, point.y + item.height - viewport.height + 12)
     }
     function moveHomeFocus(step) {
+        if (!root.isTv) return false
         var controls = [homeSettingsButton, importQrButton, importClipboardButton, connectBtn, homePurchaseButton, tvPairButton, homeSubscriptionButton, locationTile, directTile, familyTile, supportTile]
         controls = controls.filter(function(item) { return item.visible && item.enabled })
         var index = controls.findIndex(function(item) { return item.activeFocus })
@@ -563,13 +564,13 @@ PageType {
         Layout.maximumHeight: Layout.preferredHeight
         radius: 17 * root.u
         color: root.card
-        border.width: activeFocus ? 3 : 1
-        border.color: activeFocus ? root.mint : root.line
+        border.width: root.isTv && activeFocus ? 3 : 1
+        border.color: root.isTv && activeFocus ? root.mint : root.line
         activeFocusOnTab: true
         property var activate: function() {}
-        Keys.onReturnPressed: activate()
-        Keys.onEnterPressed: activate()
-        Keys.onPressed: function(event) { if(event.key === Qt.Key_Select) { activate(); event.accepted = true } }
+        Keys.onReturnPressed: if (root.isTv) activate()
+        Keys.onEnterPressed: if (root.isTv) activate()
+        Keys.onPressed: function(event) { if(root.isTv && event.key === Qt.Key_Select) { activate(); event.accepted = true } }
         onActiveFocusChanged: if(activeFocus) root.keepHomeFocusVisible(this)
     }
 
@@ -667,14 +668,14 @@ PageType {
                 Layout.fillHeight: true
                 Layout.minimumHeight: 0
                 Layout.preferredHeight: 180
-                Image {
+                FlintMascot {
                     id: mainEmblem
                     objectName: "mainEmblem"
                     anchors.centerIn: parent
                     width: Math.min(parent.height, parent.width * 0.72)
                     height: width
-                    source: "qrc:/ui/qml/Assets/flint-main.png"
-                    fillMode: Image.PreserveAspectFit
+                    connected: ConnectionController.isConnected && !root.connectionPending
+                    animate: Qt.application.state === Qt.ApplicationActive
                 }
                 FlintButton {
                     id: importQrButton
@@ -1254,7 +1255,7 @@ PageType {
                     background: Rectangle {
                         radius: 13
                         color: (FlintController.healthRevision >= 0 && FlintController.serverUnavailable(modelData.code || modelData.id)) ? "#35404A" : (locationButton.highlighted ? "#57E4B0" : "#142E40")
-                        border.color: locationButton.activeFocus ? root.mint : "#46637A"
+                        border.color: locationButton.tvFocusVisible ? root.mint : "#46637A"
                     }
                     contentItem: ColumnLayout {
                         spacing: 3
@@ -1491,7 +1492,7 @@ PageType {
             }
 
             Text { text: "Настройки Flint"; color: root.ink; font.pixelSize: 21; font.bold: true }
-            Text { text: "Flint Android 8.10.12"; color: root.muted }
+            Text { text: "Flint Android 8.10.13"; color: root.muted }
 
             FlintButton {
                 Layout.fillWidth: true

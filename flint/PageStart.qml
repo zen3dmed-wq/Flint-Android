@@ -7,7 +7,7 @@ import "../Controls2"
 PageType {
     id: root
     enableTimer: false
-    focus: true
+    focus: SettingsController.isOnTv()
     property bool isControlsDisabled: false
 
     Rectangle {
@@ -24,7 +24,7 @@ PageType {
 
     Loader {
         id: flintLoader
-        focus: true
+        focus: SettingsController.isOnTv()
         anchors.fill: parent
         asynchronous: false
         source: "PageHome.qml"

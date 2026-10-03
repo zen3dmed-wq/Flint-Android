@@ -7,14 +7,17 @@ Button {
     property bool primary: false
     property bool subtle: false
     property bool retainHighlight: false
+    readonly property bool tvFocusVisible: FlintFocus.isTv() && activeFocus
     activeFocusOnTab: true
     Keys.onReleased: function(event) {
+        if (!FlintFocus.isTv()) return
         if ([Qt.Key_Select,Qt.Key_Enter,Qt.Key_Return].indexOf(event.key)>=0) event.accepted=true
     }
     function popupFocus(forward) {
         return FlintFocus.move(control, forward)
     }
     Keys.onPressed: function(event) {
+        if (!FlintFocus.isTv()) return
         if (event.key === Qt.Key_Select || event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { if (!event.isAutoRepeat) control.clicked(); event.accepted = true }
         else if ([Qt.Key_Down, Qt.Key_Right, Qt.Key_Up, Qt.Key_Left].indexOf(event.key) >= 0)
             event.accepted = popupFocus(event.key === Qt.Key_Down || event.key === Qt.Key_Right)
@@ -22,7 +25,8 @@ Button {
     Rectangle {
         anchors.fill: parent; anchors.margins: -3; radius: 16
         color: "transparent"; border.color: "#FFFFFF"; border.width: 3
-        visible: control.activeFocus; z: 2
+        objectName: "tvFocusOutline"
+        visible: control.tvFocusVisible; z: 2
     }
     implicitHeight: 48
     implicitWidth: Math.max(80, contentItem.implicitWidth + leftPadding + rightPadding)
@@ -40,8 +44,8 @@ Button {
     background: Rectangle {
         radius: 13
         color: !control.enabled && !(control.highlighted && control.retainHighlight) ? "#142B3A" : ((control.primary || control.highlighted) ? (control.down ? "#36C997" : "#57E4B0") : (control.down ? "#21495B" : (control.subtle ? "transparent" : "#142E40")))
-        border.color: control.activeFocus ? "#57E4B0" : ((control.primary || control.highlighted) ? color : "#2B4A5E")
-        border.width: control.subtle && !control.activeFocus ? 0 : 1
+        border.color: control.tvFocusVisible ? "#57E4B0" : ((control.primary || control.highlighted) ? color : "#2B4A5E")
+        border.width: control.subtle && !control.tvFocusVisible ? 0 : 1
         Behavior on color { ColorAnimation { duration: 100 } }
     }
 }

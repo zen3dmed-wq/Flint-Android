@@ -4,11 +4,14 @@ import "FlintFocus.js" as FlintFocus
 
 ComboBox {
     id: control
+    readonly property bool tvFocusVisible: FlintFocus.isTv() && activeFocus
     activeFocusOnTab: true
     Keys.onReleased: function(event) {
+        if (!FlintFocus.isTv()) return
         if ([Qt.Key_Select,Qt.Key_Enter,Qt.Key_Return].indexOf(event.key)>=0) event.accepted=true
     }
     Keys.onPressed: function(event) {
+        if (!FlintFocus.isTv()) return
         if ([Qt.Key_Select,Qt.Key_Enter,Qt.Key_Return].indexOf(event.key)>=0) {
             if (!event.isAutoRepeat) { if (control.popup.visible) { if(control.highlightedIndex>=0) { control.currentIndex=control.highlightedIndex;control.activated(control.currentIndex) };control.popup.close() } else control.popup.open() }
             event.accepted=true
@@ -28,7 +31,7 @@ ComboBox {
         width: 12; height: 7
         onPaint: { var c=getContext("2d"); c.clearRect(0,0,width,height); c.strokeStyle="#8FADBD";c.lineWidth=1.6;c.beginPath();c.moveTo(1,1);c.lineTo(6,6);c.lineTo(11,1);c.stroke() }
     }
-    background: Rectangle { radius: 13; color: "#102635"; border.color: control.activeFocus || control.popup.visible ? "#57E4B0" : "#2B4A5E" }
+    background: Rectangle { radius: 13; color: "#102635"; border.color: control.tvFocusVisible || control.popup.visible ? "#57E4B0" : "#2B4A5E" }
     delegate: ItemDelegate {
         id: option
         required property var modelData

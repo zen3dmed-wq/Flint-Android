@@ -6,6 +6,7 @@ TextField {
     id: control
     activeFocusOnTab: true
     Keys.onPressed: function(event) {
+        if (!FlintFocus.isTv()) return
         if (event.key === Qt.Key_Up || event.key === Qt.Key_Down)
             event.accepted = FlintFocus.move(control, event.key === Qt.Key_Down)
         else if (event.key === Qt.Key_Select) { Qt.inputMethod.show(); event.accepted = true }

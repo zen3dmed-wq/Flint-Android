@@ -34,6 +34,7 @@ Popup {
                 enabled: modelData.status === "active" && !ConnectionController.isConnected && !ConnectionController.isConnectionInProgress && !FlintController.profilePreparing
                 Accessible.name: Usage.title(modelData) + (highlighted ? ", выбрана" : "")
                 Keys.onPressed: function(event) {
+                    if (!FlintFocus.isTv()) return
                                         if ([Qt.Key_Select, Qt.Key_Return, Qt.Key_Enter].indexOf(event.key) >= 0) { subscriptionButton.clicked(); event.accepted = true }
                     else if (event.key === Qt.Key_Left || event.key === Qt.Key_Right) event.accepted = popupFocus(event.key === Qt.Key_Right)
                     else if (event.key === Qt.Key_Down || event.key === Qt.Key_Up) {

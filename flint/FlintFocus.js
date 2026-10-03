@@ -1,3 +1,7 @@
+function isTv() {
+    return SettingsController.isOnTv()
+}
+
 function ensureVisible(item) {
     var parent = item.parent
     while (parent) {
@@ -11,6 +15,7 @@ function ensureVisible(item) {
     }
 }
 function move(item, forward) {
+    if (!isTv()) return false
     var scope = item.parent
     while (scope && !(scope.hasOwnProperty("flintFocusScope") && scope.flintFocusScope)) scope = scope.parent
     if (!scope) return false
@@ -30,6 +35,7 @@ function move(item, forward) {
     return false
 }
 function firstButton(item) {
+    if (!isTv()) return false
     if (!item || !item.visible || !item.enabled) return false
     if (item.activeFocusOnTab && typeof item.clicked === "function") {
         item.forceActiveFocus(Qt.TabFocusReason)
@@ -43,6 +49,7 @@ function firstButton(item) {
 }
 
 function toggleKey(control, event) {
+    if (!isTv()) return
     if ([Qt.Key_Select, Qt.Key_Return, Qt.Key_Enter].indexOf(event.key) >= 0) {
         if (!event.isAutoRepeat) { control.toggle(); control.toggled() }
         event.accepted = true
