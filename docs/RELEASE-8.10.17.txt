@@ -25,5 +25,13 @@ Full Android compilation and final APK verification are recorded separately.
 The user's physical Samsung is unavailable over USB; live connectivity with
 this release still needs confirmation on that device.
 
-Visuals are unchanged from 8.10.16. iOS shares version metadata only and still
-requires Apple Developer signing. Windows 8.10.14 and Admin 1.5 are unchanged.
+Russian direct routing and automatic route selection are enabled once per
+application launch, as requested. A restored active tunnel receives those
+settings. Changing routing switches or custom sites automatically reconnects
+the current server after a short debounce, without reimporting a subscription
+or changing manual server selection. Cancellation prevents the queued restart.
+Identical routing responses from the API no longer emit change events.
+
+The layout and artwork are unchanged from 8.10.16. iOS shares the launch and
+routing UI behavior and still requires Apple Developer signing. Windows
+8.10.14 and Admin 1.5 are unchanged.

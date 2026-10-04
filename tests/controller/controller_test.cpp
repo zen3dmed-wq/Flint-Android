@@ -10,6 +10,23 @@
 class ControllerTests : public QObject {
     Q_OBJECT
 private slots:
+    void russianRoutingEnabledOncePerApplicationLaunch() {
+        QTemporaryDir dir; SecureQSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
+        settings.setValue("Conf/flintStartupSchema",999);
+        settings.setValue("Conf/sitesSplitTunnelingEnabled",false);
+        settings.setValue("Conf/flintAutomaticRouting",false);
+        FlintController c(&settings);
+        QVERIFY(c.initializeRussianRouting());
+        QVERIFY(c.ruDirectEnabled()); QVERIFY(c.automaticRoutingEnabled());
+        c.setRuDirectEnabled(false); c.setAutomaticRoutingEnabled(false);
+        QVERIFY(!c.initializeRussianRouting()); // Recreating the page is not a new launch.
+        QVERIFY(!c.ruDirectEnabled()); QVERIFY(!c.automaticRoutingEnabled());
+        FlintController nextLaunch(&settings);
+        QVERIFY(nextLaunch.initializeRussianRouting());
+        QVERIFY(nextLaunch.ruDirectEnabled()); QVERIFY(nextLaunch.automaticRoutingEnabled());
+        FlintController alreadyEnabled(&settings);
+        QVERIFY(!alreadyEnabled.initializeRussianRouting()); // Keep an unchanged background tunnel.
+    }
     void automaticSplitRoutingDefaultsAndPersists() {
         QTemporaryDir dir; SecureQSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
         settings.setValue("Conf/flintStartupSchema",999);

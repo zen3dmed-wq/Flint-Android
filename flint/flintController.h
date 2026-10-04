@@ -67,6 +67,7 @@ public:
     Q_INVOKABLE void commitExternalImport();
     Q_INVOKABLE void refreshServerHealth();
     Q_INVOKABLE void initializeServers();
+    Q_INVOKABLE bool initializeRussianRouting();
     Q_INVOKABLE bool selectSubscription(const QString &id);
     void setVpnActive(bool active) { m_vpnActive = active; }
     void updateTraffic(quint64 received, quint64 sent) { m_receivedBytes = received; m_sentBytes = sent; emit trafficChanged(); }
@@ -147,6 +148,7 @@ signals:
     void qrImageDecoded(const QString &requestId, const QString &text, const QString &error);
 
 private:
+    bool m_russianRoutingInitialized = false;
     void runServerHealth(bool initialize);
     QString healthKey(const QString &key) const;
     void loadServerTelemetry();

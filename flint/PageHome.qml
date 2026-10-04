@@ -43,7 +43,7 @@ PageType {
     property color warning: "#FFC56D"
     FlintAccount { id: servicePopup; parent: root; onAddDeviceRequested: familyQrPopup.open() }
     FlintDevices { id: devicesPopup; parent: root; onAddDeviceRequested: familyQrPopup.open() }
-    FlintSites { id: sitesPopup; parent: root }
+    FlintSites { id: sitesPopup; parent: root; onRoutingEdited: root.requestRoutingApply() }
     FlintSubscriptions { id: subscriptionsPopup; parent: root }
     Timer {
         interval: 60000; repeat: true
@@ -132,8 +132,43 @@ PageType {
     }
 
     property var queuedLocation: null
+    property bool routingBootstrapping: true
+    property bool routingStartupPending: false
+    function requestRoutingApply() {
+        if (routingBootstrapping || cancellingConnection) return
+        routingDebounce.restart()
+    }
+    function applyRoutingChanges() {
+        // A pending location/reconnect already reads the latest routing settings.
+        if (queuedLocation !== null || cancellingConnection) return
+        if (!ConnectionController.isConnected && !ConnectionController.isConnectionInProgress) return
+        routingStartupPending = false
+        connectionFailed = false
+        queuedLocation = {kind: "routing"}; switchWaitTicks = 0
+        connectRequested = false; awaitingProfile = false; retryPending = false
+        connectionDeadline.stop(); retryWait.stop()
+        FlintController.cancelProfileImport()
+        ConnectionController.closeConnection()
+        locationSwitch.start()
+        PageController.showNotificationMessage("Применяем правила сайтов РФ: переподключаем VPN.")
+    }
+    Timer { id: routingDebounce; interval: 500; onTriggered: root.applyRoutingChanges() }
+    Connections {
+        target: FlintController
+        function onRuDirectEnabledChanged() { root.requestRoutingApply() }
+        function onRoutingChanged() { root.requestRoutingApply() }
+    }
     property int switchWaitTicks: 0
     function applyLocation(location, reconnect) {
+        if (location.kind === "routing") {
+            // Rebuild the current native profile; no subscription fetch or change
+            // of the user's server is needed to apply routing settings.
+            connectionFailed = false; cancellingConnection = false; lastConnectionError = -1
+            resetConnectionDiagnostics(); connectRequested = true
+            autoConnection = FlintController.subscriptionActive && FlintController.selectedCountry === "AUTO" && !FlintController.selectedSavedServerId
+            startTunnel()
+            return
+        }
         if (location.kind === "saved") {
             if (ServersUiController.getServerIndexById(location.id) < 0) return
             FlintController.cancelProfileImport()
@@ -526,6 +561,7 @@ PageType {
 
     function startTunnel() {
         if (!connectRequested) return
+        routingStartupPending = false; routingDebounce.stop()
         lastNativeAttempt = ""
         traceConnection("CORE_START_REQUESTED")
         sawConnectionProgress = false
@@ -534,6 +570,7 @@ PageType {
     }
 
     function cancelConnection() {
+        routingStartupPending = false; routingDebounce.stop()
         connectionFailed = false
         observedConnection = false
         cancellingConnection = ConnectionController.isConnected || ConnectionController.isConnectionInProgress
@@ -599,6 +636,10 @@ PageType {
         target: ConnectionController
         function onConnectionStateChanged() {
             root.traceConnection(ConnectionController.isConnected ? "CORE_CONNECTED" : ConnectionController.isConnectionInProgress ? "CORE_PROGRESS" : "CORE_STOPPED")
+            if (root.routingStartupPending && ConnectionController.isConnected && !root.connectRequested && root.queuedLocation === null) {
+                root.routingStartupPending = false
+                root.requestRoutingApply()
+            }
             if (ConnectionController.isConnected && !root.cancellingConnection && root.queuedLocation === null) {
                 root.connectionFailed = false; root.lastConnectionError = -1
                 root.connectRequested = false; root.awaitingProfile = false; root.retryPending = false
@@ -656,8 +697,11 @@ PageType {
         homePopups().forEach(function(popup) {
             popup.closed.connect(function() { Qt.callLater(root.restoreHomeFocus) })
         })
+        routingStartupPending = FlintController.initializeRussianRouting()
         IpSplitTunnelingController.setRouteMode(2)
         IpSplitTunnelingController.toggleSplitTunneling(FlintController.ruDirectEnabled)
+        routingBootstrapping = false
+        if (routingStartupPending && ConnectionController.isConnected) requestRoutingApply()
         FlintController.refresh()
         Qt.callLater(root.restoreHomeFocus)
     }

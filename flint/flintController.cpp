@@ -406,6 +406,15 @@ bool FlintController::automaticRoutingEnabled() const
 {
     return m_settings->value("Conf/flintAutomaticRouting", true).toBool();
 }
+bool FlintController::initializeRussianRouting()
+{
+    if (m_russianRoutingInitialized) return false;
+    m_russianRoutingInitialized = true;
+    const bool changed = !ruDirectEnabled() || !automaticRoutingEnabled();
+    setRuDirectEnabled(true);
+    setAutomaticRoutingEnabled(true);
+    return changed;
+}
 void FlintController::setAutomaticRoutingEnabled(bool enabled)
 {
     if (automaticRoutingEnabled() == enabled) return;
@@ -738,8 +747,11 @@ void FlintController::refreshConfig()
             if (routing.contains("russianServices")) {
                 const auto policy = routing.value("russianServices").toObject();
                 if (FlintRouting::valid(policy)) {
-                    m_settings->setValue("Conf/flintRouting", QJsonDocument(policy).toJson(QJsonDocument::Compact));
-                    emit routingChanged();
+                    const auto packed = QJsonDocument(policy).toJson(QJsonDocument::Compact);
+                    if (m_settings->value("Conf/flintRouting").toByteArray() != packed) {
+                        m_settings->setValue("Conf/flintRouting", packed);
+                        emit routingChanged();
+                    }
                 } else setError(QStringLiteral("Правила российских сервисов из API не распознаны. Сохранены предыдущие правила."));
             }
             const QJsonObject maintenance =

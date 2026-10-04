@@ -9,6 +9,7 @@ Popup {
     objectName: "flintSitesPanel"
     property string feedback: ""
     property bool submitting: false
+    signal routingEdited()
     width: Math.min(parent.width - 24, 500)
     height: Math.max(220, Math.min(parent.height - PageController.safeAreaTopMargin - PageController.safeAreaBottomMargin - PageController.imeHeight - 24, 680))
     x: (parent.width - width) / 2
@@ -23,7 +24,8 @@ Popup {
         submitting = false
     }
     function changed() {
-        feedback = "Сохранено. " + (ConnectionController.isConnected ? "Переподключите VPN, чтобы применить изменения." : "Изменения применятся при подключении.")
+        feedback = "Сохранено. " + (ConnectionController.isConnected || ConnectionController.isConnectionInProgress ? "VPN переподключается с новыми правилами." : "Изменения применятся при подключении.")
+        routingEdited()
     }
     onOpened: { Qt.callLater(function() { FlintFocus.firstButton(panel.contentItem) }); feedback = ""; IpSplitTunnelingController.setRouteMode(2); IpSplitTunnelingController.updateModel() }
     Connections {
