@@ -651,6 +651,11 @@ PageType {
     }
 
     Component.onCompleted: {
+        // Qt may restore focus to the window after a Popup closes. Restore the
+        // TV home explicitly once all overlays have closed; touch is unchanged.
+        homePopups().forEach(function(popup) {
+            popup.closed.connect(function() { Qt.callLater(root.restoreHomeFocus) })
+        })
         IpSplitTunnelingController.setRouteMode(2)
         IpSplitTunnelingController.toggleSplitTunneling(FlintController.ruDirectEnabled)
         FlintController.refresh()
