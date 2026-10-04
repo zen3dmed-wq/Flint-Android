@@ -42,6 +42,7 @@ Popup {
             ColumnLayout { width: bodyScroll.availableWidth; spacing: 12
         Text { text: FlintController.routingSummary; color: "#64ECC0"; font.pixelSize: 12; Layout.fillWidth: true; wrapMode: Text.Wrap }
         Text { text: "Автоматически: российские сервисы из базы правил и локальная сеть — напрямую, остальные сайты — через VPN. Правила обновляются из конфигурации, если сервер их предоставляет. Для VLESS/Xray маршрут выбирается по домену; для других протоколов используется список отдельных сайтов."; color: "#B7C9DA"; font.pixelSize: 13; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+        Text { visible: Qt.platform.os === "android"; text: "На Android в автоматическом режиме Яндекс Карты и Навигатор работают напрямую через сеть телефона. VPN остаётся включён для остальных приложений согласно вашим правилам."; color: "#B7C9DA"; font.pixelSize: 13; Layout.fillWidth: true; wrapMode: Text.WordWrap }
         RowLayout {
             Layout.fillWidth: true
             Text { text: "Разделять трафик"; color: "#F8FBFF"; Layout.fillWidth: true; wrapMode: Text.WordWrap }
