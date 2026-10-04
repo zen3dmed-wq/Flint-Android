@@ -8,6 +8,7 @@ from patch_direct_sites import apply as apply_direct_sites
 from patch_qr_images import apply as apply_qr_images
 from patch_vpn_permission import apply as apply_vpn_permission
 from patch_android_diagnostics import apply as apply_android_diagnostics
+from patch_android_config_transport import apply as apply_android_config_transport
 from patch_routing import apply as apply_routing
 from patch_flint_qr_subscription import apply as apply_flint_qr_subscription
 
@@ -28,12 +29,12 @@ def replace(path, old, new, required=True):
 replace(
     "CMakeLists.txt",
     'set(AMNEZIAVPN_VERSION 5.0.3.0 CACHE STRING "Client app version")',
-    'set(AMNEZIAVPN_VERSION 8.10.16 CACHE STRING "Client app version")'
+    'set(AMNEZIAVPN_VERSION 8.10.17 CACHE STRING "Client app version")'
 )
 replace(
     "CMakeLists.txt",
     'set(APP_ANDROID_VERSION_CODE 2163)',
-    'set(APP_ANDROID_VERSION_CODE 2186)'
+    'set(APP_ANDROID_VERSION_CODE 2187)'
 )
 replace(
     "client/cmake/branding/common.cmake",
@@ -386,9 +387,10 @@ assert 'parseSubscriptionProfiles' in (root / "client/ui/controllers/flintContro
 assert 'flintProfileServerId' in (root / "client/core/controllers/coreController.cpp").read_text(encoding="utf-8")
 assert 'clearQtCaches();' in (root / "client/amneziaApplication.cpp").read_text(encoding="utf-8")
 
-print("Flint Android 8.10.16 startup-safe patch applied and statically verified")
+print("Flint Android 8.10.17 startup-safe patch applied and statically verified")
 
 apply_vpn_permission(root)
 apply_android_diagnostics(root, flint)
+apply_android_config_transport(root, flint)
 
 apply_routing(root, flint)

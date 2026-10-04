@@ -13,6 +13,7 @@ object FlintVpnDiagnostics {
     @JvmStatic @Synchronized fun reset() { generation++; started = System.nanoTime(); events.clear(); failure = ""; current = Stage.IDLE }
     @JvmStatic @Synchronized fun begin(): Long { generation++; failure = ""; record(Stage.REQUESTED); return generation }
     @JvmStatic @Synchronized fun isCurrent(attempt: Long) = attempt == generation
+    @JvmStatic @Synchronized fun currentAttempt(): Long = generation
     @JvmStatic @Synchronized fun cancel() { generation++; record(Stage.STOP_REQUESTED) }
     @JvmStatic @Synchronized fun record(stage: Stage) {
         current = stage
@@ -26,6 +27,8 @@ object FlintVpnDiagnostics {
         val text = raw.lowercase()
         // Only fixed diagnostic codes leave this function, never raw engine data.
         failure = when {
+            "config transport" in text -> "CONFIG_TRANSFER_FAILED"
+            "service bind" in text -> "SERVICE_BIND_FAILED"
             "permission" in text || "not allowed" in text -> "VPN_PERMISSION_DENIED"
             "unknownhost" in text || "resolve" in text || "no such host" in text -> "DNS_RESOLUTION_FAILED"
             "socks inbound" in text -> "SOCKS_INBOUND_MISSING"

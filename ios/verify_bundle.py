@@ -10,8 +10,8 @@ def read(path):
     return plistlib.loads(path.read_bytes())
 info = read(app/'Info.plist')
 assert info['CFBundleIdentifier'] == 'app.flint.vpn'
-assert info['CFBundleShortVersionString'] == '8.10.16'
-assert info['CFBundleVersion'] == '2186'
+assert info['CFBundleShortVersionString'] == '8.10.17'
+assert info['CFBundleVersion'] == '2187'
 extensions = list((app/'PlugIns').glob('*.appex'))
 assert len(extensions) == 1
 ext = extensions[0]

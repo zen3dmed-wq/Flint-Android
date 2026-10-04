@@ -76,7 +76,7 @@ PageType {
         traceConnection("REQUESTED")
     }
     function connectionReport() {
-        return "Flint 8.10.16 / 2186\nmode=" + (autoConnection ? "auto" : "manual") +
+        return "Flint 8.10.17 / 2187\nmode=" + (autoConnection ? "auto" : "manual") +
             "\nruDirect=" + FlintController.ruDirectEnabled + "\ncore.error=" + lastConnectionError +
             "\n" + connectionEvents.join("\n") + "\n" + (lastNativeAttempt || FlintController.vpnDiagnostics())
     }
@@ -1618,7 +1618,7 @@ PageType {
             }
 
             Text { text: "Настройки Flint"; color: root.ink; font.pixelSize: 21; font.bold: true }
-            Text { text: "Flint Android 8.10.16"; color: root.muted }
+            Text { text: "Flint Android 8.10.17"; color: root.muted }
             FlintButton {
                 Layout.fillWidth: true
                 text: "Диагностика подключения"

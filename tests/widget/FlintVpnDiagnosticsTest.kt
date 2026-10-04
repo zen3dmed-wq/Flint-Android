@@ -10,6 +10,8 @@ fun main() {
     check(FlintVpnDiagnostics.isCurrent(newer))
     check(!FlintVpnDiagnostics.isCurrent(old))
     val cases = mapOf(
+        "config transport failed" to "CONFIG_TRANSFER_FAILED",
+        "service bind failed" to "SERVICE_BIND_FAILED",
         "VPN permission denied" to "VPN_PERMISSION_DENIED",
         "UnknownHostException private.example" to "DNS_RESOLUTION_FAILED",
         "socks inbound not found" to "SOCKS_INBOUND_MISSING",
@@ -32,5 +34,5 @@ fun main() {
     FlintVpnDiagnostics.reset()
     check(FlintVpnDiagnostics.stage() == "IDLE")
     check(FlintVpnDiagnostics.report().lines().size == 3)
-    println("Flint native diagnostics: cancellation generations, 9 failure classes, no credentials, bounded history and reset passed")
+    println("Flint native diagnostics: cancellation generations, 11 failure classes, no credentials, bounded history and reset passed")
 }

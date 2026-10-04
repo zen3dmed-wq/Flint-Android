@@ -57,7 +57,8 @@ QString FlintController::vpnFailureMessage() const {
     if (code == "VPN_PERMISSION_DENIED") return QStringLiteral("Android не разрешил запуск VPN. Разрешите подключение в системном окне.");
     if (code == "DNS_RESOLUTION_FAILED") return QStringLiteral("Не удалось определить адрес сервера. Проверьте подключение к интернету.");
     if (code == "VPN_CONFIG_REJECTED" || code == "SOCKS_INBOUND_MISSING" || code == "UNSUPPORTED_TRANSPORT") return QStringLiteral("VPN-движок отклонил профиль подключения. Скопируйте диагностику для проверки.");
-    if (code == "TUN_START_FAILED" || code == "SERVICE_START_FAILED" || code == "NATIVE_START_FAILED") return QStringLiteral("Не удалось запустить VPN-службу Android. Скопируйте диагностику для проверки.");
+    if (code == "CONFIG_TRANSFER_FAILED") return QStringLiteral("Не удалось передать настройки VPN-службе. Скопируйте диагностику для проверки.");
+    if (code == "TUN_START_FAILED" || code == "SERVICE_START_FAILED" || code == "SERVICE_BIND_FAILED" || code == "NATIVE_START_FAILED") return QStringLiteral("Не удалось запустить VPN-службу Android. Скопируйте диагностику для проверки.");
     if (code == "NATIVE_TIMEOUT") return QStringLiteral("VPN-служба не завершила запуск вовремя. Скопируйте диагностику для проверки.");
     return {};
 }
