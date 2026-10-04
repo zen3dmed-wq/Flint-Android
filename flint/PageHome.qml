@@ -59,6 +59,7 @@ PageType {
     readonly property bool connectionPending: queuedLocation !== null || connectRequested || FlintController.profilePreparing || ConnectionController.isConnectionInProgress
     // Only VPN connection outcomes affect this state; account/import errors do not.
     property bool connectionFailed: false
+    property int lastConnectionError: -1
     property bool cancellingConnection: false
     property bool observedConnection: ConnectionController.isConnected || ConnectionController.isConnectionInProgress
     readonly property string connectionVisualState: connectionFailed ? "error"
@@ -362,7 +363,7 @@ PageType {
         if(!tvPairWaiting || !tvPairReceivedLogin || !FlintController.loggedIn || !FlintController.subscriptionActive || !FlintController.subscriptionUrl) return
         tvPairWaiting = false; tvPairTimer.stop(); tvPairPopup.close()
         FlintController.selectedCountry = "AUTO"
-        connectionFailed = false; cancellingConnection = false
+        connectionFailed = false; cancellingConnection = false; lastConnectionError = -1
         connectRequested = true; autoConnection = true; awaitingProfile = true
         FlintController.importSubscription()
     }
@@ -458,7 +459,7 @@ PageType {
             accountPopup.open()
             return
         }
-        connectionFailed = false; cancellingConnection = false
+        connectionFailed = false; cancellingConnection = false; lastConnectionError = -1
         connectRequested = true
         autoConnection = FlintController.subscriptionActive && FlintController.selectedCountry === "AUTO" && !FlintController.selectedSavedServerId
         if (FlintController.subscriptionActive && !FlintController.selectedSavedServerId) {
@@ -491,6 +492,11 @@ PageType {
         connectionFailed = true
     }
 
+    function showConnectionFailure(fallbackMessage) {
+        if (lastConnectionError > 0) PageController.showErrorMessage(lastConnectionError)
+        else PageController.showNotificationMessage(fallbackMessage)
+    }
+
     function retryConnection() {
         if (!connectRequested || retryPending) return
         connectionDeadline.stop()
@@ -506,36 +512,44 @@ PageType {
             if (ConnectionController.isConnectionInProgress || ConnectionController.isConnected) {
                 if (++root.retryWaitTicks < 100) return
                 root.failConnection()
-                PageController.showNotificationMessage("Не удалось завершить подключение. Повторите попытку.")
+                root.showConnectionFailure("Не удалось завершить подключение. Повторите попытку.")
                 return
             }
             stop(); root.retryPending = false; root.awaitingProfile = true
             if (root.autoConnection && FlintController.tryNextAutomaticProfile()) return
             root.failConnection()
             if (root.autoConnection) FlintController.initializeServers()
-            PageController.showNotificationMessage("Сервер не ответил. Выберите другую локацию или обновите профиль в аккаунте.")
+            root.showConnectionFailure("Сервер не ответил. Выберите другую локацию или обновите профиль в аккаунте.")
         }
     }
     Connections {
         target: ConnectionController
         function onConnectionStateChanged() {
-            if (ConnectionController.isConnected) {
-                root.observedConnection = true
-                root.connectionFailed = false; root.cancellingConnection = false
+            if (ConnectionController.isConnected && !root.cancellingConnection && root.queuedLocation === null) {
+                root.connectionFailed = false; root.lastConnectionError = -1
                 root.connectRequested = false; root.awaitingProfile = false; root.retryPending = false
                 connectionDeadline.stop(); retryWait.stop()
             } else if (root.cancellingConnection) {
-                if (!ConnectionController.isConnectionInProgress) root.cancellingConnection = false
+                if (!ConnectionController.isConnected && !ConnectionController.isConnectionInProgress)
+                    root.cancellingConnection = false
             } else if (root.connectRequested && !root.awaitingProfile) {
                 if (ConnectionController.isConnectionInProgress) root.sawConnectionProgress = true
                 else if (root.sawConnectionProgress) root.retryConnection()
             }
-            if (ConnectionController.isConnectionInProgress && !root.cancellingConnection)
-                root.observedConnection = true
+            root.observedConnection = !root.cancellingConnection && root.queuedLocation === null &&
+                (ConnectionController.isConnected || ConnectionController.isConnectionInProgress)
         }
         function onConnectionErrorOccurred(error) {
-            if (root.connectRequested) root.retryConnection()
-            else if (root.observedConnection && !root.cancellingConnection) root.failConnection()
+            // Teardown errors belong to the old tunnel, not to a queued target.
+            if (root.cancellingConnection || root.queuedLocation !== null) return
+            if (root.connectRequested) {
+                if (error > 0) root.lastConnectionError = error
+                root.retryConnection()
+            } else if (root.observedConnection) {
+                // An observed native failure changes presentation only. Native
+                // teardown owns the connection; this must not cancel imports.
+                root.connectionFailed = true
+            }
         }
     }
     Connections {
@@ -1523,7 +1537,7 @@ PageType {
             }
 
             Text { text: "Настройки Flint"; color: root.ink; font.pixelSize: 21; font.bold: true }
-            Text { text: "Flint Android 8.10.14"; color: root.muted }
+            Text { text: "Flint Android 8.10.15"; color: root.muted }
 
             FlintButton {
                 Layout.fillWidth: true
