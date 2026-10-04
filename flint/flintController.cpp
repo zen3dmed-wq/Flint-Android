@@ -31,7 +31,7 @@ QString FlintController::normalizeDirectSite(const QString &value) const
 namespace {
 QString nativeVpnDiagnostic(const char *method) {
 #ifdef Q_OS_ANDROID
-    auto activity = QNativeInterface::QAndroidApplication::context();
+    QJniObject activity = QNativeInterface::QAndroidApplication::context();
     if (activity.isValid()) {
         auto value = activity.callObjectMethod(method, "()Ljava/lang/String;");
         QJniEnvironment env;
@@ -46,7 +46,7 @@ QString nativeVpnDiagnostic(const char *method) {
 }
 void FlintController::resetVpnDiagnostics() {
 #ifdef Q_OS_ANDROID
-    auto activity = QNativeInterface::QAndroidApplication::context();
+    QJniObject activity = QNativeInterface::QAndroidApplication::context();
     if (activity.isValid()) activity.callMethod<void>("resetFlintVpnDiagnostics", "()V");
 #endif
 }
