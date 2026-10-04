@@ -23,7 +23,7 @@ PageType {
         var target = root.isTv && tvPairButton.visible ? tvPairButton : connectBtn
         if (target.enabled) target.forceActiveFocus(Qt.TabFocusReason)
     }
-    function homePopups() { return [qrSourcePopup, tvPairPopup, accountPopup, countryPopup, assistPopup, familyQrPopup, settingsPopup, importPopup, apiSetupPopup, sitesPopup, servicePopup, subscriptionsPopup, devicesPopup] }
+    function homePopups() { return [diagnosticsPopup, qrSourcePopup, tvPairPopup, accountPopup, countryPopup, assistPopup, familyQrPopup, settingsPopup, importPopup, apiSetupPopup, sitesPopup, servicePopup, subscriptionsPopup, devicesPopup] }
     function hasOpenPopup() { return homePopups().some(function(p) { return p.opened || p.visible }) }
 
     readonly property bool isTv: SettingsController.isOnTv()
@@ -60,6 +60,30 @@ PageType {
     // Only VPN connection outcomes affect this state; account/import errors do not.
     property bool connectionFailed: false
     property int lastConnectionError: -1
+    property real connectionStartedAt: 0
+    property var connectionEvents: []
+    property string failureDetails: ""
+    property string failureMessage: ""
+    property string lastNativeAttempt: ""
+    function traceConnection(event) {
+        var events = connectionEvents.slice(-23)
+        events.push(Math.max(0, Date.now() - connectionStartedAt) + " ms " + event)
+        connectionEvents = events
+    }
+    function resetConnectionDiagnostics() {
+        connectionStartedAt = Date.now(); connectionEvents = []; failureDetails = ""; failureMessage = ""; lastNativeAttempt = ""
+        FlintController.resetVpnDiagnostics()
+        traceConnection("REQUESTED")
+    }
+    function connectionReport() {
+        return "Flint 8.10.16 / 2186\nmode=" + (autoConnection ? "auto" : "manual") +
+            "\nruDirect=" + FlintController.ruDirectEnabled + "\ncore.error=" + lastConnectionError +
+            "\n" + connectionEvents.join("\n") + "\n" + (lastNativeAttempt || FlintController.vpnDiagnostics())
+    }
+    function openConnectionDiagnostics() {
+        if (!failureDetails) failureDetails = connectionReport()
+        diagnosticsPopup.open()
+    }
     property bool cancellingConnection: false
     property bool observedConnection: ConnectionController.isConnected || ConnectionController.isConnectionInProgress
     readonly property string connectionVisualState: connectionFailed ? "error"
@@ -364,6 +388,7 @@ PageType {
         tvPairWaiting = false; tvPairTimer.stop(); tvPairPopup.close()
         FlintController.selectedCountry = "AUTO"
         connectionFailed = false; cancellingConnection = false; lastConnectionError = -1
+        resetConnectionDiagnostics()
         connectRequested = true; autoConnection = true; awaitingProfile = true
         FlintController.importSubscription()
     }
@@ -413,6 +438,35 @@ PageType {
         }
     }
 
+    Popup {
+        id: diagnosticsPopup
+        objectName: "connectionDiagnosticsPopup"
+        parent: root; anchors.centerIn: parent
+        width: Math.min(root.width - 28, 510); height: Math.min(root.height - 32, 540)
+        modal: true; focus: true; padding: 20
+        onOpened: Qt.callLater(function() { FlintFocus.firstButton(diagnosticsPopup.contentItem) })
+        Shortcut { sequence: "Back"; enabled: diagnosticsPopup.activeFocus; onActivated: diagnosticsPopup.close() }
+        background: Rectangle { radius: 24; color: "#081827"; border.color: root.line }
+        contentItem: ColumnLayout {
+            property bool flintFocusScope: true
+            spacing: 14
+            Text { text: "Диагностика подключения"; color: root.ink; font.pixelSize: 22; font.bold: true; wrapMode: Text.Wrap; Layout.fillWidth: true }
+            Text { text: root.failureMessage || "Последние этапы запуска VPN. В отчёте нет ключей подписки и данных аккаунта."; color: root.muted; wrapMode: Text.Wrap; Layout.fillWidth: true }
+            ScrollView {
+                Layout.fillWidth: true; Layout.fillHeight: true; clip: true
+                TextArea {
+                    text: root.failureDetails; readOnly: true; selectByMouse: true
+                    wrapMode: TextEdit.Wrap; color: root.ink; font.pixelSize: 12
+                    background: Rectangle { color: "#142C3C"; radius: 12 }
+                }
+            }
+            FlintButton {
+                text: "Скопировать диагностику"; Layout.fillWidth: true
+                onClicked: { linkClipboard.text = root.failureDetails; linkClipboard.selectAll(); linkClipboard.copy(); PageController.showNotificationMessage("Диагностика скопирована") }
+            }
+            FlintButton { text: "Закрыть"; Layout.fillWidth: true; onClicked: diagnosticsPopup.close() }
+        }
+    }
     function openSettings() { settingsPopup.open() }
     function startInitialization() {
         FlintController.initializeServers()
@@ -460,16 +514,20 @@ PageType {
             return
         }
         connectionFailed = false; cancellingConnection = false; lastConnectionError = -1
+        resetConnectionDiagnostics()
         connectRequested = true
         autoConnection = FlintController.subscriptionActive && FlintController.selectedCountry === "AUTO" && !FlintController.selectedSavedServerId
         if (FlintController.subscriptionActive && !FlintController.selectedSavedServerId) {
             awaitingProfile = true
+            traceConnection("PROFILE_PREPARING")
             FlintController.importSubscription()
         } else startTunnel()
     }
 
     function startTunnel() {
         if (!connectRequested) return
+        lastNativeAttempt = ""
+        traceConnection("CORE_START_REQUESTED")
         sawConnectionProgress = false
         connectionDeadline.restart()
         ConnectionController.connectButtonClicked()
@@ -487,25 +545,40 @@ PageType {
     }
 
     function failConnection() {
+        traceConnection("FAILED")
+        failureMessage = FlintController.vpnFailureMessage()
+        failureDetails = connectionReport()
         cancelConnection()
         cancellingConnection = false
         connectionFailed = true
     }
 
     function showConnectionFailure(fallbackMessage) {
+        if (!failureMessage) failureMessage = fallbackMessage
         if (lastConnectionError > 0) PageController.showErrorMessage(lastConnectionError)
         else PageController.showNotificationMessage(fallbackMessage)
+        diagnosticsPopup.open()
     }
 
     function retryConnection() {
         if (!connectRequested || retryPending) return
+        lastNativeAttempt = FlintController.vpnDiagnostics()
         connectionDeadline.stop()
         retryPending = true; retryWaitTicks = 0
         ConnectionController.closeConnection()
         retryWait.start()
     }
 
-    Timer { id: connectionDeadline; interval: 30000; onTriggered: root.retryConnection() }
+    Timer {
+        id: connectionDeadline; interval: 30000
+        onTriggered: {
+            var phase = FlintController.vpnDiagnosticStage()
+            if ((phase === "VPN_PERMISSION" || phase === "NOTIFICATION_PERMISSION") && Date.now() - root.connectionStartedAt < 120000) {
+                restart(); return
+            }
+            root.traceConnection("START_DEADLINE"); root.retryConnection()
+        }
+    }
     Timer {
         id: retryWait; interval: 100; repeat: true
         onTriggered: {
@@ -519,12 +592,13 @@ PageType {
             if (root.autoConnection && FlintController.tryNextAutomaticProfile()) return
             root.failConnection()
             if (root.autoConnection) FlintController.initializeServers()
-            root.showConnectionFailure("Сервер не ответил. Выберите другую локацию или обновите профиль в аккаунте.")
+            root.showConnectionFailure("VPN не завершил запуск. Скопируйте диагностику ниже — она поможет определить причину.")
         }
     }
     Connections {
         target: ConnectionController
         function onConnectionStateChanged() {
+            root.traceConnection(ConnectionController.isConnected ? "CORE_CONNECTED" : ConnectionController.isConnectionInProgress ? "CORE_PROGRESS" : "CORE_STOPPED")
             if (ConnectionController.isConnected && !root.cancellingConnection && root.queuedLocation === null) {
                 root.connectionFailed = false; root.lastConnectionError = -1
                 root.connectRequested = false; root.awaitingProfile = false; root.retryPending = false
@@ -540,6 +614,7 @@ PageType {
                 (ConnectionController.isConnected || ConnectionController.isConnectionInProgress)
         }
         function onConnectionErrorOccurred(error) {
+            root.traceConnection("CORE_ERROR_" + error)
             // Teardown errors belong to the old tunnel, not to a queued target.
             if (root.cancellingConnection || root.queuedLocation !== null) return
             if (root.connectRequested) {
@@ -560,6 +635,7 @@ PageType {
         }
         function onProfilePreparationFinished(success) {
             if (!root.awaitingProfile || !root.connectRequested) return
+            root.traceConnection(success ? "PROFILE_READY" : "PROFILE_FAILED")
             root.awaitingProfile = false
             if (success) root.startTunnel()
             else root.failConnection()
@@ -1537,7 +1613,12 @@ PageType {
             }
 
             Text { text: "Настройки Flint"; color: root.ink; font.pixelSize: 21; font.bold: true }
-            Text { text: "Flint Android 8.10.15"; color: root.muted }
+            Text { text: "Flint Android 8.10.16"; color: root.muted }
+            FlintButton {
+                Layout.fillWidth: true
+                text: "Диагностика подключения"
+                onClicked: { settingsPopup.close(); root.openConnectionDiagnostics() }
+            }
 
             FlintButton {
                 Layout.fillWidth: true

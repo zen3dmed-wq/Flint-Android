@@ -25,7 +25,42 @@ QString FlintController::normalizeDirectSite(const QString &value) const
 #ifdef Q_OS_ANDROID
 #include <QCoreApplication>
 #include <QJniObject>
+#include <QJniEnvironment>
 #endif
+
+namespace {
+QString nativeVpnDiagnostic(const char *method) {
+#ifdef Q_OS_ANDROID
+    auto activity = QNativeInterface::QAndroidApplication::context();
+    if (activity.isValid()) {
+        auto value = activity.callObjectMethod(method, "()Ljava/lang/String;");
+        QJniEnvironment env;
+        if (env->ExceptionCheck()) { env->ExceptionClear(); return {}; }
+        return value.toString();
+    }
+#else
+    Q_UNUSED(method);
+#endif
+    return {};
+}
+}
+void FlintController::resetVpnDiagnostics() {
+#ifdef Q_OS_ANDROID
+    auto activity = QNativeInterface::QAndroidApplication::context();
+    if (activity.isValid()) activity.callMethod<void>("resetFlintVpnDiagnostics", "()V");
+#endif
+}
+QString FlintController::vpnDiagnostics() const { return nativeVpnDiagnostic("getFlintVpnDiagnostics"); }
+QString FlintController::vpnDiagnosticStage() const { return nativeVpnDiagnostic("getFlintVpnStage"); }
+QString FlintController::vpnFailureMessage() const {
+    const auto code = nativeVpnDiagnostic("getFlintVpnErrorCode");
+    if (code == "VPN_PERMISSION_DENIED") return QStringLiteral("Android не разрешил запуск VPN. Разрешите подключение в системном окне.");
+    if (code == "DNS_RESOLUTION_FAILED") return QStringLiteral("Не удалось определить адрес сервера. Проверьте подключение к интернету.");
+    if (code == "VPN_CONFIG_REJECTED" || code == "SOCKS_INBOUND_MISSING" || code == "UNSUPPORTED_TRANSPORT") return QStringLiteral("VPN-движок отклонил профиль подключения. Скопируйте диагностику для проверки.");
+    if (code == "TUN_START_FAILED" || code == "SERVICE_START_FAILED" || code == "NATIVE_START_FAILED") return QStringLiteral("Не удалось запустить VPN-службу Android. Скопируйте диагностику для проверки.");
+    if (code == "NATIVE_TIMEOUT") return QStringLiteral("VPN-служба не завершила запуск вовремя. Скопируйте диагностику для проверки.");
+    return {};
+}
 
 void FlintController::requestHomeWidget()
 {
@@ -37,7 +72,7 @@ void FlintController::requestHomeWidget()
 
 namespace {
 const QString kApiBase = QStringLiteral("https://flintmain.ru/api/v1");
-const QString kVersion = QStringLiteral("8.10.10");
+const QString kVersion = QStringLiteral("8.10.16");
 
 bool isProfileUri(const QString &s)
 {

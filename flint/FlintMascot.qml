@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 
 // Preserve the original artwork; only the inner face and ring indicate VPN state.
 Item {
@@ -10,7 +11,7 @@ Item {
     readonly property string expression: connected ? "happy" : "sad"
     readonly property bool transitioning: expressionFade.running
     readonly property real sadOpacity: sadFace.opacity
-    readonly property bool artworkReady: nativeOriginal.status === Image.Ready && sadFace.artworkReady && (connected || original.artworkReady)
+    readonly property bool artworkReady: nativeOriginal.status === Image.Ready && sadFace.artworkReady && original.artworkReady
     function updateExpression(withAnimation) {
         if (!ready) return
         expressionFade.stop()
@@ -34,8 +35,8 @@ Item {
         easing.type: Easing.InOutQuad
     }
 
-    // The native Image displays the connected emblem and remains the fallback
-    // until the state-specific layer has drawn a complete source image.
+    // Keep a native Image fallback until the complete state layer is ready.
+    // All four states use one render path, avoiding filtering changes on connect.
     Image {
         id: nativeOriginal
         objectName: "mascotOriginalImage"
@@ -45,16 +46,18 @@ Item {
         source: "qrc:/ui/qml/Assets/flint-main.png"
         fillMode: Image.PreserveAspectFit
         smooth: true
-        visible: mascot.connected || !original.hasDrawnFrame
+        visible: !original.hasDrawnFrame
     }
 
     Canvas {
         id: original
         objectName: "mascotStateRing"
         anchors.centerIn: parent
-        width: 360; height: 360
-        scale: Math.min(parent.width, parent.height) / 360
-        visible: !mascot.connected
+        // Canvas uses a logical-resolution image. Paint a physical-pixel buffer
+        // and scale the item back to its logical size to retain fine artwork.
+        width: Math.ceil(Math.min(parent.width, parent.height) * Screen.devicePixelRatio)
+        height: width
+        scale: Math.min(parent.width, parent.height) / Math.max(1, width)
         property url artwork: nativeOriginal.source
         property bool artworkReady: false
         property bool hasDrawnFrame: false
@@ -63,12 +66,16 @@ Item {
         property int cacheBuilds: 0
         property var cachedRings: ({})
         renderTarget: Canvas.Image
+        antialiasing: true
+        smooth: true
         Component.onCompleted: loadImage(artwork)
         onImageLoaded: { artworkReady = true; requestPaint() }
         onConnectionStateChanged: requestPaint()
         onVisibleChanged: if (visible) requestPaint()
+        onWidthChanged: requestPaint()
+        onHeightChanged: requestPaint()
         onPaint: {
-            if (!artworkReady || connectionState === "connected") return
+            if (!artworkReady) return
             var ctx = getContext("2d")
             ctx.reset()
             ctx.clearRect(0, 0, width, height)
@@ -83,7 +90,7 @@ Item {
                 if (!imageWidth || !imageHeight) return
                 var tint = connectionState === "connecting" ? [241, 199, 91]
                          : connectionState === "error" ? [239, 98, 107] : [130, 144, 158]
-                for (var y = 0; y < imageHeight; ++y) {
+                for (var y = 0; connectionState !== "connected" && y < imageHeight; ++y) {
                     var dy = y / imageHeight - 0.49
                     for (var x = 0; x < imageWidth; ++x) {
                         var dx = x / imageWidth - 0.50
@@ -102,7 +109,7 @@ Item {
                 cachedRings[connectionState] = cached
                 cacheBuilds++
             }
-            // drawImage honours logical sizing and Qt's device-pixel ratio.
+            // Draw the entire source into the buffer, never a framebuffer crop.
             ctx.drawImage(cached, 0, 0, width, height)
             hasDrawnFrame = true
             paintCount++
@@ -113,12 +120,15 @@ Item {
         id: sadFace
         objectName: "mascotSadFace"
         anchors.centerIn: parent
-        width: Math.min(parent.width, parent.height)
+        width: Math.ceil(Math.min(parent.width, parent.height) * Screen.devicePixelRatio)
         height: width
+        scale: Math.min(parent.width, parent.height) / Math.max(1, width)
         property url artwork: "qrc:/ui/qml/Assets/flint-main-sad.png"
         property bool artworkReady: false
         opacity: 1
         renderTarget: Canvas.Image
+        antialiasing: true
+        smooth: true
         Component.onCompleted: loadImage(artwork)
         onImageLoaded: { artworkReady = true; requestPaint() }
         onWidthChanged: requestPaint()

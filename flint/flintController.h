@@ -92,6 +92,10 @@ public:
     QString apiBase() const;
     Q_INVOKABLE bool setApiBase(const QString &base);
     Q_INVOKABLE void requestHomeWidget();
+    Q_INVOKABLE void resetVpnDiagnostics();
+    Q_INVOKABLE QString vpnDiagnostics() const;
+    Q_INVOKABLE QString vpnDiagnosticStage() const;
+    Q_INVOKABLE QString vpnFailureMessage() const;
     Q_INVOKABLE void decodeQrImage(const QString &url, const QString &requestId);
     bool automaticRoutingEnabled() const;
     void setAutomaticRoutingEnabled(bool enabled);
