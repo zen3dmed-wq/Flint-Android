@@ -65,7 +65,7 @@ class ActivityFixture {
     fun getVpnProto(config: String): VpnProto? = VpnProto("Xray")
     fun doUnbindService() { isServiceConnected=false; isInBoundState=false }
     fun bindService(intent: Intent, connection: Any, flags: Int): Boolean { binds++; bindFlags=flags; return allowBind }
-    fun run(config: String) = startVpn(config)
+    fun run(config: String, attempt: Long = FlintVpnDiagnostics.currentAttempt()) = startVpn(config, attempt)
 '''+activity+'''
 }
 class ServiceFixture {
@@ -99,6 +99,8 @@ fun main(args: Array<String>) {
     val count=ContextCompat.count
     afterWork={ FlintVpnDiagnostics.cancel() }; ActivityFixture().run(config)
     check(ContextCompat.count==count); afterWork={}
+    val old=FlintVpnDiagnostics.begin(); FlintVpnDiagnostics.cancel(); FlintVpnDiagnostics.begin()
+    ActivityFixture().run(config, old); check(ContextCompat.count==count)
     val invalid=Bundle().apply { putByteArray(FlintVpnConfigTransport.EXTRA, byteArrayOf(1,2)) }
     val calls=service.calls; service.run(invalid)
     check(service.errors==1 && service.calls==calls && service.protocolState.value==DISCONNECTED)

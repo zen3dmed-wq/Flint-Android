@@ -18,9 +18,10 @@ def apply(root: Path, assets: Path):
     # again before any service is started. No profile is sent through Binder raw.
     edit(a, 'import kotlinx.coroutines.launch',
          'import kotlinx.coroutines.launch\nimport kotlinx.coroutines.withContext')
-    edit(a, '    private fun startVpn(vpnConfig: String) {', '''    private fun startVpn(vpnConfig: String) {
-        val attempt = FlintVpnDiagnostics.currentAttempt()
+    edit(a, '                    startVpn(vpnConfig)', '                    startVpn(vpnConfig, attempt)')
+    edit(a, '    private fun startVpn(vpnConfig: String) {', '''    private fun startVpn(vpnConfig: String, attempt: Long) {
         mainScope.launch {
+            if (!FlintVpnDiagnostics.isCurrent(attempt)) return@launch
             val packed = try {
                 withContext(Dispatchers.Default) { FlintVpnConfigTransport.encode(vpnConfig) }
             } catch (e: Exception) {
