@@ -55,7 +55,6 @@ object FlintUpdateInstaller {
                 return "Сборка не поддерживает процессор этого устройства. Нужна совместимая или универсальная сборка."
             if (!pm.canRequestPackageInstalls()) {
                 val permission = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + activity.packageName))
-                if (permission.resolveActivity(pm) == null) return "Разрешите установку приложений для Flint в настройках Android и повторите."
                 open(activity, permission)
                 return "Разрешите установку обновлений для Flint, вернитесь и нажмите «Установить» ещё раз."
             }
@@ -63,7 +62,6 @@ object FlintUpdateInstaller {
             val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             intent.clipData = ClipData.newRawUri("Flint update", uri)
-            if (intent.resolveActivity(pm) == null) return "На устройстве не найден установщик APK."
             open(activity, intent)
             return ""
         } catch (_: Exception) {
