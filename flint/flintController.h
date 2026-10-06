@@ -18,6 +18,7 @@
 class FlintController : public QObject
 {
     Q_OBJECT
+    friend class FlintUpdates;
     Q_PROPERTY(qulonglong receivedBytes MEMBER m_receivedBytes NOTIFY trafficChanged)
     Q_PROPERTY(qulonglong sentBytes MEMBER m_sentBytes NOTIFY trafficChanged)
     Q_PROPERTY(bool loggedIn READ loggedIn NOTIFY authChanged)

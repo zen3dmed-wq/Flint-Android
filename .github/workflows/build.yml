@@ -1,4 +1,4 @@
-name: Build Flint Android 8.10.18
+name: Build Flint Android 8.10.19
 
 on:
   pull_request:
@@ -45,11 +45,7 @@ jobs:
       matrix:
         include:
           - abi: arm64-v8a
-            qt: android_arm64_v8a
-            label: arm64
-          - abi: armeabi-v7a
-            qt: android_armv7
-            label: armv7
+            label: universal
     needs: controller-tests
     runs-on: ubuntu-latest
     timeout-minutes: 120
@@ -106,9 +102,11 @@ jobs:
       - name: Install Qt Android ${{ matrix.label }}
         shell: bash
         run: |
-          aqt install-qt all_os android "$QT_VERSION" ${{ matrix.qt }} \
-            -O "${{ runner.temp }}/Qt" \
-            -m qtremoteobjects qt5compat qtimageformats qtshadertools
+          for qt_arch in android_arm64_v8a android_armv7; do
+            aqt install-qt all_os android "$QT_VERSION" "$qt_arch" \
+              -O "${{ runner.temp }}/Qt" \
+              -m qtremoteobjects qt5compat qtimageformats qtshadertools
+          done
 
       - name: Clone stable Amnezia engine
         shell: bash
@@ -116,7 +114,7 @@ jobs:
           git clone --recursive --branch 5.0.3.0 \
             https://github.com/amnezia-vpn/amnezia-client.git amnezia-client
 
-      - name: Apply Flint Android 8.10.18
+      - name: Apply Flint Android 8.10.19
         shell: bash
         run: |
           python3 build_flint.py amnezia-client
@@ -177,26 +175,27 @@ jobs:
           APP_ANDROID_MIN_SDK: '30'
         run: |
           cd amnezia-client
-          deploy/build.sh -t android --abi ${{ matrix.abi }}
+          deploy/build.sh -t android --abi arm64-v8a --abi armeabi-v7a
           cd ..
           mkdir -p dist
           find amnezia-client/deploy -type f -name '*.apk' -print -exec cp -f {} dist/ \;
-          APK=$(find dist -maxdepth 1 -name '*.apk' | head -n 1)
+          APK=$(find dist -maxdepth 1 -name '*universal*.apk' | head -n 1)
           test -n "$APK"
-          mv "$APK" dist/Flint-v8.10.18-Android-${{ matrix.label }}.apk
-          sha256sum dist/Flint-v8.10.18-Android-${{ matrix.label }}.apk > dist/Flint-v8.10.18-Android-${{ matrix.label }}.apk.sha256
+          mv "$APK" dist/Flint-v8.10.19-Android-${{ matrix.label }}.apk
+          sha256sum dist/Flint-v8.10.19-Android-${{ matrix.label }}.apk > dist/Flint-v8.10.19-Android-${{ matrix.label }}.apk.sha256
 
       - name: Verify APK identity
         shell: bash
         run: |
           set -euo pipefail
-          APK=dist/Flint-v8.10.18-Android-${{ matrix.label }}.apk
+          APK=dist/Flint-v8.10.19-Android-${{ matrix.label }}.apk
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           "$AAPT" dump badging "$APK" | tee dist/aapt-badging.txt
           "$AAPT" dump xmltree "$APK" AndroidManifest.xml | tee dist/aapt-manifest.txt
           grep -F "package: name='app.flint.vpn'" dist/aapt-badging.txt
           grep -F "application-label:'Flint'" dist/aapt-badging.txt
-          grep -F "versionName='8.10.18'" dist/aapt-badging.txt
+          grep -F "versionName='8.10.19'" dist/aapt-badging.txt
+          grep "native-code:.*'arm64-v8a'.*'armeabi-v7a'\|native-code:.*'armeabi-v7a'.*'arm64-v8a'" dist/aapt-badging.txt
           grep -F "org.amnezia.vpn.AmneziaApplication" dist/aapt-manifest.txt
           grep -F "org.amnezia.vpn.AmneziaActivity" dist/aapt-manifest.txt
           unzip -t "$APK"
@@ -205,10 +204,10 @@ jobs:
       - name: Upload Flint APK
         uses: actions/upload-artifact@v4
         with:
-          name: Flint-v8.10.18-Android-${{ matrix.label }}
+          name: Flint-v8.10.19-Android-${{ matrix.label }}
           path: |
-            dist/Flint-v8.10.18-Android-${{ matrix.label }}.apk
-            dist/Flint-v8.10.18-Android-${{ matrix.label }}.apk.sha256
+            dist/Flint-v8.10.19-Android-${{ matrix.label }}.apk
+            dist/Flint-v8.10.19-Android-${{ matrix.label }}.apk.sha256
             dist/aapt-badging.txt
             dist/aapt-manifest.txt
           retention-days: 14

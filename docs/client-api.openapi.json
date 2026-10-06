@@ -5,6 +5,158 @@
     "version": "v1"
   },
   "paths": {
+    "/api/v1/app/update": {
+      "get": {
+        "tags": [
+          "AppUpdates"
+        ],
+        "parameters": [
+          {
+            "name": "platform",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppUpdateDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
+    },
+    "/api/v1/app/files/{releaseId}/{fileName}": {
+      "get": {
+        "tags": [
+          "AppUpdates"
+        ],
+        "parameters": [
+          {
+            "name": "releaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "fileName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "u",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "expires",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "sig",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "206": {
+            "description": "Partial Content"
+          }
+        }
+      },
+      "head": {
+        "tags": [
+          "AppUpdates"
+        ],
+        "parameters": [
+          {
+            "name": "releaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "fileName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "u",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "expires",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "sig",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "206": {
+            "description": "Partial Content"
+          }
+        }
+      }
+    },
     "/api/v1/auth/register": {
       "post": {
         "tags": [
@@ -1232,6 +1384,72 @@
         },
         "additionalProperties": false
       },
+      "AppUpdateDto": {
+        "type": "object",
+        "properties": {
+          "updateAvailable": {
+            "type": "boolean"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "minVersion": {
+            "type": "string",
+            "nullable": true
+          },
+          "latest": {
+            "$ref": "#/components/schemas/AppUpdateReleaseDto"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AppUpdateReleaseDto": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string",
+            "nullable": true
+          },
+          "versionCode": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "publishedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "url": {
+            "type": "string",
+            "nullable": true
+          },
+          "path": {
+            "type": "string",
+            "nullable": true
+          },
+          "urlExpiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "fileName": {
+            "type": "string",
+            "nullable": true
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sha256": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "ApplyReferralCodeRequest": {
         "type": "object",
         "properties": {
@@ -1764,6 +1982,23 @@
           "status": {
             "type": "string",
             "nullable": true
+          },
+          "addresses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "load": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "weight": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -1781,6 +2016,11 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "loadUpdatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
           }
         },
         "additionalProperties": false

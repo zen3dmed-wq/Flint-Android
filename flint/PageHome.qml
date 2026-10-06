@@ -23,7 +23,7 @@ PageType {
         var target = root.isTv && tvPairButton.visible ? tvPairButton : connectBtn
         if (target.enabled) target.forceActiveFocus(Qt.TabFocusReason)
     }
-    function homePopups() { return [diagnosticsPopup, qrSourcePopup, tvPairPopup, accountPopup, countryPopup, assistPopup, familyQrPopup, settingsPopup, importPopup, apiSetupPopup, sitesPopup, servicePopup, subscriptionsPopup, devicesPopup] }
+    function homePopups() { return [diagnosticsPopup, qrSourcePopup, tvPairPopup, accountPopup, countryPopup, assistPopup, familyQrPopup, settingsPopup, updatesPopup, importPopup, apiSetupPopup, sitesPopup, servicePopup, subscriptionsPopup, devicesPopup] }
     function hasOpenPopup() { return homePopups().some(function(p) { return p.opened || p.visible }) }
 
     readonly property bool isTv: SettingsController.isOnTv()
@@ -45,6 +45,8 @@ PageType {
     FlintDevices { id: devicesPopup; parent: root; onAddDeviceRequested: familyQrPopup.open() }
     FlintSites { id: sitesPopup; parent: root; onRoutingEdited: root.requestRoutingApply() }
     FlintSubscriptions { id: subscriptionsPopup; parent: root }
+    FlintUpdates { id: updatesPopup; parent: root }
+    Connections { target: FlintUpdateController; function onAvailable() { if (!root.hasOpenPopup()) updatesPopup.open() } }
     Timer {
         interval: 60000; repeat: true
         running: FlintController.loggedIn && Qt.application.state === Qt.ApplicationActive
@@ -76,7 +78,7 @@ PageType {
         traceConnection("REQUESTED")
     }
     function connectionReport() {
-        return "Flint 8.10.18 / 2188\nmode=" + (autoConnection ? "auto" : "manual") +
+        return "Flint 8.10.19 / 2189\nmode=" + (autoConnection ? "auto" : "manual") +
             "\nruDirect=" + FlintController.ruDirectEnabled + "\ncore.error=" + lastConnectionError +
             "\n" + connectionEvents.join("\n") + "\n" + (lastNativeAttempt || FlintController.vpnDiagnostics())
     }
@@ -543,6 +545,7 @@ PageType {
     }
 
     function beginConnect() {
+        if (FlintUpdateController.state.required && !root.connectionPending) { updatesPopup.open(); return }
         if (root.connectionPending) { cancelConnection(); return }
         if (ServersUiController.getServersCount() === 0 && !FlintController.subscriptionActive) {
             accountPopup.open()
@@ -1661,8 +1664,14 @@ PageType {
                 onClicked: { settingsPopup.close(); apiBaseField.text = FlintController.apiBase; apiSetupPopup.open() }
             }
 
+            FlintButton {
+                objectName: "checkFlintUpdates"
+                Layout.fillWidth: true
+                text: FlintUpdateController.state.available ? "Доступно обновление" : "Обновление приложения"
+                onClicked: { settingsPopup.close(); updatesPopup.open(); FlintUpdateController.check(true) }
+            }
             Text { text: "Настройки Flint"; color: root.ink; font.pixelSize: 21; font.bold: true }
-            Text { text: "Flint Android 8.10.18"; color: root.muted }
+            Text { text: "Flint Android 8.10.19"; color: root.muted }
             FlintButton {
                 Layout.fillWidth: true
                 text: "Диагностика подключения"
