@@ -29,6 +29,14 @@ def apply(root: Path):
             return text
         return text.replace('AmneziaVPN', 'Flint').replace('Amnezia VPN', 'Flint')
 
+    for relative in ['client/ui/utils/notificationHandler.cpp',
+                     'client/core/utils/containers/containerUtils.cpp']:
+        path = root / relative
+        text = path.read_text(encoding='utf-8')
+        changed = re.sub(r'"(?:[^"\\]|\\.)*"', lambda m: display(m[0]), text)
+        assert changed != text, f'Common UI branding anchor changed: {relative}'
+        path.write_text(changed, encoding='utf-8')
+
     # Cover all Android languages, including locale-specific notification text.
     for path in (root / 'client/android/res').glob('values*/strings.xml'):
         text = path.read_text(encoding='utf-8')

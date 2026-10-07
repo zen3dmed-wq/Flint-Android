@@ -77,6 +77,10 @@ class AndroidIdentityTest(unittest.TestCase):
         for path in (ANDROID / 'res').glob('values*/strings.xml'):
             for item in ET.parse(path).getroot().findall('string'):
                 self.assertNotRegex(''.join(item.itertext()), r'Amnezia\s?VPN', str(path))
+        notifications = (ROOT / 'client/ui/utils/notificationHandler.cpp').read_text(encoding='utf-8')
+        self.assertIn('tr("Flint")', notifications)
+        self.assertIn('tr("Flint notification")', notifications)
+        self.assertNotIn('AmneziaVPN', notifications)
 
 
 if __name__ == "__main__":
