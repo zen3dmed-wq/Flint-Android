@@ -35,9 +35,13 @@ def apply(root: Path):
 // files and their loader entries together, before resource/JNI merging.
 tasks.matching { it.name == "preBuild" }.configureEach {
     doFirst {
-        providers.exec {
+        val optimization = providers.exec {
             commandLine("python3", file("flint_optimize_deployment.py").absolutePath, projectDir.absolutePath)
-        }.result.get().assertNormalExitValue()
+            isIgnoreExitValue = true
+        }
+        logger.lifecycle(optimization.standardOutput.asText.get())
+        logger.lifecycle(optimization.standardError.asText.get())
+        optimization.result.get().assertNormalExitValue()
     }
 }
 '''
