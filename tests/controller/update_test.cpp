@@ -11,7 +11,7 @@ class UpdateTests : public QObject {
     Q_OBJECT
 private slots:
     void numericVersionsPreventDowngrades() {
-        QVERIFY(FlintUpdatePolicy::newer("8.10.24", "8.10.9"));
+        QVERIFY(FlintUpdatePolicy::newer("8.10.25", "8.10.9"));
         QVERIFY(!FlintUpdatePolicy::newer("8.10.9", "8.10.19"));
         QVERIFY(!FlintUpdatePolicy::newer("8.10.19.0", "8.10.19"));
         QVERIFY(!FlintUpdatePolicy::newer("invalid", "8.10.19"));
@@ -48,7 +48,7 @@ private slots:
         });
         FlintController account(&settings);FlintUpdates updates(&account);updates.check();
         QTRY_COMPARE(updates.state().value("phase").toString(),QString("current"));
-        QVERIFY(requested.contains("/app/update?platform=android&version=8.10.24"));
+        QVERIFY(requested.contains("/app/update?platform=android&version=8.10.25"));
         QVERIFY(authorization.contains("Authorization: Bearer test-token"));
         QVERIFY(!updates.state().value("available").toBool());
         response=R"({"updateAvailable":true,"required":true,"minVersion":"8.10.25","latest":{"version":"8.10.25","notes":"Example"}})";

@@ -1,4 +1,4 @@
-name: Build Flint Android 8.10.24
+name: Build Flint Android 8.10.25
 
 on:
   pull_request:
@@ -24,7 +24,9 @@ jobs:
           cmake --build /tmp/flint-controller-tests
           ctest --test-dir /tmp/flint-controller-tests --output-on-failure
       - name: Check APK provider separation
-        run: python3 tests/test_update_provider.py
+        run: |
+          python3 tests/test_update_provider.py
+          python3 tests/test_android_size.py
       - name: Check widget state and action policy
         run: |
           curl --fail --location --silent --show-error https://github.com/JetBrains/kotlin/releases/download/v2.1.0/kotlin-compiler-2.1.0.zip -o /tmp/kotlin.zip
@@ -88,7 +90,7 @@ jobs:
       - name: Install build Python tools
         run: |
           python -m pip install --upgrade pip
-          pip install "conan==2.28.0" "aqtinstall==3.3.0" "py7zr==0.22.*"
+          pip install "conan==2.28.0" "aqtinstall==3.3.0" "py7zr==0.22.*" "pyelftools==0.32"
           go install golang.org/x/mobile/cmd/gomobile@latest
           gomobile init
 
@@ -123,7 +125,7 @@ jobs:
           git clone --recursive --branch 5.0.3.0 \
             https://github.com/amnezia-vpn/amnezia-client.git amnezia-client
 
-      - name: Apply Flint Android 8.10.24
+      - name: Apply Flint Android 8.10.25
         shell: bash
         run: |
           python3 build_flint.py amnezia-client
@@ -191,20 +193,21 @@ jobs:
           find amnezia-client/deploy -type f -name '*.apk' -print -exec cp -f {} dist/ \;
           APK=$(find dist -maxdepth 1 -name '*universal*.apk' | head -n 1)
           test -n "$APK"
-          python3 tools/trim_android_abis.py "$APK" dist/Flint-v8.10.24-Android-${{ matrix.label }}.apk
-          sha256sum dist/Flint-v8.10.24-Android-${{ matrix.label }}.apk > dist/Flint-v8.10.24-Android-${{ matrix.label }}.apk.sha256
+          python3 tools/trim_android_abis.py "$APK" dist/Flint-v8.10.25-Android-${{ matrix.label }}.apk
+          python3 tools/verify_android_size.py dist/Flint-v8.10.25-Android-${{ matrix.label }}.apk dist/size-report.json
+          sha256sum dist/Flint-v8.10.25-Android-${{ matrix.label }}.apk > dist/Flint-v8.10.25-Android-${{ matrix.label }}.apk.sha256
 
       - name: Verify APK identity
         shell: bash
         run: |
           set -euo pipefail
-          APK=dist/Flint-v8.10.24-Android-${{ matrix.label }}.apk
+          APK=dist/Flint-v8.10.25-Android-${{ matrix.label }}.apk
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           "$AAPT" dump badging "$APK" | tee dist/aapt-badging.txt
           "$AAPT" dump xmltree "$APK" AndroidManifest.xml | tee dist/aapt-manifest.txt
           grep -F "package: name='app.flint.vpn'" dist/aapt-badging.txt
           grep -F "application-label:'Flint'" dist/aapt-badging.txt
-          grep -F "versionName='8.10.24'" dist/aapt-badging.txt
+          grep -F "versionName='8.10.25'" dist/aapt-badging.txt
           grep "native-code:.*'arm64-v8a'.*'armeabi-v7a'\|native-code:.*'armeabi-v7a'.*'arm64-v8a'" dist/aapt-badging.txt
           ! grep "native-code:.*'x86" dist/aapt-badging.txt
           grep -F "org.amnezia.vpn.AmneziaApplication" dist/aapt-manifest.txt
@@ -215,10 +218,11 @@ jobs:
       - name: Upload Flint APK
         uses: actions/upload-artifact@v4
         with:
-          name: Flint-v8.10.24-Android-${{ matrix.label }}
+          name: Flint-v8.10.25-Android-${{ matrix.label }}
           path: |
-            dist/Flint-v8.10.24-Android-${{ matrix.label }}.apk
-            dist/Flint-v8.10.24-Android-${{ matrix.label }}.apk.sha256
+            dist/Flint-v8.10.25-Android-${{ matrix.label }}.apk
+            dist/Flint-v8.10.25-Android-${{ matrix.label }}.apk.sha256
             dist/aapt-badging.txt
             dist/aapt-manifest.txt
+            dist/size-report.json
           retention-days: 14
