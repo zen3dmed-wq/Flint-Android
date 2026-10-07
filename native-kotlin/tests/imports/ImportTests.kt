@@ -1,13 +1,16 @@
 package app.flint.prototype.imports
 
-import com.sun.net.httpserver.HttpServer
 import org.json.JSONArray
 import org.json.JSONObject
-import java.net.InetSocketAddress
+import java.net.InetAddress
+import java.net.ServerSocket
+import java.net.Socket
 import java.net.URLEncoder
 import java.util.Base64
 import java.io.File
 import java.io.ByteArrayOutputStream
+import java.io.IOException
+import java.io.Closeable
 import java.util.zip.GZIPOutputStream
 
 private fun encoded(value: String) = Base64.getEncoder().withoutPadding().encodeToString(value.toByteArray())
@@ -19,6 +22,63 @@ private const val REALITY = "$BASE?type=tcp&security=reality&pbk=examplePublicKe
 private fun fails(expected: String, operation: () -> Unit) {
     val error = try { operation(); null } catch (error: ImportException) { error }
     check(error != null && error.message.orEmpty().contains(expected)) { "Expected explicit error: $expected" }
+}
+
+/** Loopback-only fixture uses APIs available on Android's JVM test bootclasspath. */
+private class LocalHttpFixture : Closeable {
+    private val listener = ServerSocket(0, 8, InetAddress.getByName("127.0.0.1"))
+    val port: Int = listener.localPort
+    @Volatile private var closed = false
+    private val worker = Thread({
+        while (!closed) {
+            try { listener.accept().use(::respond) }
+            catch (_: IOException) { /* Client timeouts and closing the fixture are expected. */ }
+        }
+    }, "Flint import test HTTP").apply { isDaemon = true; start() }
+
+    private fun respond(socket: Socket) {
+        socket.soTimeout = 1000
+        val input = socket.getInputStream()
+        val request = ByteArrayOutputStream()
+        var tail = 0
+        while (request.size() < 8192) {
+            val byte = input.read()
+            if (byte < 0) return
+            request.write(byte)
+            tail = (tail shl 8) or byte
+            if (tail == 0x0D0A0D0A) break
+        }
+        if (tail != 0x0D0A0D0A) return
+        val path = request.toString("US-ASCII").substringBefore("\r\n")
+            .split(' ').getOrNull(1)?.substringBefore('?') ?: return
+        var status = 200
+        var headers = ""
+        val body = when (path) {
+            "/profiles" -> encoded(BASE).toByteArray()
+            "/redirect" -> { status = 302; headers = "Location: /profiles\r\n"; byteArrayOf() }
+            "/loop" -> { status = 302; headers = "Location: /loop\r\n"; byteArrayOf() }
+            "/gone" -> { status = 410; byteArrayOf() }
+            "/gzip" -> {
+                headers = "Content-Encoding: gzip\r\n"
+                ByteArrayOutputStream().also { out -> GZIPOutputStream(out).use { it.write(BASE.toByteArray()) } }.toByteArray()
+            }
+            "/slow" -> { Thread.sleep(300); byteArrayOf() }
+            else -> { status = 404; byteArrayOf() }
+        }
+        val head = "HTTP/1.1 $status Test\r\nContent-Length: ${body.size}\r\nConnection: close\r\n$headers\r\n"
+        socket.getOutputStream().apply {
+            write(head.toByteArray(Charsets.US_ASCII))
+            write(body)
+            flush()
+        }
+    }
+
+    override fun close() {
+        closed = true
+        listener.close()
+        worker.join(1500)
+        check(!worker.isAlive) { "HTTP fixture did not stop within its bounded read timeout" }
+    }
 }
 
 fun main(args: Array<String>) {
@@ -130,36 +190,8 @@ fun main(args: Array<String>) {
         fails("сайта", { XrayConfigBuilder.normalizeDomain("https://example.ru/path") })
     }
     checks["HTTP redirect and bounded error reporting without credentials"] = {
-        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
-        server.createContext("/profiles") { exchange ->
-            val bytes = encoded(BASE).toByteArray()
-            exchange.sendResponseHeaders(200, bytes.size.toLong())
-            exchange.responseBody.use { it.write(bytes) }
-        }
-        server.createContext("/redirect") { exchange ->
-            exchange.responseHeaders.add("Location", "/profiles")
-            exchange.sendResponseHeaders(302, -1)
-            exchange.close()
-        }
-        server.createContext("/gone") { exchange -> exchange.sendResponseHeaders(410, -1); exchange.close() }
-        server.createContext("/gzip") { exchange ->
-            val packed = ByteArrayOutputStream().also { output -> GZIPOutputStream(output).use { it.write(BASE.toByteArray()) } }.toByteArray()
-            exchange.responseHeaders.add("Content-Encoding", "gzip")
-            exchange.sendResponseHeaders(200, packed.size.toLong())
-            exchange.responseBody.use { it.write(packed) }
-        }
-        server.createContext("/slow") { exchange ->
-            Thread.sleep(300)
-            exchange.sendResponseHeaders(200, -1)
-            exchange.close()
-        }
-        server.createContext("/loop") { exchange ->
-            exchange.responseHeaders.add("Location", "/loop")
-            exchange.sendResponseHeaders(302, -1); exchange.close()
-        }
-        server.start()
-        try {
-            val base = "http://127.0.0.1:${server.address.port}"
+        LocalHttpFixture().use { server ->
+            val base = "http://127.0.0.1:${server.port}"
             check(SubscriptionClient().import("$base/redirect").profiles.size == 1)
             check(SubscriptionClient().import("$base/gzip").profiles.size == 1)
             fails("недоступна", { SubscriptionClient().import("$base/gone?private-token=redacted") })
@@ -167,7 +199,7 @@ fun main(args: Array<String>) {
             fails("вовремя", { SubscriptionClient(readTimeoutMs = 100).import("$base/slow") })
             val error = try { SubscriptionClient().fetch("http://username:private-secret@127.0.0.1/private-secret"); null } catch (error: ImportException) { error }
             check(error != null && !error.toString().contains("private-secret"))
-        } finally { server.stop(0) }
+        }
     }
     for ((name, operation) in checks) {
         operation()

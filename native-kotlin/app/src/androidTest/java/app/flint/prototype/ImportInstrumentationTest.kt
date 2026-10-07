@@ -1,12 +1,15 @@
 package app.flint.prototype
 
 import android.graphics.Bitmap
+import android.content.Context
+import android.content.ContextWrapper
 import android.graphics.Color
 import android.net.Uri
 import android.util.Base64
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.flint.prototype.data.QrImageDecoder
+import app.flint.prototype.data.ProfileStore
 import app.flint.prototype.imports.SubscriptionParser
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
@@ -59,5 +62,26 @@ class ImportInstrumentationTest {
             assertEquals("192.0.2.10", profiles.single().host)
             assertEquals("Армения — QR тест", profiles.single().name)
         } finally { file.delete(); image.recycle() }
+    }
+
+    @Test fun importedServersSurviveStoreRecreationWithoutDuplicates() {
+        val directory = File(context.cacheDir, "isolated-profile-store-test").apply { mkdirs() }
+        val isolated = object : ContextWrapper(context) {
+            override fun getApplicationContext(): Context = this
+            override fun getFilesDir(): File = directory
+        }
+        val parsed = SubscriptionParser.parse(fixture).profiles
+        try {
+            assertEquals(2, ProfileStore(isolated).merge(parsed.take(2)).size)
+            assertEquals(3, ProfileStore(isolated).merge(parsed.takeLast(1)).size)
+            assertEquals(3, ProfileStore(isolated).merge(parsed).size)
+            val restored = ProfileStore(isolated).load()
+            assertEquals(parsed.map { it.id }, restored.map { it.id })
+            assertEquals(parsed.map { it.outboundJson }, restored.map { it.outboundJson })
+        } finally {
+            // Only this test's flat cache directory is touched.
+            directory.listFiles()?.forEach { it.delete() }
+            directory.delete()
+        }
     }
 }

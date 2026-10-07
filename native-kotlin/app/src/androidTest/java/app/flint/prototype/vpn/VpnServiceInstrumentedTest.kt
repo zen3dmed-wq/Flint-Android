@@ -15,6 +15,8 @@ import android.os.ParcelFileDescriptor
 import androidx.core.content.ContextCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import app.flint.prototype.imports.ServerProfile
+import app.flint.prototype.imports.XrayConfigBuilder
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -94,13 +96,30 @@ class VpnServiceInstrumentedTest {
         assertEquals("connected", second.await().getString(VpnContract.STATE))
         assertEquals("FLINT_VPN_TUNNEL_OK", throughTunnel())
 
-        // A real switch with an active tunnel must serialize stop/start safely.
+        // Exercise the real bundled expanded catalog through the private file.
+        // This confirms local TUN/core startup, not reachability of Russian sites.
+        // 198.18.0.1 can match private direct rules, so do not use the HTTP marker
+        // while this catalog is active; restore ordinary VPN routing below.
         foregroundActivity()
+        val russian = fixtureConfig(ruDirect = true).put("flintServerId", "fixture-russian-routing")
+        val expanded = JSONObject(russian.getJSONObject("xray_config_data").getString("config"))
+        val expandedRules = expanded.getJSONObject("routing").getJSONArray("rules")
+        assertTrue("Use the shipped domain catalog, not a miniature fixture", expandedRules.getJSONObject(0).getJSONArray("domain").length() > 100)
+        assertTrue("Use the shipped IP catalog, not a miniature fixture", expandedRules.getJSONObject(1).getJSONArray("ip").length() > 100)
+        connect(russian)
+        val russianStarted = second.await {
+            it.getString(VpnContract.STATE) == "connected" && it.getString(VpnContract.SERVER_ID) == "fixture-russian-routing"
+        }
+        assertTrue(russianStarted.getBoolean(VpnContract.RU_DIRECT))
+
+        // A real switch back from the large routing profile must also stop/start
+        // safely, and forwarding is verified again through the VLESS fixture.
         connect(fixtureConfig().put("flintServerId", "fixture-switched"))
         val switched = second.await {
             it.getString(VpnContract.STATE) == "connected" && it.getString(VpnContract.SERVER_ID) == "fixture-switched"
         }
         assertEquals("fixture-switched", switched.getString(VpnContract.SERVER_ID))
+        assertFalse(switched.getBoolean(VpnContract.RU_DIRECT))
         assertEquals("FLINT_VPN_TUNNEL_OK", throughTunnel())
         second.send(VpnContract.DISCONNECT)
         assertEquals("disconnected", second.await { it.getString(VpnContract.STATE) == "disconnected" }.getString(VpnContract.STATE))
@@ -185,21 +204,26 @@ class VpnServiceInstrumentedTest {
         }
     }
 
-    private fun fixtureConfig(): JSONObject {
+    private fun fixtureConfig(ruDirect: Boolean = false): JSONObject {
         val user = JSONObject().put("id", "11111111-1111-4111-8111-111111111111").put("encryption", "none")
         val endpoint = JSONObject().put("address", "10.0.2.2").put("port", 18443)
             .put("users", JSONArray().put(user))
         val outbound = JSONObject().put("protocol", "vless")
             .put("settings", JSONObject().put("vnext", JSONArray().put(endpoint)))
             .put("streamSettings", JSONObject().put("network", "tcp").put("security", "none"))
-        val native = JSONObject().put("log", JSONObject().put("loglevel", "none"))
+        var native = JSONObject().put("log", JSONObject().put("loglevel", "none"))
             .put("inbounds", JSONArray().put(JSONObject().put("protocol", "socks").put("listen", "127.0.0.1")
                 .put("port", 10808).put("settings", JSONObject().put("udp", true))))
             .put("outbounds", JSONArray().put(outbound))
+        if (ruDirect) {
+            val profile = ServerProfile("fixture-local", "Local test fixture", "10.0.2.2", 18443, "vless", outbound.toString())
+            val catalog = context.assets.open("flint-routing-catalog.json").bufferedReader().use { it.readText() }
+            native = JSONObject(XrayConfigBuilder.build(profile, ruDirect = true, routingCatalogJson = catalog))
+        }
         return JSONObject().put("protocol", "xray").put("hostName", "10.0.2.2")
             .put("dns1", "1.1.1.1").put("dns2", "1.0.0.1").put("mtu", "1500")
             .put("description", "Local test fixture").put("flintServerId", "fixture-local")
-            .put("flintRussianAppsDirect", false)
+            .put("flintRussianAppsDirect", ruDirect)
             .put("xray_config_data", JSONObject().put("config", native.toString()))
     }
 }
