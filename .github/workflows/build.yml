@@ -181,7 +181,7 @@ jobs:
           find amnezia-client/deploy -type f -name '*.apk' -print -exec cp -f {} dist/ \;
           APK=$(find dist -maxdepth 1 -name '*universal*.apk' | head -n 1)
           test -n "$APK"
-          mv "$APK" dist/Flint-v8.10.19-Android-${{ matrix.label }}.apk
+          python3 tools/trim_android_abis.py "$APK" dist/Flint-v8.10.19-Android-${{ matrix.label }}.apk
           sha256sum dist/Flint-v8.10.19-Android-${{ matrix.label }}.apk > dist/Flint-v8.10.19-Android-${{ matrix.label }}.apk.sha256
 
       - name: Verify APK identity
@@ -196,6 +196,7 @@ jobs:
           grep -F "application-label:'Flint'" dist/aapt-badging.txt
           grep -F "versionName='8.10.19'" dist/aapt-badging.txt
           grep "native-code:.*'arm64-v8a'.*'armeabi-v7a'\|native-code:.*'armeabi-v7a'.*'arm64-v8a'" dist/aapt-badging.txt
+          ! grep "native-code:.*'x86" dist/aapt-badging.txt
           grep -F "org.amnezia.vpn.AmneziaApplication" dist/aapt-manifest.txt
           grep -F "org.amnezia.vpn.AmneziaActivity" dist/aapt-manifest.txt
           unzip -t "$APK"

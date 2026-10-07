@@ -25,6 +25,13 @@ The Android workflow builds a universal arm64-v8a + armeabi-v7a APK using the
 upstream multi-ABI build pipeline, so one published APK supports both the phone
 and TV variants. TV keyboard focus remains limited to TV mode.
 
+Before signing, `tools/trim_android_abis.py` removes dependency-only x86/x86_64
+libraries from the universal APK. Those dependencies do not include the Flint
+application for x86. The packaging step preserves the compiled ARM contents and
+4-byte alignment of stored resources. Uncompressed JNI input is rejected rather
+than repacked without Android page alignment. The step was verified against the
+completed universal build; the original compile commit remains in provenance.
+
 iOS accepts update destinations only at apps.apple.com or testflight.apple.com.
 It cannot install a downloaded APK/unsigned IPA. Apple Developer signing and an
 App Store/TestFlight release remain prerequisites for iPhone distribution.
