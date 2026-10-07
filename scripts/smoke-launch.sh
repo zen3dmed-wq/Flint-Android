@@ -29,12 +29,12 @@ adb shell input keyevent 82 || true
 adb install --no-streaming -r /tmp/flint-smoke.apk
 adb logcat -c
 
-adb shell am force-stop org.amnezia.vpn || true
-adb shell am start -W -n org.amnezia.vpn/.AmneziaActivity | tee /tmp/am-start.txt
+adb shell am force-stop app.flint.vpn || true
+adb shell am start -W -n app.flint.vpn/org.amnezia.vpn.AmneziaActivity | tee /tmp/am-start.txt
 sleep 12
 
 adb logcat -d > /tmp/logcat.txt
-pid="$(adb shell pidof org.amnezia.vpn | tr -d '\r' || true)"
+pid="$(adb shell pidof app.flint.vpn | tr -d '\r' || true)"
 echo "Flint pid: $pid"
 
 echo "=== Flint/Qt startup log excerpt ==="
@@ -47,7 +47,7 @@ if [ -z "$pid" ]; then
   exit 1
 fi
 
-if grep -E "FATAL EXCEPTION|Process: org\.amnezia\.vpn.*has died|Unable to instantiate application|Unable to start activity|QQmlApplicationEngine failed to load component" /tmp/logcat.txt; then
+if grep -E "FATAL EXCEPTION|Process: app\.flint\.vpn.*has died|Unable to instantiate application|Unable to start activity|QQmlApplicationEngine failed to load component" /tmp/logcat.txt; then
   echo "Flint crashed during launch"
   exit 1
 fi

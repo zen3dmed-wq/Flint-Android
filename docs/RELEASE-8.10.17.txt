@@ -1,0 +1,37 @@
+FLINT 8.10.17 / 2187 — Android / Android TV connection repair
+
+The user confirmed that 8.10.16 connects with Russian direct routing disabled
+and fails with it enabled; 8.10.10 connects. The expanded Russian IP catalog
+was sent as a raw UTF-16 String inside Android service Intents and Messenger
+messages. A synthetic config with the real catalog occupies 1,000,804 bytes
+before Parcel overhead, close to Android's shared 1 MiB Binder buffer.
+
+The exact same JSON now crosses both service-start and reconnect IPC as a
+bounded gzip byte array (86,598 bytes in that regression fixture). Decoding
+restores the complete config, without removing domains or IP rules. Encoding
+runs off the UI thread; cancellation is checked before starting the service.
+Compressed and expanded sizes are bounded; corrupt input never silently
+falls back to a previous profile. Intent redelivery keeps the full envelope.
+
+Service binding now combines Android flags with OR instead of AND, checks
+the result and avoids duplicate bindings. Start/IPC/bind failures reach safe
+diagnostics. An early engine error is replayed when the UI registers.
+
+Tests cover the actual bundled routing catalog, UTF-8, lossless round trips,
+redelivery, payload limits and corruption, plus extracted real Activity and
+service methods for initial start, reconnect, protocol switch, cancellation,
+failed start/bind, invalid input and legacy Always-on/Quick Settings paths.
+Full Android compilation and final APK verification are recorded separately.
+The user's physical Samsung is unavailable over USB; live connectivity with
+this release still needs confirmation on that device.
+
+Russian direct routing and automatic route selection are enabled once per
+application launch, as requested. A restored active tunnel receives those
+settings. Changing routing switches or custom sites automatically reconnects
+the current server after a short debounce, without reimporting a subscription
+or changing manual server selection. Cancellation prevents the queued restart.
+Identical routing responses from the API no longer emit change events.
+
+The layout and artwork are unchanged from 8.10.16. iOS shares the launch and
+routing UI behavior and still requires Apple Developer signing. Windows
+8.10.14 and Admin 1.5 are unchanged.

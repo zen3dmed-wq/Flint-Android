@@ -1,0 +1,32 @@
+Flint Android / Android TV 8.10.18 / 2188
+
+Yandex Maps and Navigator now use Android's native per-application direct
+routing when Sites RF and automatic routing are enabled. This includes DNS,
+map tiles, search and route requests regardless of domain sniffing or CDN IPs.
+Only the installed ru.yandex.yandexmaps and ru.yandex.yandexnavi packages are
+added. Other apps retain their configured routes. Existing application
+allowlists remain restrictive, even when navigation was their only entry.
+Disabling Sites RF or automatic routing removes these automatic exclusions
+on reconnect. A short explanation is shown in the routing settings.
+
+The user confirmed that 8.10.17 connects with Sites RF enabled, while Yandex
+navigation works only with VPN off. The catalog already includes the main
+Yandex domains. No claim is made that a particular Yandex endpoint caused it;
+this fix moves the two affected applications to the same network they use
+successfully without VPN. Physical Samsung validation is still required.
+
+Install over the previous APK without deleting data, reconnect Flint once,
+close and reopen Yandex Maps / Navigator, then check the map, search and route.
+The system setting 'Block connections without VPN' blocks direct apps by
+Android design; this release does not override system lockdown.
+
+All 8.10.17 service handoff and live-routing fixes are retained. The main
+layout and mascot are unchanged. iOS gets only the shared version metadata;
+the Android per-app fix is not advertised as an iOS feature. Windows 8.10.14
+and Admin 1.5 are unchanged. iOS archives still require Apple Developer signing.
+
+References:
+https://developer.android.com/develop/connectivity/vpn#per-app
+https://developer.android.com/reference/android/net/VpnService.Builder
+https://play.google.com/store/apps/details?id=ru.yandex.yandexmaps
+https://play.google.com/store/apps/details?id=ru.yandex.yandexnavi

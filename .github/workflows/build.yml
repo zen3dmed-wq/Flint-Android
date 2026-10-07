@@ -1,22 +1,62 @@
-name: Build Flint Android 8.9.10
+name: Build Flint Android 8.10.25
 
 on:
+  pull_request:
   workflow_dispatch:
-  push:
-    paths:
-      - 'build_flint.py'
-      - 'flint/**'
-      - '.github/workflows/build.yml'
 
 permissions:
   contents: read
 
 concurrency:
-  group: flint-android-main
+  group: flint-android-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  android-arm64:
+  controller-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt test dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -y qt6-base-dev cmake ninja-build
+      - name: Compile and check controller
+        run: |
+          cmake -S tests/controller -B /tmp/flint-controller-tests -G Ninja
+          cmake --build /tmp/flint-controller-tests
+          ctest --test-dir /tmp/flint-controller-tests --output-on-failure
+      - name: Check APK provider separation
+        run: |
+          python3 tests/test_update_provider.py
+          python3 tests/test_android_size.py
+      - name: Check widget state and action policy
+        run: |
+          curl --fail --location --silent --show-error https://github.com/JetBrains/kotlin/releases/download/v2.1.0/kotlin-compiler-2.1.0.zip -o /tmp/kotlin.zip
+          echo 'b6698d5728ad8f9edcdd01617d638073191d8a03139cc538a391b4e3759ad297  /tmp/kotlin.zip' | sha256sum --check
+          unzip -q /tmp/kotlin.zip -d /tmp/flint-kotlin
+          /tmp/flint-kotlin/kotlinc/bin/kotlinc flint/widget/FlintWidgetModel.kt tests/widget/FlintWidgetModelTest.kt -include-runtime -d /tmp/flint-widget-tests.jar
+          java -jar /tmp/flint-widget-tests.jar
+          /tmp/flint-kotlin/kotlinc/bin/kotlinc flint/widget/FlintPinRequest.kt tests/widget/FlintPinRequestTest.kt -include-runtime -d /tmp/flint-pin-tests.jar
+          java -jar /tmp/flint-pin-tests.jar
+          /tmp/flint-kotlin/kotlinc/bin/kotlinc flint/widget/FlintWidgetModel.kt flint/widget/FlintHomeColour.kt tests/widget/FlintHomeColourTest.kt -include-runtime -d /tmp/flint-colour-tests.jar
+          java -jar /tmp/flint-colour-tests.jar
+          /tmp/flint-kotlin/kotlinc/bin/kotlinc flint/FlintRemoteKeys.kt tests/widget/FlintRemoteKeysTest.kt -include-runtime -d /tmp/flint-remote-tests.jar
+          java -jar /tmp/flint-remote-tests.jar
+          /tmp/flint-kotlin/kotlinc/bin/kotlinc flint/FlintVpnDiagnostics.kt tests/widget/FlintVpnDiagnosticsTest.kt -include-runtime -d /tmp/flint-diagnostics-tests.jar
+          java -jar /tmp/flint-diagnostics-tests.jar
+          python3 tests/widget/make_config_transport_fixture.py /tmp/flint-config-fixture.json
+          /tmp/flint-kotlin/kotlinc/bin/kotlinc flint/FlintVpnConfigTransport.kt tests/widget/FlintVpnConfigTransportTest.kt -include-runtime -d /tmp/flint-config-transport-tests.jar
+          java -jar /tmp/flint-config-transport-tests.jar /tmp/flint-config-fixture.json
+          /tmp/flint-kotlin/kotlinc/bin/kotlinc flint/FlintRussianApps.kt tests/widget/FlintRussianAppsTest.kt -include-runtime -d /tmp/flint-russian-apps-tests.jar
+          java -jar /tmp/flint-russian-apps-tests.jar
+  android:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - abi: arm64-v8a
+            label: phone
+          - abi: arm64-v8a
+            label: tv
+    needs: controller-tests
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
@@ -24,6 +64,7 @@ jobs:
       ANDROID_PLATFORM: android-30
       APP_ANDROID_MIN_SDK: 30
       NDK_VERSION: 27.0.11718014
+      FLINT_VARIANT: '${{ matrix.label }}'
 
     steps:
       - name: Checkout Flint
@@ -49,7 +90,7 @@ jobs:
       - name: Install build Python tools
         run: |
           python -m pip install --upgrade pip
-          pip install "conan==2.28.0" "aqtinstall==3.3.0" "py7zr==0.22.*"
+          pip install "conan==2.28.0" "aqtinstall==3.3.0" "py7zr==0.22.*" "pyelftools==0.32"
           go install golang.org/x/mobile/cmd/gomobile@latest
           gomobile init
 
@@ -69,12 +110,14 @@ jobs:
           dir: '${{ runner.temp }}'
           set-env: true
 
-      - name: Install Qt Android arm64
+      - name: Install Qt Android ${{ matrix.label }}
         shell: bash
         run: |
-          aqt install-qt all_os android "$QT_VERSION" android_arm64_v8a \
-            -O "${{ runner.temp }}/Qt" \
-            -m qtremoteobjects qt5compat qtimageformats qtshadertools
+          for qt_arch in android_arm64_v8a android_armv7; do
+            aqt install-qt all_os android "$QT_VERSION" "$qt_arch" \
+              -O "${{ runner.temp }}/Qt" \
+              -m qtremoteobjects qt5compat qtimageformats qtshadertools
+          done
 
       - name: Clone stable Amnezia engine
         shell: bash
@@ -82,30 +125,42 @@ jobs:
           git clone --recursive --branch 5.0.3.0 \
             https://github.com/amnezia-vpn/amnezia-client.git amnezia-client
 
-      - name: Apply Flint Android 8.9.10
+      - name: Apply Flint Android 8.10.25
         shell: bash
         run: |
+          # install-qt-action selects its own Python runtime. Install the ELF
+          # reader into the interpreter Gradle and packaging actually invoke.
+          python3 -m pip install "pyelftools==0.32"
+          python3 -c "from elftools.elf.elffile import ELFFile"
           python3 build_flint.py amnezia-client
+          python3 tests/test_android_identity.py amnezia-client
+          python3 tests/test_widget_installation.py amnezia-client
 
       - name: Verify Flint source before build
         shell: bash
         run: |
           set -euo pipefail
           grep -q 'android:label="Flint"' amnezia-client/client/android/AndroidManifest.xml
-          grep -q 'applicationId = "org.amnezia.vpn"' amnezia-client/client/android/build.gradle.kts
+          grep -q 'applicationId = "app.flint.vpn"' amnezia-client/client/android/build.gradle.kts
           grep -q 'zakupki.gov.ru' amnezia-client/client/core/repositories/secureAppSettingsRepository.cpp
           grep -q '/auth/telegram/bot/start' amnezia-client/client/ui/controllers/flintController.cpp
           grep -q 'parseSubscriptionProfiles' amnezia-client/client/ui/controllers/flintController.cpp
           ! grep -q 'PageSetupWizardStart' amnezia-client/client/ui/qml/Pages2/PageStart.qml
           grep -q 'source: "PageHome.qml"' amnezia-client/client/ui/qml/Pages2/PageStart.qml
           grep -q 'Loader {' amnezia-client/client/ui/qml/Pages2/PageStart.qml
-          ! grep -q 'Flickable' amnezia-client/client/ui/qml/Pages2/PageHome.qml
+          grep -q 'Flickable' amnezia-client/client/ui/qml/Pages2/PageHome.qml
+          grep -q 'FlintMascot {' amnezia-client/client/ui/qml/Pages2/PageHome.qml
+          grep -q 'Pages2/FlintMascot.qml' amnezia-client/client/ui/qml/qml.qrc
+          grep -q 'Assets/flint-main-sad.png' amnezia-client/client/ui/qml/qml.qrc
+          cmp flint/flint-main.png amnezia-client/client/ui/qml/Assets/flint-main.png
+          cmp flint/flint-main-sad.png amnezia-client/client/ui/qml/Assets/flint-main-sad.png
           ! grep -q 'anchors.centerIn: Overlay.overlay' amnezia-client/client/ui/qml/Pages2/PageHome.qml
           grep -q 'android:name="org.amnezia.vpn.AmneziaApplication"' amnezia-client/client/android/AndroidManifest.xml
           grep -q 'android:name="org.amnezia.vpn.AmneziaActivity"' amnezia-client/client/android/AndroidManifest.xml
           if command -v qmlformat >/dev/null 2>&1; then
             qmlformat amnezia-client/client/ui/qml/Pages2/PageHome.qml >/dev/null
             qmlformat amnezia-client/client/ui/qml/Pages2/PageStart.qml >/dev/null
+            qmlformat amnezia-client/client/ui/qml/Pages2/FlintMascot.qml >/dev/null
           fi
 
       - name: Check Flint public API
@@ -127,7 +182,7 @@ jobs:
           fi
           exit 0
 
-      - name: Build Flint Android arm64 APK
+      - name: Build Flint Android ${{ matrix.label }} APK
         shell: bash
         env:
           QT_INSTALL_DIR: '${{ runner.temp }}'
@@ -136,26 +191,29 @@ jobs:
           APP_ANDROID_MIN_SDK: '30'
         run: |
           cd amnezia-client
-          deploy/build.sh -t android --abi arm64-v8a
+          deploy/build.sh -t android --abi arm64-v8a --abi armeabi-v7a
           cd ..
           mkdir -p dist
           find amnezia-client/deploy -type f -name '*.apk' -print -exec cp -f {} dist/ \;
-          APK=$(find dist -maxdepth 1 -name '*.apk' | head -n 1)
+          APK=$(find dist -maxdepth 1 -name '*universal*.apk' | head -n 1)
           test -n "$APK"
-          mv "$APK" dist/Flint-v8.9.10-Android-arm64.apk
-          sha256sum dist/Flint-v8.9.10-Android-arm64.apk > dist/Flint-v8.9.10-Android-arm64.apk.sha256
+          python3 tools/trim_android_abis.py "$APK" dist/Flint-v8.10.25-Android-${{ matrix.label }}.apk
+          python3 tools/verify_android_size.py dist/Flint-v8.10.25-Android-${{ matrix.label }}.apk dist/size-report.json
+          sha256sum dist/Flint-v8.10.25-Android-${{ matrix.label }}.apk > dist/Flint-v8.10.25-Android-${{ matrix.label }}.apk.sha256
 
       - name: Verify APK identity
         shell: bash
         run: |
           set -euo pipefail
-          APK=dist/Flint-v8.9.10-Android-arm64.apk
+          APK=dist/Flint-v8.10.25-Android-${{ matrix.label }}.apk
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           "$AAPT" dump badging "$APK" | tee dist/aapt-badging.txt
           "$AAPT" dump xmltree "$APK" AndroidManifest.xml | tee dist/aapt-manifest.txt
-          grep -F "package: name='org.amnezia.vpn'" dist/aapt-badging.txt
+          grep -F "package: name='app.flint.vpn'" dist/aapt-badging.txt
           grep -F "application-label:'Flint'" dist/aapt-badging.txt
-          grep -F "versionName='8.9.10'" dist/aapt-badging.txt
+          grep -F "versionName='8.10.25'" dist/aapt-badging.txt
+          grep "native-code:.*'arm64-v8a'.*'armeabi-v7a'\|native-code:.*'armeabi-v7a'.*'arm64-v8a'" dist/aapt-badging.txt
+          ! grep "native-code:.*'x86" dist/aapt-badging.txt
           grep -F "org.amnezia.vpn.AmneziaApplication" dist/aapt-manifest.txt
           grep -F "org.amnezia.vpn.AmneziaActivity" dist/aapt-manifest.txt
           unzip -t "$APK"
@@ -164,10 +222,11 @@ jobs:
       - name: Upload Flint APK
         uses: actions/upload-artifact@v4
         with:
-          name: Flint-v8.9.10-Android-arm64
+          name: Flint-v8.10.25-Android-${{ matrix.label }}
           path: |
-            dist/Flint-v8.9.10-Android-arm64.apk
-            dist/Flint-v8.9.10-Android-arm64.apk.sha256
+            dist/Flint-v8.10.25-Android-${{ matrix.label }}.apk
+            dist/Flint-v8.10.25-Android-${{ matrix.label }}.apk.sha256
             dist/aapt-badging.txt
             dist/aapt-manifest.txt
+            dist/size-report.json
           retention-days: 14

@@ -1,0 +1,25 @@
+FLINT 8.10.16 / 2186 — Android, Android TV, shared iOS UI
+
+The original 1254 x 1254 mascot replaces the 360 x 360 Android copy. Both
+facial expressions render at physical screen resolution with a common path
+for all four ring colours, retaining the original geometry and 300 ms fade.
+
+Android startup fixes:
+- Dismissing the notification explanation continues startup; notifications
+  are optional and must not leave the VPN waiting for an abandoned callback.
+- An attempt generation prevents late permission callbacks from starting
+  a tunnel after cancellation or after another attempt has begun.
+- The connection deadline allows up to two minutes for native permission
+  dialogs. It does not report a server timeout while the user is responding.
+
+Connection diagnostics are available in Settings and after a failed attempt.
+They contain bounded stage names, relative times and fixed native failure
+codes. Raw profile URLs, server addresses, account tokens and configurations
+are not recorded. Native error classification is deliberately conservative;
+it is not a replacement for complete Android logs when the cause is unknown.
+
+The exact failure on the user's Samsung has not been reproduced: USB was
+unavailable. Live VPN connectivity and physical GPU rendering are unverified.
+Do not describe this release as a confirmed fix for that particular timeout.
+iOS is unsigned and requires Apple Developer signing. Windows 8.10.14 and
+Admin 1.5 are unchanged; no backend configuration has been deployed.

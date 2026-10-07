@@ -6,6 +6,8 @@ import "../Controls2"
 
 PageType {
     id: root
+    enableTimer: false
+    focus: SettingsController.isOnTv()
     property bool isControlsDisabled: false
 
     Rectangle {
@@ -22,6 +24,7 @@ PageType {
 
     Loader {
         id: flintLoader
+        focus: SettingsController.isOnTv()
         anchors.fill: parent
         asynchronous: false
         source: "PageHome.qml"
@@ -65,7 +68,7 @@ PageType {
             horizontalAlignment: Text.AlignHCenter
         }
 
-        Button {
+        FlintButton {
             anchors.horizontalCenter: parent.horizontalCenter
             text: "Повторить"
             onClicked: {
@@ -99,5 +102,11 @@ PageType {
             }
         }
         function onEscapePressed() { PageController.hideWindow() }
+    }
+    Connections {
+        target: ImportController
+        function onImportErrorOccurred(error, goToPageHome) {
+            if (flintLoader.item) flintLoader.item.handleImportError(error)
+        }
     }
 }
