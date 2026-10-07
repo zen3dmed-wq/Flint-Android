@@ -27,6 +27,21 @@ FlintUpdates::FlintUpdates(FlintController *account, QObject *parent) : QObject(
     });
     connect(account, &FlintController::apiBaseChanged, this, &FlintUpdates::reset);
     QTimer::singleShot(5000, this, [this] { check(false); });
+#ifdef Q_OS_ANDROID
+    // startActivity runs asynchronously on Android's main thread. Surface launch
+    // failures in the update dialog as well as in the short-lived native toast.
+    auto installerMessages = new QTimer(this);
+    connect(installerMessages, &QTimer::timeout, this, [this] {
+        if (m_state.value("phase") != "ready") return;
+        const auto result = QJniObject::callStaticObjectMethod(
+            "org/amnezia/vpn/FlintUpdateInstaller", "takeMessage", "()Ljava/lang/String;");
+        QJniEnvironment env;
+        if (env->ExceptionCheck()) { env->ExceptionClear(); return; }
+        const auto message = result.toString();
+        if (!message.isEmpty()) { m_state["message"] = message; emit changed(); }
+    });
+    installerMessages->start(750);
+#endif
 }
 void FlintUpdates::reset() {
     ++m_epoch;

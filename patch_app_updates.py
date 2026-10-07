@@ -24,7 +24,7 @@ def apply(root):
     manifest = root / 'client/android/AndroidManifest.xml'
     text = manifest.read_text(encoding='utf-8')
     text = text.replace('<application', '<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n    <application', 1)
-    provider = '''<provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.updates" android:exported="false" android:grantUriPermissions="true">
+    provider = '''<provider android:name="org.amnezia.vpn.FlintUpdateProvider" android:authorities="${applicationId}.updates" android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/flint_update_paths" />
         </provider>
     '''
@@ -32,6 +32,7 @@ def apply(root):
     manifest.write_text(text, encoding='utf-8')
     (root / 'client/android/res/xml/flint_update_paths.xml').write_text('<?xml version="1.0" encoding="utf-8"?><paths xmlns:android="http://schemas.android.com/apk/res/android"><cache-path name="updates" path="flint-updates/" /></paths>\n', encoding='utf-8')
     shutil.copy2(assets / 'FlintUpdateInstaller.kt', root / 'client/android/src/org/amnezia/vpn/FlintUpdateInstaller.kt')
+    shutil.copy2(assets / 'FlintUpdateProvider.kt', root / 'client/android/src/org/amnezia/vpn/FlintUpdateProvider.kt')
     gradle = root / 'client/android/build.gradle.kts'
     text = gradle.read_text(encoding='utf-8')
     assert 'isUniversalApk = false' in text

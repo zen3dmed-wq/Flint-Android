@@ -11,7 +11,7 @@ class UpdateTests : public QObject {
     Q_OBJECT
 private slots:
     void numericVersionsPreventDowngrades() {
-        QVERIFY(FlintUpdatePolicy::newer("8.10.20", "8.10.9"));
+        QVERIFY(FlintUpdatePolicy::newer("8.10.21", "8.10.9"));
         QVERIFY(!FlintUpdatePolicy::newer("8.10.9", "8.10.19"));
         QVERIFY(!FlintUpdatePolicy::newer("8.10.19.0", "8.10.19"));
         QVERIFY(!FlintUpdatePolicy::newer("invalid", "8.10.19"));
@@ -19,7 +19,7 @@ private slots:
     }
     void validatesDownloadAuthorityAndIntegrityMetadata() {
         const QUrl base("https://flintmain.ru/api/v1");
-        QJsonObject release{{"version","8.10.21"},{"versionCode",2191},{"url","https://flintmain.ru/api/v1/app/files/id/file.apk?sig=test"},{"fileName","file.apk"},{"size",1234},{"sha256",QString(64,'a')}};
+        QJsonObject release{{"version","8.10.22"},{"versionCode",2192},{"url","https://flintmain.ru/api/v1/app/files/id/file.apk?sig=test"},{"fileName","file.apk"},{"size",1234},{"sha256",QString(64,'a')}};
         QVERIFY(FlintUpdatePolicy::validate(release,base).isEmpty());
         for (const QString bad : {"http://flintmain.ru/api/v1/app/files/id/file.apk", "https://evil.invalid/api/v1/app/files/id/file.apk", "https://flintmain.ru/api/v1/app/files/../file.apk", "https://user@flintmain.ru/api/v1/app/files/id/file.apk", "https://flintmain.ru:444/api/v1/app/files/id/file.apk"}) {
             auto altered=release; altered["url"]=bad; QVERIFY(!FlintUpdatePolicy::validate(altered,base).isEmpty());
@@ -48,10 +48,10 @@ private slots:
         });
         FlintController account(&settings);FlintUpdates updates(&account);updates.check();
         QTRY_COMPARE(updates.state().value("phase").toString(),QString("current"));
-        QVERIFY(requested.contains("/app/update?platform=android&version=8.10.20"));
+        QVERIFY(requested.contains("/app/update?platform=android&version=8.10.21"));
         QVERIFY(authorization.contains("Authorization: Bearer test-token"));
         QVERIFY(!updates.state().value("available").toBool());
-        response=R"({"updateAvailable":true,"required":true,"minVersion":"8.10.21","latest":{"version":"8.10.21","notes":"Example"}})";
+        response=R"({"updateAvailable":true,"required":true,"minVersion":"8.10.22","latest":{"version":"8.10.22","notes":"Example"}})";
         updates.check();QTRY_VERIFY(updates.state().value("required").toBool());
         QVERIFY(updates.state().value("available").toBool());
         response=R"({"updateAvailable":true,"required":true,"latest":{"version":"8.10.9"}})";

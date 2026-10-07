@@ -8,20 +8,30 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.widget.Toast
+import android.util.Log
 import androidx.core.content.FileProvider
 import java.io.File
 import java.security.MessageDigest
 import java.util.zip.ZipFile
+import java.util.concurrent.atomic.AtomicReference
 
 object FlintUpdateInstaller {
+    private val message = AtomicReference("")
+    @JvmStatic fun takeMessage(): String = message.getAndSet("")
     private fun open(activity: Activity, intent: Intent) {
         activity.runOnUiThread {
             try { activity.startActivity(intent) }
-            catch (_: Exception) { Toast.makeText(activity, "Не удалось открыть установку Android.", Toast.LENGTH_LONG).show() }
+            catch (e: Exception) {
+                Log.e("FlintUpdate", "Unable to launch installer/settings", e)
+                val text = "Не удалось открыть установку Android. Проверьте разрешение установки для Flint."
+                message.set(text)
+                Toast.makeText(activity, text, Toast.LENGTH_LONG).show()
+            }
         }
     }
     @JvmStatic
     fun install(activity: Activity, path: String, expectedHash: String, expectedCode: Long): String {
+        message.set("")
         try {
             val file = File(path).canonicalFile
             val directory = File(activity.cacheDir, "flint-updates").canonicalFile
@@ -59,12 +69,19 @@ object FlintUpdateInstaller {
                 return "Разрешите установку обновлений для Flint, вернитесь и нажмите «Установить» ещё раз."
             }
             val uri = FileProvider.getUriForFile(activity, activity.packageName + ".updates", file)
+            // getUriForFile only computes a URI. Actually opening it detects a broken
+            // provider registration before Android's installer opens and immediately exits.
+            activity.contentResolver.openFileDescriptor(uri, "r").use { descriptor ->
+                if (descriptor == null || descriptor.statSize != file.length())
+                    return "Установщик не может прочитать APK. Скачайте обновление ещё раз."
+            }
             val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             intent.clipData = ClipData.newRawUri("Flint update", uri)
             open(activity, intent)
             return ""
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.e("FlintUpdate", "Update validation or content URI failed", e)
             return "Не удалось проверить или открыть обновление. Повторите скачивание."
         }
     }

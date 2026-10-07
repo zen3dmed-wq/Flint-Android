@@ -5,8 +5,8 @@
 #include <QVersionNumber>
 
 namespace FlintUpdatePolicy {
-inline const QString version = QStringLiteral("8.10.20");
-inline constexpr qint64 versionCode = 2190;
+inline const QString version = QStringLiteral("8.10.21");
+inline constexpr qint64 versionCode = 2191;
 inline constexpr qint64 maxBytes = 500LL * 1024 * 1024;
 inline QVersionNumber parseVersion(const QString &value) {
     if (!QRegularExpression("^[0-9]{1,9}(\\.[0-9]{1,9}){1,3}$").match(value).hasMatch()) return {};
