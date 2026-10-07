@@ -25,7 +25,7 @@ def apply(root, bundle_id, team, render_icons=True):
         p.write_text(s.replace(old, new), encoding='utf-8')
 
     group = 'group.' + bundle_id
-    edit('CMakeLists.txt', 'set(AMNEZIAVPN_VERSION 8.10.21 CACHE', 'set(AMNEZIAVPN_VERSION 8.10.21.2191 CACHE')
+    edit('CMakeLists.txt', 'set(AMNEZIAVPN_VERSION 8.10.22 CACHE', 'set(AMNEZIAVPN_VERSION 8.10.22.2192 CACHE')
     edit('cmake/platform_settings.cmake', 'set(CONAN_INSTALL_BUILD_CONFIGURATIONS Release Debug MinSizeRel RelWithDebInfo)',
          'set(CONAN_INSTALL_BUILD_CONFIGURATIONS ${CMAKE_CONFIGURATION_TYPES})')
     apple = 'client/cmake/branding/apple.cmake'
@@ -49,14 +49,34 @@ def apply(root, bundle_id, team, render_icons=True):
 
     p = root / 'client/ios/app/Info.plist.in'
     values = plistlib.loads(p.read_bytes())
+    values['CFBundleDisplayName'] = 'Flint'
+    values['CFBundleName'] = 'Flint'
     values['NSCameraUsageDescription'] = 'Flint использует камеру только для сканирования QR-кода подключения.'
     values['LSApplicationQueriesSchemes'] = ['tg']
     values['UIUserInterfaceStyle'] = 'Dark'
     p.write_bytes(plistlib.dumps(values, sort_keys=False))
+    p = root / 'client/ios/networkextension/Info.plist.in'
+    values = plistlib.loads(p.read_bytes())
+    values['CFBundleDisplayName'] = 'Flint VPN'
+    values['CFBundleName'] = 'Flint VPN'
+    p.write_bytes(plistlib.dumps(values, sort_keys=False))
+    edit('client/platforms/ios/ios_controller.mm',
+         '    qDebug() << "IosController::connectVpn" << tunnelName;',
+         '    const QString legacyTunnelName = tunnelName;\n'
+         '    tunnelName = QStringLiteral("Flint · ") + tunnelName;\n'
+         '    qDebug() << "IosController::connectVpn" << tunnelName;')
+    edit('client/platforms/ios/ios_controller.mm',
+         'if ([manager.localizedDescription isEqualToString:tunnelName.toNSString()]) {',
+         'if ([manager.localizedDescription isEqualToString:tunnelName.toNSString()] ||\n'
+         '                    [manager.localizedDescription isEqualToString:legacyTunnelName.toNSString()]) {')
+    edit('client/platforms/ios/ios_controller.mm',
+         '                    break;\n                }\n            }\n\n            if (!m_currentTunnel)',
+         '                    m_currentTunnel.localizedDescription = tunnelName.toNSString();\n'
+         '                    break;\n                }\n            }\n\n            if (!m_currentTunnel)')
     # Each platform identifies itself correctly to the configurable account API.
     edit('client/ui/controllers/flintController.cpp', '"android"', '"ios"')
     edit('client/ui/controllers/flintController.cpp', '"android/"', '"ios/"')
-    edit('client/ui/qml/Pages2/PageHome.qml', 'Flint Android 8.10.21', 'Flint iOS 8.10.21')
+    edit('client/ui/qml/Pages2/PageHome.qml', 'Flint Android 8.10.22', 'Flint iOS 8.10.22')
     edit('client/ui/qml/Pages2/PageHome.qml', 'import Style 1.0', 'import Style 1.0\nimport PageEnum 1.0')
     edit('client/ui/qml/Pages2/PageHome.qml', '        ImportController.startDecodingQr()',
          '        ImportController.startDecodingQr()\n        PageController.goToPage(PageEnum.PageSetupWizardQrReader)')

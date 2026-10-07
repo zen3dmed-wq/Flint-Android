@@ -62,6 +62,22 @@ class AndroidIdentityTest(unittest.TestCase):
         self.assertTrue(any(a.get(A + "name") == "org.amnezia.vpn.AmneziaActivity"
                             for a in application.findall("activity")))
 
+    def test_system_vpn_session_and_native_dialogs_show_flint(self):
+        protocol = (ANDROID / 'protocolApi/src/main/kotlin/Protocol.kt').read_text(encoding='utf-8')
+        self.assertIn('const val VPN_SESSION_NAME = "Flint"', protocol)
+        self.assertIn('vpnBuilder.setSession(VPN_SESSION_NAME)', protocol)
+        for filename, expected in [
+            ('AmneziaTileService.kt', 'DEFAULT_TILE_LABEL = "Flint"'),
+            ('ServiceNotification.kt', '.setName("Flint")'),
+            ('AuthActivity.kt', '.setTitle("Flint")'),
+        ]:
+            source = (ANDROID / 'src/org/amnezia/vpn' / filename).read_text(encoding='utf-8')
+            self.assertIn(expected, source)
+            self.assertNotIn('"AmneziaVPN"', source)
+        for path in (ANDROID / 'res').glob('values*/strings.xml'):
+            for item in ET.parse(path).getroot().findall('string'):
+                self.assertNotRegex(''.join(item.itertext()), r'Amnezia\s?VPN', str(path))
+
 
 if __name__ == "__main__":
     unittest.main()

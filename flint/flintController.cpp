@@ -73,7 +73,7 @@ void FlintController::requestHomeWidget()
 
 namespace {
 const QString kApiBase = QStringLiteral("https://flintmain.ru/api/v1");
-const QString kVersion = QStringLiteral("8.10.21");
+const QString kVersion = QStringLiteral("8.10.22");
 
 bool isProfileUri(const QString &s)
 {

@@ -15,7 +15,7 @@ controller=(root/'client/ui/controllers/flintController.cpp').read_text(encoding
 assert '"android/"' not in controller and '"ios/"' in controller
 assert 'd["platform"] = "ios";' in controller
 home=(root/'client/ui/qml/Pages2/PageHome.qml').read_text(encoding='utf-8')
-assert 'Flint iOS 8.10.21' in home
+assert 'Flint iOS 8.10.22' in home
 assert 'FlintDevices {' in home and 'cancelConnection' in home
 assert 'profilePreparationFinished' in controller and 'markProfileConnected' in controller
 assert 'FlintDevices.qml' in (root/'client/ui/qml/qml.qrc').read_text(encoding='utf-8')
@@ -33,4 +33,10 @@ for name in ['PacketTunnelProvider.swift','PacketTunnelProvider+Xray.swift','Pac
 v=plistlib.loads((root/'client/ios/app/Info.plist.in').read_bytes())
 assert v['NSAppTransportSecurity']['NSAllowsArbitraryLoads'] is False
 assert 'tg' in v['LSApplicationQueriesSchemes']
+assert v['CFBundleDisplayName'] == v['CFBundleName'] == 'Flint'
+extension = plistlib.loads((root/'client/ios/networkextension/Info.plist.in').read_bytes())
+assert extension['CFBundleDisplayName'] == 'Flint VPN'
+tunnel = (root/'client/platforms/ios/ios_controller.mm').read_text(encoding='utf-8')
+assert 'QStringLiteral("Flint · ") + tunnelName' in tunnel
+assert 'legacyTunnelName.toNSString()' in tunnel
 print('iOS identity, shared API, tunnel sources, App Groups and capabilities checked')

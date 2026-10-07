@@ -10,12 +10,14 @@ def read(path):
     return plistlib.loads(path.read_bytes())
 info = read(app/'Info.plist')
 assert info['CFBundleIdentifier'] == 'app.flint.vpn'
-assert info['CFBundleShortVersionString'] == '8.10.21'
-assert info['CFBundleVersion'] == '2191'
+assert info['CFBundleDisplayName'] == info['CFBundleName'] == 'Flint'
+assert info['CFBundleShortVersionString'] == '8.10.22'
+assert info['CFBundleVersion'] == '2192'
 extensions = list((app/'PlugIns').glob('*.appex'))
 assert len(extensions) == 1
 ext = extensions[0]
 ei = read(ext/'Info.plist')
+assert ei['CFBundleDisplayName'] == 'Flint VPN'
 assert ei['CFBundleIdentifier'] == info['CFBundleIdentifier'] + '.network-extension'
 assert ei['CFBundleVersion'] == info['CFBundleVersion']
 assert ei['NSExtension']['NSExtensionPointIdentifier'] == 'com.apple.networkextension.packet-tunnel'
