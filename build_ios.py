@@ -25,7 +25,7 @@ def apply(root, bundle_id, team, render_icons=True):
         p.write_text(s.replace(old, new), encoding='utf-8')
 
     group = 'group.' + bundle_id
-    edit('CMakeLists.txt', 'set(AMNEZIAVPN_VERSION 8.10.19 CACHE', 'set(AMNEZIAVPN_VERSION 8.10.19.2189 CACHE')
+    edit('CMakeLists.txt', 'set(AMNEZIAVPN_VERSION 8.10.20 CACHE', 'set(AMNEZIAVPN_VERSION 8.10.20.2190 CACHE')
     edit('cmake/platform_settings.cmake', 'set(CONAN_INSTALL_BUILD_CONFIGURATIONS Release Debug MinSizeRel RelWithDebInfo)',
          'set(CONAN_INSTALL_BUILD_CONFIGURATIONS ${CMAKE_CONFIGURATION_TYPES})')
     apple = 'client/cmake/branding/apple.cmake'
@@ -56,7 +56,7 @@ def apply(root, bundle_id, team, render_icons=True):
     # Each platform identifies itself correctly to the configurable account API.
     edit('client/ui/controllers/flintController.cpp', '"android"', '"ios"')
     edit('client/ui/controllers/flintController.cpp', '"android/"', '"ios/"')
-    edit('client/ui/qml/Pages2/PageHome.qml', 'Flint Android 8.10.19', 'Flint iOS 8.10.19')
+    edit('client/ui/qml/Pages2/PageHome.qml', 'Flint Android 8.10.20', 'Flint iOS 8.10.20')
     edit('client/ui/qml/Pages2/PageHome.qml', 'import Style 1.0', 'import Style 1.0\nimport PageEnum 1.0')
     edit('client/ui/qml/Pages2/PageHome.qml', '        ImportController.startDecodingQr()',
          '        ImportController.startDecodingQr()\n        PageController.goToPage(PageEnum.PageSetupWizardQrReader)')

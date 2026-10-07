@@ -7,7 +7,9 @@ def apply(root: Path, assets: Path):
     for name in ["FlintWidgetModel.kt", "FlintWidgetProvider.kt", "FlintWidgetActivity.kt"]:
         shutil.copy2(assets / "widget" / name, android / "src/org/amnezia/vpn" / name)
     for name, folder in [("flint_widget.xml", "layout"), ("flint_widget_info.xml", "xml"),
-                         ("flint_widget_background.xml", "drawable"), ("flint_widget_button.xml", "drawable")]:
+                         ("flint_widget_background.xml", "drawable"), ("flint_widget_connected.xml", "drawable"),
+                         ("flint_widget_waiting.xml", "drawable"), ("flint_widget_power.xml", "drawable"),
+                         ("flint_widget_button.xml", "drawable")]:
         (android / "res" / folder).mkdir(exist_ok=True)
         shutil.copy2(assets / "widget" / name, android / "res" / folder / name)
     manifest = android / "AndroidManifest.xml"

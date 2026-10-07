@@ -48,10 +48,10 @@ private slots:
         });
         FlintController account(&settings);FlintUpdates updates(&account);updates.check();
         QTRY_COMPARE(updates.state().value("phase").toString(),QString("current"));
-        QVERIFY(requested.contains("/app/update?platform=android&version=8.10.19"));
+        QVERIFY(requested.contains("/app/update?platform=android&version=8.10.20"));
         QVERIFY(authorization.contains("Authorization: Bearer test-token"));
         QVERIFY(!updates.state().value("available").toBool());
-        response=R"({"updateAvailable":true,"required":true,"minVersion":"8.10.20","latest":{"version":"8.10.20","notes":"Example"}})";
+        response=R"({"updateAvailable":true,"required":true,"minVersion":"8.10.21","latest":{"version":"8.10.21","notes":"Example"}})";
         updates.check();QTRY_VERIFY(updates.state().value("required").toBool());
         QVERIFY(updates.state().value("available").toBool());
         response=R"({"updateAvailable":true,"required":true,"latest":{"version":"8.10.9"}})";

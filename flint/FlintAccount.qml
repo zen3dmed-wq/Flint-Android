@@ -8,17 +8,10 @@ Popup {
     id: panel
         Shortcut { sequence: "Back"; enabled: panel.activeFocus; onActivated: panel.close() }
     property var profile: ({})
-    FlintIdentity {
-        id: identityPanel; parent: panel.parent
-        onProfileUpdated: function(value) { panel.profile = value; if (panel.opened) panel.reload() }
-    }
-    signal addDeviceRequested()
-    FlintDevices { id: devicesPanel; parent: panel.parent; onAddDeviceRequested: panel.addDeviceRequested() }
-    FlintSubscriptions { id: subscriptionsPanel; parent: panel.parent }
     objectName: "flintAccountPanel"
-    property int section: 0
+    property int section: 2
+    readonly property string sectionTitle: section === 1 ? "Купить / продлить подписку" : (section === 3 ? "Поддержка" : "Пригласить друга")
     property var config: ({})
-    property var subscriptions: []
     property var plans: []
     property int selectedPlanIndex: -1
     onPlansChanged: { if (selectedPlanIndex < 0 || selectedPlanIndex >= plans.length || !Plans.available(plans[selectedPlanIndex])) selectedPlanIndex = Plans.firstAvailable(plans) }
@@ -33,7 +26,7 @@ Popup {
     readonly property color muted: "#B7C9DA"
     readonly property color mint: "#4AE6A3"
     width: Math.min(parent.width - 20, 560)
-    height: Math.max(180, Math.min(parent.height - PageController.safeAreaTopMargin - PageController.safeAreaBottomMargin - 24, 760))
+    height: Math.max(180, Math.min(parent.height - PageController.safeAreaTopMargin - PageController.safeAreaBottomMargin - 24, section === 2 ? 480 : 760))
     x: (parent.width - width) / 2
     y: PageController.safeAreaTopMargin + 12
     padding: 18
@@ -51,10 +44,11 @@ Popup {
         error = ""
         request("config", "GET", "/config")
         if (!FlintController.loggedIn) return
-        request("profile", "GET", "/me")
-        request("subscriptions", "GET", "/subscriptions")
-        purchase = FlintController.clientDraft("purchase")
-        if (purchase.order && purchase.order.id) request("order", "GET", "/orders/" + encodeURIComponent(purchase.order.id))
+        if (section === 1) {
+            request("profile", "GET", "/me")
+            purchase = FlintController.clientDraft("purchase")
+            if (purchase.order && purchase.order.id) request("order", "GET", "/orders/" + encodeURIComponent(purchase.order.id))
+        }
     }
     function loadSection() {
         if (!FlintController.loggedIn) return
@@ -95,11 +89,11 @@ Popup {
         return template && template.indexOf("{code}") >= 0 ? template.replace("{code}", encodeURIComponent(referrals.code || "")) : (referrals.code || "")
     }
     onOpened: { Qt.callLater(function() { FlintFocus.firstButton(panel.contentItem) }); purchase = FlintController.clientDraft("purchase"); supportText.text = FlintController.clientDraft("support").text || ""; reload() }
-    onSectionChanged: { error = ""; message = ""; loadSection() }
+    onSectionChanged: { error = ""; message = ""; if (opened) reload() }
     TextEdit { id: clipboard; visible: false }
     Connections {
         target: FlintController
-        function onAuthChanged() { if (!FlintController.loggedIn) { panel.profile = {}; panel.subscriptions = []; panel.tickets = []; panel.referrals = {}; panel.purchase = {}; panel.pending = {} } }
+        function onAuthChanged() { if (!FlintController.loggedIn) { panel.profile = {}; panel.tickets = []; panel.referrals = {}; panel.purchase = {}; panel.pending = {} } }
         function onApiBaseChanged() { panel.profile = {}; panel.config = {}; panel.pending = {}; panel.close() }
         function onAccountResponse(id, status, data, failure) {
             if (!panel.pending[id]) return
@@ -111,7 +105,6 @@ Popup {
             }
             if (id === "config") { panel.config = data; panel.loadSection() }
             if (id === "profile") panel.profile = data
-            if (id === "subscriptions") panel.subscriptions = data.items || []
             if (id === "plans") panel.plans = data.items || []
             if (id === "methods") panel.methods = data.items || []
             if (id === "referrals" || id === "applyReferral") { panel.referrals = data; if (id === "applyReferral") panel.message = "Код сохранён" }
@@ -123,7 +116,7 @@ Popup {
                 if (order.status === "completed") {
                     panel.message = "Оплата подтверждена сервером. Подписка закреплена за аккаунтом."
                     FlintController.saveClientDraft("purchase", {}); panel.purchase = {}
-                    panel.request("subscriptions", "GET", "/subscriptions"); FlintController.refresh()
+                    FlintController.refresh()
                 } else if (order.status === "cancelled") { panel.message = "Заказ отменён"; panel.purchase = {}; FlintController.saveClientDraft("purchase", {}) }
                 else if (id === "purchase" || id === "paymentLink") panel.openPayment()
             }
@@ -136,7 +129,7 @@ Popup {
     }
     Timer {
         interval: 4000; repeat: true
-        running: panel.opened && Qt.application.state === Qt.ApplicationActive && panel.purchase.order !== undefined && panel.purchase.order.status === "pending"
+        running: panel.opened && panel.section === 1 && Qt.application.state === Qt.ApplicationActive && panel.purchase.order !== undefined && panel.purchase.order.status === "pending"
         onTriggered: { if (Date.now() - panel.purchase.startedAt < 900000) panel.request("order", "GET", "/orders/" + encodeURIComponent(panel.purchase.order.id)) }
     }
     contentItem: ColumnLayout {
@@ -144,16 +137,8 @@ Popup {
         spacing: 10
         RowLayout {
             Layout.fillWidth: true
-            Text { Layout.fillWidth: true; text: "Мой Flint"; color: panel.ink; font.pixelSize: 26; font.bold: true }
+            Text { objectName: "serviceTitle"; Layout.fillWidth: true; text: panel.sectionTitle; color: panel.ink; font.pixelSize: 24; font.bold: true; wrapMode: Text.Wrap }
             FlintButton { text: "×"; implicitWidth: 40; implicitHeight: 40; font.pixelSize: 24; subtle: true; onClicked: panel.close() }
-        }
-        Text { text: "Один аккаунт на всех устройствах"; color: panel.muted; font.pixelSize: 12; Layout.bottomMargin: 10 }
-        FlintButton { Layout.fillWidth: true; visible: FlintController.loggedIn; text: "Способы входа · почта и Telegram"; onClicked: identityPanel.open() }
-        RowLayout {
-            Layout.fillWidth: true; spacing: 5
-            Repeater { model: ["Подписки", "Купить", "Друзья", "Поддержка"]
-                FlintButton { required property int index; required property string modelData; Layout.fillWidth: true; text: modelData; font.pixelSize: 11; leftPadding: 6; rightPadding: 6; highlighted: panel.section === index; onClicked: panel.section = index }
-            }
         }
         Text { Layout.fillWidth: true; visible: panel.error.length > 0; text: panel.error; color: "#FFAAAA"; wrapMode: Text.Wrap }
         Text { Layout.fillWidth: true; visible: panel.message.length > 0; text: panel.message; color: panel.mint; wrapMode: Text.Wrap }
@@ -162,26 +147,9 @@ Popup {
             Layout.fillWidth: true; Layout.fillHeight: true; clip: true; contentWidth: availableWidth
             ColumnLayout {
                 width: scroll.availableWidth; spacing: 14
-                Text { Layout.fillWidth: true; visible: !FlintController.loggedIn; text: "Войдите в аккаунт Flint, чтобы видеть подписки, покупать и обращаться в поддержку."; color: panel.muted; wrapMode: Text.Wrap }
+                Text { Layout.fillWidth: true; visible: !FlintController.loggedIn; text: "Войдите в аккаунт Flint, чтобы открыть этот раздел."; color: panel.muted; wrapMode: Text.Wrap }
                 ColumnLayout {
-                    visible: FlintController.loggedIn && panel.section === 0; Layout.fillWidth: true; spacing: 12
-                    Text { visible: panel.subscriptions.length === 0; text: "Подписок пока нет"; color: panel.muted }
-                    Repeater { model: panel.subscriptions
-                        ColumnLayout {
-                            required property var modelData
-                            Layout.fillWidth: true; spacing: 5
-                            Text { Layout.fillWidth: true; text: modelData.plan.name; color: panel.ink; font.pixelSize: 18; font.bold: true; wrapMode: Text.Wrap }
-                            Text { Layout.fillWidth: true; text: (modelData.status === "active" ? "Активна до " : "Истекла ") + new Date(modelData.expiresAt).toLocaleDateString(Qt.locale("ru_RU")); color: panel.muted; wrapMode: Text.Wrap }
-                            Text { Layout.fillWidth: true; visible: !!modelData.traffic && modelData.traffic.limitReached; text: "Лимит трафика исчерпан. Он обновится 1-го числа."; color: "#FFC56D"; wrapMode: Text.Wrap }
-                            Rectangle { Layout.fillWidth: true; height: 1; color: "#46637A" }
-                        }
-                    }
-                    FlintButton { text: "Обновить подписки"; enabled: !panel.pending.subscriptions; onClicked: { panel.request("subscriptions", "GET", "/subscriptions"); FlintController.refresh() } }
-                    FlintButton { text: "Устройства подписки"; onClicked: { panel.close(); devicesPanel.open() } }
-                    FlintButton { visible: panel.config.purchasesEnabled === true; primary: true; text: "Купить подписку"; onClicked: panel.section = 1 }
-                }
-                ColumnLayout {
-                    visible: FlintController.loggedIn && panel.section === 1; Layout.fillWidth: true
+                    objectName: "purchaseContent"; visible: FlintController.loggedIn && panel.section === 1; Layout.fillWidth: true
                     Text { Layout.fillWidth: true; visible: !panel.config.purchasesEnabled; text: "Покупки пока недоступны на подключённом API."; color: panel.muted; wrapMode: Text.Wrap }
                     Text { Layout.fillWidth: true; textFormat: Text.PlainText; text: "Покупка для: " + (panel.profile.email || (panel.profile.telegram && panel.profile.telegram.username ? "@" + panel.profile.telegram.username : "текущего аккаунта Flint")); color: panel.mint; wrapMode: Text.WrapAnywhere }
                     Text { Layout.fillWidth: true; text: "Выберите тариф. Цена, скидка и лимит трафика учитывают предложения для вашего аккаунта."; color: panel.muted; wrapMode: Text.Wrap }
@@ -218,7 +186,7 @@ Popup {
                     FlintButton { visible: panel.purchase.order !== undefined; text: "Отменить заказ"; enabled: !panel.pending.cancelOrder; onClicked: panel.request("cancelOrder", "POST", "/orders/" + encodeURIComponent(panel.purchase.order.id) + "/cancel") }
                 }
                 ColumnLayout {
-                    visible: FlintController.loggedIn && panel.section === 2; Layout.fillWidth: true
+                    objectName: "invitationContent"; visible: FlintController.loggedIn && panel.section === 2; Layout.fillWidth: true
                     Text { Layout.fillWidth: true; text: panel.config.referralsEnabled ? "Приглашайте друзей" : "Реферальная программа пока недоступна"; font.pixelSize: 19; color: panel.ink; wrapMode: Text.Wrap }
                     Text { Layout.fillWidth: true; text: panel.referralText(); color: panel.mint; wrapMode: Text.WrapAnywhere }
                     Text { text: "Приглашено: " + (panel.referrals.invitedCount || 0) + " · Бонусных дней: " + (panel.referrals.bonusDays || 0); color: panel.muted; Layout.fillWidth: true; wrapMode: Text.Wrap }
@@ -227,7 +195,7 @@ Popup {
                     FlintButton { visible: panel.config.referralsEnabled === true; text: "Применить код"; enabled: referralCode.text.trim().length > 0 && !panel.pending.applyReferral; onClicked: panel.request("applyReferral", "POST", "/referrals/apply", {code: referralCode.text.trim()}) }
                 }
                 ColumnLayout {
-                    visible: FlintController.loggedIn && panel.section === 3; Layout.fillWidth: true
+                    objectName: "supportContent"; visible: FlintController.loggedIn && panel.section === 3; Layout.fillWidth: true
                     Text { Layout.fillWidth: true; visible: !(panel.config.flintIntegration && panel.config.flintIntegration.supportEnabled); text: "Доставка обращений ещё не подключена. Администратор сможет включить её через API и админку."; color: panel.muted; wrapMode: Text.Wrap }
                     TextArea { id: supportText; activeFocusOnTab: true; Keys.onPressed: function(event) { if (!FlintFocus.isTv()) return; if (event.key===Qt.Key_Select) { Qt.inputMethod.show();event.accepted=true } else if ((event.key===Qt.Key_Up || event.key===Qt.Key_Down) && !Qt.inputMethod.visible) event.accepted=FlintFocus.move(supportText,event.key===Qt.Key_Down) }; padding: 16; font.pixelSize: 14; Layout.topMargin: 10; Layout.fillWidth: true; Layout.preferredHeight: 140; color: panel.ink; placeholderTextColor: panel.muted; placeholderText: "Опишите проблему"; wrapMode: TextEdit.Wrap; enabled: !panel.pending.sendTicket; background: Rectangle { radius: 14; color: "#102635"; border.color: supportText.activeFocus ? panel.mint : "#2B4A5E" } }
                     FlintButton { primary: true; text: "Отправить в поддержку"; enabled: panel.config.flintIntegration !== undefined && panel.config.flintIntegration.supportEnabled === true && !panel.pending.sendTicket; onClicked: panel.sendTicket() }

@@ -23,7 +23,7 @@ PageType {
         var target = root.isTv && tvPairButton.visible ? tvPairButton : connectBtn
         if (target.enabled) target.forceActiveFocus(Qt.TabFocusReason)
     }
-    function homePopups() { return [diagnosticsPopup, qrSourcePopup, tvPairPopup, accountPopup, countryPopup, assistPopup, familyQrPopup, settingsPopup, updatesPopup, importPopup, apiSetupPopup, sitesPopup, servicePopup, subscriptionsPopup, devicesPopup] }
+    function homePopups() { return [diagnosticsPopup, qrSourcePopup, tvPairPopup, accountPopup, countryPopup, assistPopup, familyQrPopup, settingsPopup, updatesPopup, importPopup, apiSetupPopup, sitesPopup, servicePopup, identityPopup, subscriptionsPopup, devicesPopup] }
     function hasOpenPopup() { return homePopups().some(function(p) { return p.opened || p.visible }) }
 
     readonly property bool isTv: SettingsController.isOnTv()
@@ -41,7 +41,8 @@ PageType {
     property color card: "#DE0A1C2D"
     property color line: "#46637A"
     property color warning: "#FFC56D"
-    FlintAccount { id: servicePopup; parent: root; onAddDeviceRequested: familyQrPopup.open() }
+    FlintAccount { id: servicePopup; parent: root }
+    FlintIdentity { id: identityPopup; parent: root }
     FlintDevices { id: devicesPopup; parent: root; onAddDeviceRequested: familyQrPopup.open() }
     FlintSites { id: sitesPopup; parent: root; onRoutingEdited: root.requestRoutingApply() }
     FlintSubscriptions { id: subscriptionsPopup; parent: root }
@@ -78,7 +79,7 @@ PageType {
         traceConnection("REQUESTED")
     }
     function connectionReport() {
-        return "Flint 8.10.19 / 2189\nmode=" + (autoConnection ? "auto" : "manual") +
+        return "Flint 8.10.20 / 2190\nmode=" + (autoConnection ? "auto" : "manual") +
             "\nruDirect=" + FlintController.ruDirectEnabled + "\ncore.error=" + lastConnectionError +
             "\n" + connectionEvents.join("\n") + "\n" + (lastNativeAttempt || FlintController.vpnDiagnostics())
     }
@@ -112,7 +113,7 @@ PageType {
     property bool importBusy: false
     property bool qrImageReading: false
     property string qrImageRequest: ""
-    property bool purchaseAfterLogin: false
+    property int serviceAfterLogin: -1
     property string importError: ""
     readonly property var locationChoices: buildLocationChoices()
 
@@ -272,10 +273,12 @@ PageType {
         qrImageReading = true; importPopup.open()
         FlintController.decodeQrImage(String(url), qrImageRequest)
     }
-    function openPurchase() {
-        if (!FlintController.loggedIn) { purchaseAfterLogin = true; accountPopup.open(); return }
-        servicePopup.section = 1; servicePopup.open()
+    function openService(section) {
+        if (!FlintController.loggedIn) { serviceAfterLogin = section; accountPopup.open(); return }
+        serviceAfterLogin = -1
+        servicePopup.section = section; servicePopup.open()
     }
+    function openPurchase() { openService(1) }
     FileDialog {
         id: qrImagePicker
         title: "Выберите картинку с QR-кодом"
@@ -301,8 +304,8 @@ PageType {
             root.parseImport()
         }
         function onAuthChanged() {
-            if (FlintController.loggedIn && root.purchaseAfterLogin) {
-                root.purchaseAfterLogin = false; accountPopup.close(); root.openPurchase()
+            if (FlintController.loggedIn && root.serviceAfterLogin >= 0) {
+                var section = root.serviceAfterLogin; root.serviceAfterLogin = -1; accountPopup.close(); root.openService(section)
             }
         }
     }
@@ -1131,7 +1134,7 @@ PageType {
 
                 Tile {
                     id: supportTile
-                    activate: function() { FlintController.loggedIn ? (servicePopup.section = 3, servicePopup.open()) : accountPopup.open() }
+                    activate: function() { root.openService(3) }
                     Column {
                         anchors.fill: parent
                         anchors.margins: root.denseHome ? 8 : 12
@@ -1149,7 +1152,7 @@ PageType {
                             elide: Text.ElideRight
                         }
                     }
-                    MouseArea { anchors.fill: parent; onClicked: { if (FlintController.loggedIn) { servicePopup.section = 3; servicePopup.open() } else accountPopup.open() } }
+                    MouseArea { anchors.fill: parent; onClicked: { root.openService(3) } }
                 }
             }
 
@@ -1171,6 +1174,7 @@ PageType {
 
     Popup {
         id: accountPopup
+        onClosed: { if (!FlintController.loggedIn) root.serviceAfterLogin = -1 }
         Shortcut { sequence: "Back"; enabled: accountPopup.activeFocus; onActivated: accountPopup.close() }
         onOpened: Qt.callLater(function() { FlintFocus.firstButton(accountPopup.contentItem) })
         objectName: "accountPopup"
@@ -1284,18 +1288,13 @@ PageType {
                     color: root.muted
                 }
 
-                FlintButton {
-                    Layout.fillWidth: true
-                    text: "Обновить"
-                    onClicked: FlintController.refresh()
-                }
 
                 FlintButton {
                     Layout.fillWidth: true
-                    text: "Подготовить профиль"
-                    enabled: FlintController.subscriptionActive
-                    onClicked: FlintController.importSubscription(true, true)
+                    text: "Способы входа · почта и Telegram"
+                    onClicked: { accountPopup.close(); identityPopup.open() }
                 }
+
 
                 FlintButton {
                     Layout.fillWidth: true
@@ -1516,7 +1515,7 @@ PageType {
             FlintButton {
                 Layout.fillWidth: true
                 text: "Написать оператору"
-                onClicked: { assistPopup.close(); servicePopup.section = 3; servicePopup.open() }
+                onClicked: { assistPopup.close(); root.openService(3) }
             }
             RowLayout {
                 Layout.fillWidth: true
@@ -1655,13 +1654,9 @@ PageType {
             spacing: 10
             FlintButton {
                 Layout.fillWidth: true
-                text: "Подписки, покупки и поддержка"
-                onClicked: { settingsPopup.close(); if (FlintController.loggedIn) { servicePopup.section = 0; servicePopup.open() } else accountPopup.open() }
-            }
-            FlintButton {
-                Layout.fillWidth: true
-                text: "Адрес API сервиса"
-                onClicked: { settingsPopup.close(); apiBaseField.text = FlintController.apiBase; apiSetupPopup.open() }
+                objectName: "inviteFriendButton"
+                text: "Пригласить друга"
+                onClicked: { settingsPopup.close(); root.openService(2) }
             }
 
             FlintButton {
@@ -1671,7 +1666,7 @@ PageType {
                 onClicked: { settingsPopup.close(); updatesPopup.open(); FlintUpdateController.check(true) }
             }
             Text { text: "Настройки Flint"; color: root.ink; font.pixelSize: 21; font.bold: true }
-            Text { text: "Flint Android 8.10.19"; color: root.muted }
+            Text { text: "Flint Android 8.10.20"; color: root.muted }
             FlintButton {
                 Layout.fillWidth: true
                 text: "Диагностика подключения"
@@ -1680,18 +1675,11 @@ PageType {
 
             FlintButton {
                 Layout.fillWidth: true
+                visible: Qt.platform.os === "android" && !root.isTv
                 text: "Добавить виджет на экран"
                 onClicked: { settingsPopup.close(); FlintController.requestHomeWidget() }
             }
 
-            Text {
-                Layout.fillWidth: true
-                text: FlintController.apiOnline
-                      ? "Flint API доступен"
-                      : "API отвечает медленно. Сохранённый профиль продолжает работать."
-                color: FlintController.apiOnline ? root.mint : root.warning
-                wrapMode: Text.Wrap
-            }
 
             FlintButton {
                 Layout.fillWidth: true
@@ -1702,11 +1690,6 @@ PageType {
                 }
             }
 
-            FlintButton {
-                Layout.fillWidth: true
-                text: "Обновить данные"
-                onClicked: FlintController.refresh()
-            }
 
 
             FlintButton {

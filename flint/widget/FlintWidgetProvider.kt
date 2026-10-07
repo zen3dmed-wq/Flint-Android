@@ -41,19 +41,25 @@ class FlintWidgetProvider : AppWidgetProvider() {
             val ids = manager.getAppWidgetIds(ComponentName(context, FlintWidgetProvider::class.java))
             if (ids.isEmpty()) return
             val model = model(context, state)
-            val open = PendingIntent.getActivity(context, 81020,
-                Intent(context, AmneziaActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             val toggle = PendingIntent.getActivity(context, 81021,
                 Intent(context, FlintWidgetActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             val views = RemoteViews(context.packageName, R.layout.flint_widget)
-            views.setTextViewText(R.id.flint_widget_status, model.title)
-            views.setTextViewText(R.id.flint_widget_toggle, model.button)
-            views.setTextColor(R.id.flint_widget_status, Color.parseColor(if (model.action == FlintWidgetAction.DISCONNECT) "#4AE6A3" else "#C3D5DF"))
+            val ring = when (model.action) {
+                FlintWidgetAction.DISCONNECT -> R.drawable.flint_widget_connected
+                FlintWidgetAction.WAIT -> R.drawable.flint_widget_waiting
+                else -> R.drawable.flint_widget_background
+            }
+            val colour = when (model.action) {
+                FlintWidgetAction.DISCONNECT -> "#4AE6A3"
+                FlintWidgetAction.WAIT -> "#F1C75B"
+                else -> "#82909E"
+            }
+            views.setInt(R.id.flint_widget_toggle, "setBackgroundResource", ring)
+            views.setInt(R.id.flint_widget_power, "setColorFilter", Color.parseColor(colour))
+            views.setContentDescription(R.id.flint_widget_toggle, "Flint. ${model.title}. ${model.button}")
             views.setBoolean(R.id.flint_widget_toggle, "setEnabled", model.action != FlintWidgetAction.WAIT)
             views.setOnClickPendingIntent(R.id.flint_widget_toggle, toggle)
-            views.setOnClickPendingIntent(R.id.flint_widget_header, open)
             manager.updateAppWidget(ids, views)
         }
     }
