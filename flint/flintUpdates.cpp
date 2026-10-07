@@ -30,20 +30,25 @@ FlintUpdates::FlintUpdates(FlintController *account, QObject *parent) : QObject(
 #ifdef Q_OS_ANDROID
     // startActivity runs asynchronously on Android's main thread. Surface launch
     // failures in the update dialog as well as in the short-lived native toast.
-    auto installerMessages = new QTimer(this);
-    connect(installerMessages, &QTimer::timeout, this, [this] {
-        if (m_state.value("phase") != "ready") return;
+    m_installerMessages = new QTimer(this);
+    m_installerMessages->setInterval(750);
+    connect(m_installerMessages, &QTimer::timeout, this, [this] {
+        if (m_state.value("phase") != "ready" || --m_installPolls <= 0) {
+            m_installerMessages->stop(); return;
+        }
         const auto result = QJniObject::callStaticObjectMethod(
             "org/amnezia/vpn/FlintUpdateInstaller", "takeMessage", "()Ljava/lang/String;");
         QJniEnvironment env;
         if (env->ExceptionCheck()) { env->ExceptionClear(); return; }
         const auto message = result.toString();
-        if (!message.isEmpty()) { m_state["message"] = message; emit changed(); }
+        if (!message.isEmpty()) {
+            m_installerMessages->stop(); m_state["message"] = message; emit changed();
+        }
     });
-    installerMessages->start(750);
 #endif
 }
 void FlintUpdates::reset() {
+    if (m_installerMessages) m_installerMessages->stop();
     ++m_epoch;
     if (m_reply) m_reply->abort();
     m_reply = nullptr;
@@ -167,6 +172,8 @@ void FlintUpdates::cancel() {
 void FlintUpdates::install() {
     if (m_state.value("phase") != "ready") return;
 #ifdef Q_OS_ANDROID
+    m_installPolls = 20;
+    m_installerMessages->start();
     const auto activity = QNativeInterface::QAndroidApplication::context();
     const auto path = QJniObject::fromString(m_file);
     const auto hash = QJniObject::fromString(m_latest.value("sha256").toString());

@@ -7,6 +7,7 @@
 #include <QNetworkAccessManager>
 #include <functional>
 class FlintController;
+class QTimer;
 class FlintUpdates : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantMap state READ state NOTIFY changed)
@@ -33,4 +34,6 @@ private:
     QString m_file, m_announced;
     qint64 m_lastCheck = 0;
     int m_epoch = 0;
+    QTimer *m_installerMessages = nullptr;
+    int m_installPolls = 0;
 };
