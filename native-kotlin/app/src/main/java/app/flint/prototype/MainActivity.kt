@@ -42,10 +42,14 @@ class MainActivity : Activity(), FlintUiCallbacks {
     private var importJob: Job? = null
     private var probeJob: Job? = null
     private var loadingProfiles = true
+    private val profilesReady = CompletableDeferred<Unit>()
     private var importing = false
     private var preparing = false
     private var awaitingService = false
     private var permissionInFlight = false
+    private var confirmedPhase = FlintPhase.DISCONNECTED
+    private var confirmedServerName = ""
+    private var confirmedRuDirect = true
     private val probeSlots = Semaphore(8)
     private var generation = 0
     private var pendingFile: String? = null
@@ -59,6 +63,9 @@ class MainActivity : Activity(), FlintUiCallbacks {
                 "error" -> FlintPhase.ERROR
                 else -> FlintPhase.DISCONNECTED
             }
+            confirmedPhase = phase
+            confirmedServerName = info.getString("serverName").orEmpty()
+            confirmedRuDirect = info.getBoolean("ruDirect", true)
             if (awaitingService && phase != FlintPhase.DISCONNECTED) awaitingService = false
             val localPreparation = preparing || pendingFile != null || awaitingService
             state = state.copy(phase = if (localPreparation) FlintPhase.CONNECTING else phase,
@@ -79,6 +86,7 @@ class MainActivity : Activity(), FlintUiCallbacks {
         }
         override fun onServiceDisconnected(name: ComponentName?) {
             remote = null
+            confirmedPhase = FlintPhase.DISCONNECTED
             awaitingService = false
             state = state.copy(phase = if (preparing || pendingFile != null) FlintPhase.CONNECTING else FlintPhase.DISCONNECTED,
                 message = if (preparing || pendingFile != null) state.message else "Связь с VPN-службой прервана. Подключитесь снова.")
@@ -96,7 +104,8 @@ class MainActivity : Activity(), FlintUiCallbacks {
         super.onCreate(savedInstanceState)
         window.setDecorFitsSystemWindows(false)
         profilesStore = ProfileStore(this)
-        state = state.copy(selectedServerId = prefs.getString("selected", null))
+        state = state.copy(selectedServerId = prefs.getString("selected", null),
+            ruDirect = savedInstanceState?.getBoolean("ruDirect", true) ?: true)
         pendingFile = savedInstanceState?.getString("pendingFile")?.takeIf { validPendingFile(it)?.isFile == true }
         permissionInFlight = pendingFile != null && savedInstanceState?.getBoolean("permissionInFlight", false) == true
         if (pendingFile != null) state = state.copy(phase = FlintPhase.CONNECTING, message = "Ожидаем разрешения VPN…")
@@ -106,11 +115,13 @@ class MainActivity : Activity(), FlintUiCallbacks {
             try {
                 profiles = withContext(Dispatchers.IO) { profilesStore.load() }
                 render()
-                if (profiles.isNotEmpty()) checkServers()
+                if (profiles.isNotEmpty() && savedInstanceState?.getBoolean("restartPreparation", false) == true)
+                    connectSelected()
+                else if (profiles.isNotEmpty()) checkServers()
             } catch (_: CancellationException) { }
             catch (error: ImportException) { report(error.message ?: "Не удалось прочитать сохранённые профили") }
             catch (_: Exception) { report("Не удалось прочитать сохранённые профили. Данные не изменены.") }
-            finally { loadingProfiles = false; render() }
+            finally { loadingProfiles = false; profilesReady.complete(Unit); render() }
         }
         render()
     }
@@ -125,6 +136,8 @@ class MainActivity : Activity(), FlintUiCallbacks {
     override fun onSaveInstanceState(outState: Bundle) {
         pendingFile?.let { outState.putString("pendingFile", it) }
         outState.putBoolean("permissionInFlight", permissionInFlight)
+        outState.putBoolean("restartPreparation", preparing && pendingFile == null)
+        outState.putBoolean("ruDirect", state.ruDirect)
         super.onSaveInstanceState(outState)
     }
 
@@ -151,7 +164,7 @@ class MainActivity : Activity(), FlintUiCallbacks {
 
     private fun selectedLabel(): String = profiles.find { it.id == state.selectedServerId }?.name ?: "Автоматически"
     private fun render() {
-        if (!::home.isInitialized) return
+        if (!::home.isInitialized || isDestroyed) return
         state = state.copy(busy = loadingProfiles || importing || preparing || pendingFile != null || awaitingService,
             hasProfile = profiles.isNotEmpty(), servers = profiles.map { p ->
             FlintServerUi(p.id, p.name, ping[p.id]?.first, ping[p.id]?.second)
@@ -162,6 +175,18 @@ class MainActivity : Activity(), FlintUiCallbacks {
         state = state.copy(message = message,
             phase = if (error && state.phase != FlintPhase.CONNECTED) FlintPhase.ERROR else state.phase)
         render()
+    }
+
+    private fun preparationFailed(message: String) {
+        clearPendingFile()
+        preparing = false
+        awaitingService = false
+        permissionInFlight = false
+        val oldTunnelActive = confirmedPhase == FlintPhase.CONNECTED || confirmedPhase == FlintPhase.CONNECTING
+        state = state.copy(phase = if (oldTunnelActive) confirmedPhase else FlintPhase.ERROR,
+            serverLabel = if (oldTunnelActive) confirmedServerName.ifBlank { selectedLabel() } else selectedLabel(),
+            ruDirect = if (oldTunnelActive) confirmedRuDirect else state.ruDirect)
+        report(message)
     }
 
     override fun onConnectToggle() {
@@ -228,9 +253,9 @@ class MainActivity : Activity(), FlintUiCallbacks {
             } catch (_: CancellationException) {
                 // A newer selection or explicit disconnect owns the outcome.
             } catch (e: ImportException) {
-                if (request == generation) { clearPendingFile(); report(e.message ?: "Ошибка профиля", true) }
+                if (request == generation) preparationFailed(e.message ?: "Ошибка профиля")
             } catch (_: Exception) {
-                if (request == generation) { clearPendingFile(); permissionInFlight = false; report("Не удалось подготовить VPN. Повторите импорт подписки.", true) }
+                if (request == generation) preparationFailed("Не удалось подготовить VPN. Повторите импорт подписки.")
             } finally {
                 if (!handedToPending) staged?.delete()
                 if (request == generation) { preparing = false; render() }
@@ -249,9 +274,7 @@ class MainActivity : Activity(), FlintUiCallbacks {
     private fun startPrepared() {
         val file = pendingFile ?: return
         if (validPendingFile(file)?.isFile != true) {
-            clearPendingFile()
-            preparing = false
-            report("Подготовленный профиль больше недоступен. Нажмите «Подключиться» снова.", true)
+            preparationFailed("Подготовленный профиль больше недоступен. Нажмите «Подключиться» снова.")
             return
         }
         if (VpnService.prepare(this) != null) {
@@ -271,10 +294,7 @@ class MainActivity : Activity(), FlintUiCallbacks {
             state = state.copy(phase = FlintPhase.CONNECTING, message = "Запуск VPN…")
             render()
         } catch (_: Exception) {
-            clearPendingFile()
-            preparing = false
-            awaitingService = false
-            report("Android не разрешил запустить VPN-службу. Откройте приложение и повторите.", true)
+            preparationFailed("Android не разрешил запустить VPN-службу. Откройте приложение и повторите.")
             return
         }
         // Notification permission is independent of VPN startup and must not retract its file.
@@ -371,19 +391,23 @@ class MainActivity : Activity(), FlintUiCallbacks {
     }
 
     private fun launchImport(message: String, readInput: () -> String) {
-        if (loadingProfiles || importing) { report("Дождитесь завершения импорта"); return }
+        if (importing) { report("Дождитесь завершения импорта"); return }
         importing = true
         state = state.copy(message = message)
         render()
         importJob = scope.launch {
             try {
-                val result = withContext(Dispatchers.IO) { SubscriptionClient().import(readInput()) }
+                // A document result can arrive immediately after Activity recreation.
+                profilesReady.await()
+                val result = runInterruptible(Dispatchers.IO) { SubscriptionClient().import(readInput()) }
                 profiles = withContext(Dispatchers.IO) { profilesStore.merge(result.profiles) }
                 if (state.selectedServerId != null && profiles.none { it.id == state.selectedServerId }) {
                     state = state.copy(selectedServerId = null)
                     prefs.edit().remove("selected").apply()
                 }
-                report("Серверов в списке: ${profiles.size}. " + result.warnings.joinToString(" "))
+                val warningSummary = result.warnings.take(2).joinToString(" ") +
+                    if (result.warnings.size > 2) " Ещё ошибок импорта: ${result.warnings.size - 2}." else ""
+                report("Серверов в списке: ${profiles.size}. $warningSummary")
                 checkServers()
             } catch (_: CancellationException) { }
             catch (e: ImportException) { report(e.message ?: "Не удалось импортировать подписку") }
@@ -395,7 +419,7 @@ class MainActivity : Activity(), FlintUiCallbacks {
     private suspend fun resolveForProbe(host: String): List<InetAddress> {
         try { return listOf(InetAddresses.parseNumericAddress(host)) } catch (_: IllegalArgumentException) { }
         return withTimeoutOrNull(1500) {
-            suspendCancellableCoroutine { continuation ->
+            suspendCancellableCoroutine<List<InetAddress>> { continuation ->
                 val cancellation = CancellationSignal()
                 continuation.invokeOnCancellation { cancellation.cancel() }
                 try {
