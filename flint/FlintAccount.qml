@@ -86,7 +86,15 @@ Popup {
     function copyText(value) { clipboard.text = value; clipboard.selectAll(); clipboard.copy(); clipboard.text = ""; message = "Скопировано" }
     function referralText() {
         var template = config.flintIntegration ? config.flintIntegration.referralUrlTemplate : ""
-        return template && template.indexOf("{code}") >= 0 ? template.replace("{code}", encodeURIComponent(referrals.code || "")) : (referrals.code || "")
+        var candidate = template && template.indexOf("{code}") >= 0 ? template.replace("{code}", encodeURIComponent(referrals.code || "")) : ""
+        var host = /^https:\/\/([^\/:?#]+)(?:[\/:?#]|$)/i.exec(candidate)
+        // A referral must work in a browser without opening Telegram.
+        if (host && !/@/.test(candidate) && !/(^|\.)(t\.me|telegram\.me|telegram\.dog|telegram\.org)$/i.test(host[1])) return candidate
+        return referrals.code || ""
+    }
+    function invitationText() {
+        var value = referralText()
+        return /^https:\/\//i.test(value) ? value : "Приглашаю во Flint! Зарегистрируйтесь в приложении по почте, затем откройте Настройки → Пригласить друга и введите код: " + value
     }
     onOpened: { Qt.callLater(function() { FlintFocus.firstButton(panel.contentItem) }); purchase = FlintController.clientDraft("purchase"); supportText.text = FlintController.clientDraft("support").text || ""; reload() }
     onSectionChanged: { error = ""; message = ""; if (opened) reload() }
@@ -189,8 +197,9 @@ Popup {
                     objectName: "invitationContent"; visible: FlintController.loggedIn && panel.section === 2; Layout.fillWidth: true
                     Text { Layout.fillWidth: true; text: panel.config.referralsEnabled ? "Приглашайте друзей" : "Реферальная программа пока недоступна"; font.pixelSize: 19; color: panel.ink; wrapMode: Text.Wrap }
                     Text { Layout.fillWidth: true; text: panel.referralText(); color: panel.mint; wrapMode: Text.WrapAnywhere }
+                    Text { Layout.fillWidth: true; text: "Друг может зарегистрироваться по почте и указать ваш код. Telegram не требуется."; color: panel.muted; wrapMode: Text.Wrap }
                     Text { text: "Приглашено: " + (panel.referrals.invitedCount || 0) + " · Бонусных дней: " + (panel.referrals.bonusDays || 0); color: panel.muted; Layout.fillWidth: true; wrapMode: Text.Wrap }
-                    FlintButton { text: "Скопировать приглашение"; enabled: !!panel.referrals.code; onClicked: panel.copyText(panel.referralText()) }
+                    FlintButton { text: "Скопировать приглашение"; enabled: !!panel.referrals.code; onClicked: panel.copyText(panel.invitationText()) }
                     FlintField { id: referralCode; Layout.fillWidth: true; placeholderText: "Код пригласившего друга"; visible: panel.config.referralsEnabled === true }
                     FlintButton { visible: panel.config.referralsEnabled === true; text: "Применить код"; enabled: referralCode.text.trim().length > 0 && !panel.pending.applyReferral; onClicked: panel.request("applyReferral", "POST", "/referrals/apply", {code: referralCode.text.trim()}) }
                 }

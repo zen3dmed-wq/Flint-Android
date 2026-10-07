@@ -19,7 +19,7 @@ private slots:
     }
     void validatesDownloadAuthorityAndIntegrityMetadata() {
         const QUrl base("https://flintmain.ru/api/v1");
-        QJsonObject release{{"version","8.10.20"},{"versionCode",2190},{"url","https://flintmain.ru/api/v1/app/files/id/file.apk?sig=test"},{"fileName","file.apk"},{"size",1234},{"sha256",QString(64,'a')}};
+        QJsonObject release{{"version","8.10.21"},{"versionCode",2191},{"url","https://flintmain.ru/api/v1/app/files/id/file.apk?sig=test"},{"fileName","file.apk"},{"size",1234},{"sha256",QString(64,'a')}};
         QVERIFY(FlintUpdatePolicy::validate(release,base).isEmpty());
         for (const QString bad : {"http://flintmain.ru/api/v1/app/files/id/file.apk", "https://evil.invalid/api/v1/app/files/id/file.apk", "https://flintmain.ru/api/v1/app/files/../file.apk", "https://user@flintmain.ru/api/v1/app/files/id/file.apk", "https://flintmain.ru:444/api/v1/app/files/id/file.apk"}) {
             auto altered=release; altered["url"]=bad; QVERIFY(!FlintUpdatePolicy::validate(altered,base).isEmpty());

@@ -16,3 +16,7 @@ Shared QML applies to Android phones, Android/Google TV and iOS. Widget pinning
 is shown only on Android phones. Windows has the same isolated service dialogs.
 Production website, API configuration and release publication are unchanged.
 iOS still requires Apple Developer signing before distribution.
+
+Telegram-only referral templates now fall back to a shareable email-registration
+invitation code. A deployed HTTPS referralUrlTemplate is used when configured.
+The separate invite web page is prepared locally and is NOT deployed.
