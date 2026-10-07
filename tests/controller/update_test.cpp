@@ -9,6 +9,10 @@
 
 class UpdateTests : public QObject {
     Q_OBJECT
+    QString nextVersion() const {
+        const auto v = FlintUpdatePolicy::parseVersion(FlintUpdatePolicy::version);
+        return QVersionNumber(v.majorVersion(), v.minorVersion(), v.microVersion()+1).toString();
+    }
 private slots:
     void numericVersionsPreventDowngrades() {
         QVERIFY(FlintUpdatePolicy::newer("8.10.25", "8.10.9"));
@@ -19,7 +23,7 @@ private slots:
     }
     void validatesDownloadAuthorityAndIntegrityMetadata() {
         const QUrl base("https://flintmain.ru/api/v1");
-        QJsonObject release{{"version","8.10.25"},{"versionCode",2195},{"url","https://flintmain.ru/api/v1/app/files/id/file.apk?sig=test"},{"fileName","file.apk"},{"size",1234},{"sha256",QString(64,'a')}};
+        QJsonObject release{{"version",nextVersion()},{"versionCode",FlintUpdatePolicy::versionCode+1},{"url","https://flintmain.ru/api/v1/app/files/id/file.apk?sig=test"},{"fileName","file.apk"},{"size",1234},{"sha256",QString(64,'a')}};
         QVERIFY(FlintUpdatePolicy::validate(release,base).isEmpty());
         for (const QString bad : {"http://flintmain.ru/api/v1/app/files/id/file.apk", "https://evil.invalid/api/v1/app/files/id/file.apk", "https://flintmain.ru/api/v1/app/files/../file.apk", "https://user@flintmain.ru/api/v1/app/files/id/file.apk", "https://flintmain.ru:444/api/v1/app/files/id/file.apk"}) {
             auto altered=release; altered["url"]=bad; QVERIFY(!FlintUpdatePolicy::validate(altered,base).isEmpty());
@@ -51,7 +55,8 @@ private slots:
         QVERIFY(requested.contains("/app/update?platform=android&version=8.10.25"));
         QVERIFY(authorization.contains("Authorization: Bearer test-token"));
         QVERIFY(!updates.state().value("available").toBool());
-        response=R"({"updateAvailable":true,"required":true,"minVersion":"8.10.25","latest":{"version":"8.10.25","notes":"Example"}})";
+        response=QJsonDocument(QJsonObject{{"updateAvailable",true},{"required",true},{"minVersion",nextVersion()},
+            {"latest",QJsonObject{{"version",nextVersion()},{"notes","Example"}}}}).toJson(QJsonDocument::Compact);
         updates.check();QTRY_VERIFY(updates.state().value("required").toBool());
         QVERIFY(updates.state().value("available").toBool());
         response=R"({"updateAvailable":true,"required":true,"latest":{"version":"8.10.9"}})";
