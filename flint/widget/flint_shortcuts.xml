@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="flint-vpn-toggle" android:enabled="true"
+        android:icon="@mipmap/flint_icon"
+        android:shortcutShortLabel="@string/flint_toggle_short"
+        android:shortcutLongLabel="@string/flint_toggle_long">
+        <intent android:action="app.flint.vpn.TOGGLE_FROM_HOME"
+            android:targetPackage="app.flint.vpn"
+            android:targetClass="org.amnezia.vpn.FlintWidgetActivity" />
+    </shortcut>
+</shortcuts>

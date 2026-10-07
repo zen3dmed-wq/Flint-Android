@@ -152,7 +152,8 @@ private:
     bool m_russianRoutingInitialized = false;
     void runServerHealth(bool initialize);
     QString healthKey(const QString &key) const;
-    void loadServerTelemetry();
+    void loadServerTelemetry(bool legacy = false);
+    QStringList healthProfiles() const;
     void evaluateAutomaticSwitch();
     QString bestHealthyProfile(const QStringList &profiles) const;
     QString withWorkingFingerprint(const QString &profile) const;

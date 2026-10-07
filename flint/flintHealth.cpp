@@ -1,4 +1,5 @@
 #include "flintController.h"
+#include "flintTelemetry.h"
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QElapsedTimer>
@@ -69,11 +70,15 @@ QString FlintController::withWorkingFingerprint(const QString &profile) const {
 }
 void FlintController::refreshServerHealth() {runServerHealth(false);}
 void FlintController::initializeServers() {runServerHealth(true);}
-void FlintController::runServerHealth(bool initialize) {
-    if(m_healthBusy)return;
+QStringList FlintController::healthProfiles() const {
     auto profiles=cachedProfiles();if(profiles.isEmpty()&&subscriptionUrl().startsWith("vless://"))profiles<<subscriptionUrl();
     const auto manual=m_settings->value("Conf/flintManualImports").toMap();
     for(auto it=manual.begin();it!=manual.end();++it)for(const auto &saved:savedServers())if(saved.toMap().value("id")==it.value()&&!profiles.contains(it.key()))profiles<<it.key();
+    return profiles;
+}
+void FlintController::runServerHealth(bool initialize) {
+    if(m_healthBusy)return;
+    const auto profiles=healthProfiles();
     if(profiles.isEmpty())return;
     m_healthBusy=true;emit healthChanged();
     const auto previous=m_health;const QString scope=subscriptionUrl();const int epoch=m_apiEpoch;
@@ -114,20 +119,29 @@ void FlintController::runServerHealth(bool initialize) {
     });
     connect(worker,&QThread::finished,worker,&QObject::deleteLater);worker->start();
 }
-void FlintController::loadServerTelemetry() {
+void FlintController::loadServerTelemetry(bool legacy) {
     if(!loggedIn()){evaluateAutomaticSwitch();return;}
     const auto scope=subscriptionUrl();const auto epoch=m_apiEpoch;
-    auto req=apiRequest("/server-health",true);req.setTransferTimeout(2500);
+    auto req=apiRequest(legacy ? "/server-health" : "/locations",true);req.setTransferTimeout(2500);
     auto reply=m_net.get(req);QTimer::singleShot(3000,reply,[reply](){if(!reply->isFinished())reply->abort();});
-    connect(reply,&QNetworkReply::finished,this,[this,reply,scope,epoch](){
+    connect(reply,&QNetworkReply::finished,this,[this,reply,scope,epoch,legacy](){
         const auto raw=reply->readAll();reply->deleteLater();if(scope!=subscriptionUrl()||epoch!=m_apiEpoch)return;
-        if(reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt()==200) {
-            const auto items=QJsonDocument::fromJson(raw).object().value("items").toArray();
-            for(const auto &profile:cachedProfiles()) {auto key=serverKey(profile);auto h=m_health.value(key).toMap();h.remove("loadPercent");
+        const auto status=reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        if(!legacy && (status==404 || status==501)) {loadServerTelemetry(true);return;}
+        const auto document=QJsonDocument::fromJson(raw).object();
+        if(status==200 && document.value("items").isArray()) {
+            const auto items=document.value("items").toArray();
+            for(const auto &profile:healthProfiles()) {auto key=serverKey(profile);auto h=m_health.value(key).toMap();h.remove("loadPercent");h.remove("loadAt");
+                if(!legacy) {
+                    const auto telemetry=FlintTelemetry::location(document,profile,QDateTime::currentMSecsSinceEpoch());
+                    for(auto it=telemetry.begin();it!=telemetry.end();++it)h[it.key()]=it.value();
+                } else {
                 for(const auto &item:items){const auto o=item.toObject();const auto at=QDateTime::fromString(o.value("measuredAt").toString(),Qt::ISODateWithMs).toMSecsSinceEpoch();const auto age=QDateTime::currentMSecsSinceEpoch()-at;const auto load=o.value("loadPercent");
                     if(o.value("endpointId").toString()==endpointKey(QUrl(profile))&&age>=-30000&&age<120000&&load.isDouble()&&load.toDouble()>=0&&load.toDouble()<=100){h["loadPercent"]=load.toDouble();h["loadAt"]=at;break;}}
+                }
                 m_health[key]=h;
             }
+            m_settings->setValue("Conf/flintHealth",m_health);
         }
         ++m_healthRevision;emit healthChanged();evaluateAutomaticSwitch();
     });
