@@ -259,6 +259,10 @@ class FlintHomeView(
     private fun showServers() {
         serverDialog?.dismiss()
         val list = column().apply { setPadding(dp(18), dp(4), dp(18), dp(12)) }
+        list.addView(label(12f).apply {
+            text = "TCP-проверка показывает ответ порта. Подключение VPN проверяется отдельно."
+            setTextColor(muted)
+        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
         val auto = button(if (state.selectedServerId == null) "✓  Автоматически" else "Автоматически") {
             serverDialog?.dismiss()
             callbacks.onSelectServer(null)
@@ -268,9 +272,9 @@ class FlintHomeView(
             val selected = state.selectedServerId == item.id
             val details = mutableListOf<String>()
             when (item.available) {
-                false -> details.add("Недоступен")
-                true -> details.add(item.latencyMs?.let { "$it мс" } ?: "Доступен")
-                null -> details.add(item.latencyMs?.let { "$it мс" } ?: "Ещё не проверен")
+                false -> details.add("Нет ответа TCP")
+                true -> details.add(item.latencyMs?.let { "TCP $it мс" } ?: "TCP отвечает")
+                null -> details.add(item.latencyMs?.let { "TCP $it мс" } ?: "TCP не проверен")
             }
             item.loadPercent?.takeIf { it in 0..100 }?.let { details.add("Загрузка $it%") }
             val entry = button("${if (selected) "✓  " else ""}${item.name}\n${details.joinToString("  ·  ")}") {

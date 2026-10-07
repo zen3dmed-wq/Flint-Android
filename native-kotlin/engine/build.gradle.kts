@@ -13,5 +13,4 @@ dependencies {
     api("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.annotation:annotation:1.8.2")
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 }

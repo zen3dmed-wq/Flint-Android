@@ -22,6 +22,7 @@ class UiHarnessActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.setDecorFitsSystemWindows(false)
         val phaseName = savedInstanceState?.getString("phase") ?: intent.getStringExtra("phase")
         val phase = phaseName?.let { FlintPhase.valueOf(it) } ?: FlintPhase.DISCONNECTED
         uiState = fixture().copy(phase = phase,

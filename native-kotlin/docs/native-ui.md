@@ -9,7 +9,9 @@ explicit focus outline. All actions are regular focusable Android controls and
 support D-pad OK. Rendering updates existing views, preserving keyboard focus.
 
 The server picker stays available while connected and reports only supplied probe
-results. Null availability means “Ещё не проверен”, not zero ping or unavailable.
+results. Values are labelled “TCP … мс” / “Нет ответа TCP”; they describe a port
+probe rather than a successful VPN handshake. The picker explains this distinction.
+Null availability means “TCP не проверен”, not zero ping or unavailable.
 An unavailable entry is grey but remains selectable for a manual retry. Load is
 shown only when the supplied percentage is between 0 and 100.
 

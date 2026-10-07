@@ -4,6 +4,8 @@
 set -euo pipefail
 project_dir="$(cd "$(dirname "$0")/.." && pwd)"
 output_dir="${1:-$project_dir/engine/libs}"
+mkdir -p "$output_dir"
+output_dir="$(cd "$output_dir" && pwd)"
 work_dir="$(mktemp -d)"
 trap 'rm -rf -- "$work_dir"' EXIT
 export GOTOOLCHAIN=local
@@ -25,6 +27,9 @@ PY
 cd "$work_dir/amnezia-libxray-1.0.3"
 go mod download
 go mod verify
+if [ "${FLINT_BUILD_TEST_SERVER:-0}" = "1" ]; then
+  go build -trimpath -ldflags="-w -s -buildid=" -o "$output_dir/xray-fixture" github.com/xtls/xray-core/main
+fi
 mobile_version="$(go list -m -f '{{.Version}}' golang.org/x/mobile)"
 export GOBIN="$work_dir/bin"
 mkdir -p "$GOBIN"

@@ -33,6 +33,9 @@ class NativeTvUiTest {
                 assertTrue(server.requestFocus())
             }
             UiTestSupport.press(KeyEvent.KEYCODE_DPAD_CENTER)
+            val picker = UiTestSupport.instrumentation.uiAutomation.rootInActiveWindow
+            assertFalse("The measurement must identify the TCP probe", picker.findAccessibilityNodeInfosByText("TCP 23 мс").isEmpty())
+            assertFalse("A failed port probe must not claim a failed VPN handshake", picker.findAccessibilityNodeInfosByText("Нет ответа TCP").isEmpty())
             UiTestSupport.screenshot("tv-server-picker-fixture", true, FlintPhase.CONNECTED)
             UiTestSupport.press(KeyEvent.KEYCODE_DPAD_DOWN)
             UiTestSupport.press(KeyEvent.KEYCODE_DPAD_CENTER)

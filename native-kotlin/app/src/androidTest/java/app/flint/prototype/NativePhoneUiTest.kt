@@ -21,6 +21,22 @@ class NativePhoneUiTest {
             }
             UiTestSupport.clickAccessibilityText("Открыть файл")
             assertEquals(listOf("file"), UiHarnessActivity.events.toList())
+            UiTestSupport.screenshot("phone-disconnected-fixture", false, FlintPhase.DISCONNECTED)
+        }
+    }
+
+    @Test fun pendingConnectionCanBeCancelledWithoutShowingSuccess() {
+        UiTestSupport.launch(tv = false, phase = FlintPhase.CONNECTING).use { scenario ->
+            scenario.onActivity { activity ->
+                assertNull(UiTestSupport.findText(activity.flintView, "Вы защищены"))
+                val cancel = UiTestSupport.findText(activity.flintView, "Отменить подключение") as Button
+                UiTestSupport.assertOnScreen(cancel)
+                assertTrue(cancel.isEnabled)
+                cancel.performClick()
+                assertEquals(listOf("connectToggle"), UiHarnessActivity.events.toList())
+                assertEquals(FlintPhase.CONNECTING, activity.uiState.phase)
+            }
+            UiTestSupport.screenshot("phone-connecting-fixture", false, FlintPhase.CONNECTING)
         }
     }
 

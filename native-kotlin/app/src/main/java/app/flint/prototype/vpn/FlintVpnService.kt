@@ -305,7 +305,8 @@ class FlintVpnService : VpnService() {
             .setContentText(content).setOngoing(true).setShowWhen(false)
             .setCategory(Notification.CATEGORY_SERVICE)
             .addAction(Notification.Action.Builder(null, "Отключить", stop).build())
-        packageManager.getLaunchIntentForPackage(packageName)?.let { intent ->
+        (packageManager.getLaunchIntentForPackage(packageName)
+            ?: packageManager.getLeanbackLaunchIntentForPackage(packageName))?.let { intent ->
             builder.setContentIntent(PendingIntent.getActivity(this, 0, intent,
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
         }

@@ -32,12 +32,18 @@ jobs:
         id: core
         with:
           path: native-kotlin/engine/libs
-          key: flint-kotlin-core-v1-${{ hashFiles('native-kotlin/tools/build_xray.sh') }}
+          key: flint-kotlin-core-v2-${{ hashFiles('native-kotlin/tools/build_xray.sh') }}
       - name: Build pinned Xray JNI for ARM32, ARM64 and emulator
         if: steps.core.outputs.cache-hit != 'true'
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.0.11718014
+          FLINT_BUILD_TEST_SERVER: '1'
         run: bash native-kotlin/tools/build_xray.sh
+      - uses: actions/cache/save@v4
+        if: steps.core.outputs.cache-hit != 'true'
+        with:
+          path: native-kotlin/engine/libs
+          key: flint-kotlin-core-v2-${{ hashFiles('native-kotlin/tools/build_xray.sh') }}
       - name: Compile, test and package
         working-directory: native-kotlin
         run: gradle --no-daemon :app:testPhoneDebugUnitTest :app:assemblePhoneRelease :app:assembleTvRelease :app:assemblePhoneDebug :app:assemblePhoneDebugAndroidTest
@@ -63,16 +69,22 @@ jobs:
           profile: pixel_2
           disable-animations: true
           script: |
-            cd native-kotlin && gradle --no-daemon :app:connectedPhoneDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=app.flint.prototype.NativeTvUiTest
+            mkdir -p native-kotlin/build native-kotlin/evidence/phone
+            python3 native-kotlin/tools/start_vpn_fixture.py --binary native-kotlin/engine/libs/xray-fixture --directory native-kotlin/build/vpn-fixture > native-kotlin/build/vpn-fixture-launch.log 2>&1 &
+            for n in $(seq 1 40); do test -f native-kotlin/build/vpn-fixture/ready && break; sleep 1; done; test -f native-kotlin/build/vpn-fixture/ready
+            gradle -p native-kotlin --no-daemon :app:connectedPhoneDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=app.flint.prototype.NativeTvUiTest -Pandroid.testInstrumentationRunnerArguments.flintLocalVpnTest=true
+            cp -a native-kotlin/app/build/outputs/androidTest-results native-kotlin/evidence/phone/
+            cp -a native-kotlin/app/build/reports/androidTests native-kotlin/evidence/phone/
+            adb pull /sdcard/Android/data/app.flint.vpn.kotlin/files/ui-evidence native-kotlin/evidence/phone/ || true
             adb shell wm size 1280x720
             adb shell wm density 160
-            cd native-kotlin && gradle --no-daemon :app:connectedPhoneDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.flint.prototype.NativeTvUiTest
+            gradle -p native-kotlin --no-daemon :app:connectedPhoneDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.flint.prototype.NativeTvUiTest
       - name: Collect emulator evidence
         if: always()
         run: |
           mkdir -p native-kotlin/evidence
-          adb pull /sdcard/Android/data/app.flint.vpn.kotlin/files/screenshots native-kotlin/evidence/ || true
-          adb logcat -d -s AndroidRuntime:E > native-kotlin/evidence/android-runtime.txt || true
+          timeout 15s adb pull /sdcard/Android/data/app.flint.vpn.kotlin/files/ui-evidence native-kotlin/evidence/ || true
+          timeout 10s adb logcat -d -s AndroidRuntime:E > native-kotlin/evidence/android-runtime.txt || true
       - name: Upload emulator evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -82,4 +94,5 @@ jobs:
             native-kotlin/app/build/reports/androidTests/
             native-kotlin/app/build/outputs/androidTest-results/
             native-kotlin/evidence/
+            native-kotlin/build/vpn-fixture/
           retention-days: 14
