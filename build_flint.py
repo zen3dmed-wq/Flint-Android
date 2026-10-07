@@ -32,12 +32,12 @@ def replace(path, old, new, required=True):
 replace(
     "CMakeLists.txt",
     'set(AMNEZIAVPN_VERSION 5.0.3.0 CACHE STRING "Client app version")',
-    'set(AMNEZIAVPN_VERSION 8.10.23 CACHE STRING "Client app version")'
+    'set(AMNEZIAVPN_VERSION 8.10.24 CACHE STRING "Client app version")'
 )
 replace(
     "CMakeLists.txt",
     'set(APP_ANDROID_VERSION_CODE 2163)',
-    'set(APP_ANDROID_VERSION_CODE 2193)'
+    'set(APP_ANDROID_VERSION_CODE 2194)'
 )
 replace(
     "client/cmake/branding/common.cmake",
@@ -170,6 +170,7 @@ secure.write_text(s, encoding="utf-8")
 shutil.copy2(flint / "flintSubscriptionFetch.h", root / "client/ui/controllers/flintSubscriptionFetch.h")
 shutil.copy2(flint / "flintHealth.cpp", root / "client/ui/controllers/flintHealth.cpp")
 shutil.copy2(flint / "flintTelemetry.h", root / "client/ui/controllers/flintTelemetry.h")
+shutil.copy2(flint / "flintBalance.h", root / "client/ui/controllers/flintBalance.h")
 shutil.copy2(flint / "FlintProbe.kt", root / "client/android/xray/src/main/kotlin/FlintProbe.kt")
 shutil.copy2(flint / "flintController.h",
              root / "client/ui/controllers/flintController.h")
@@ -296,6 +297,7 @@ if 'setQmlContextProperty("FlintController"' not in s:
         '    connect(m_connectionUiController, &ConnectionUiController::connectionStateChanged,\n'
         '            m_flintController, [this]() {\n'
         '        m_flintController->setVpnActive(m_connectionUiController->isConnected() || m_connectionUiController->isConnectionInProgress());\n'
+        '        m_flintController->setVpnConnected(m_connectionUiController->isConnected());\n'
         '        if (m_connectionUiController->isConnected()) m_flintController->markProfileConnected();\n'
         '    });\n'
         '    connect(m_serversUiController, &ServersUiController::defaultServerIdChanged,\n'
@@ -392,7 +394,7 @@ assert 'parseSubscriptionProfiles' in (root / "client/ui/controllers/flintContro
 assert 'flintProfileServerId' in (root / "client/core/controllers/coreController.cpp").read_text(encoding="utf-8")
 assert 'clearQtCaches();' in (root / "client/amneziaApplication.cpp").read_text(encoding="utf-8")
 
-print("Flint Android 8.10.23 startup-safe patch applied and statically verified")
+print("Flint Android 8.10.24 startup-safe patch applied and statically verified")
 
 apply_vpn_permission(root)
 apply_android_diagnostics(root, flint)
@@ -402,3 +404,6 @@ apply_routing(root, flint)
 apply_android_russian_apps(root, flint)
 
 apply_app_updates(root)
+
+from patch_android_distribution import apply as apply_distribution
+apply_distribution(root)

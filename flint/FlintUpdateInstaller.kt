@@ -45,8 +45,11 @@ object FlintUpdateInstaller {
             if (hash.digest().joinToString("") { "%02x".format(it) } != expectedHash.lowercase())
                 return "Файл изменился после скачивания. Скачайте обновление ещё раз."
             val pm = activity.packageManager
-            val archive = pm.getPackageArchiveInfo(file.path, PackageManager.GET_SIGNING_CERTIFICATES)
+            val archive = pm.getPackageArchiveInfo(file.path, PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_META_DATA)
                 ?: return "Android не распознал файл обновления."
+            val distribution = archive.applicationInfo?.metaData?.getString("app.flint.distribution") ?: "universal"
+            if (distribution != "universal" && distribution != FlintBuild.DISTRIBUTION)
+                return "Нужна сборка для вашего типа устройства: " + (if (FlintBuild.DISTRIBUTION == "tv") "Android TV" else "телефон")
             val current = pm.getPackageInfo(activity.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
             if (archive.packageName != activity.packageName) return "Этот APK предназначен для другого приложения."
             if (archive.longVersionCode != expectedCode || archive.longVersionCode <= current.longVersionCode)

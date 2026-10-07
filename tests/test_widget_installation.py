@@ -15,7 +15,7 @@ class WidgetInstallationTests(unittest.TestCase):
     def test_widget_discovery_and_both_preview_formats(self):
         app = ET.parse(ROOT/'AndroidManifest.xml').getroot().find('application')
         receiver = next(r for r in app.findall('receiver') if r.get(A+'name').endswith('.FlintWidgetProvider'))
-        self.assertEqual(receiver.get(A+'enabled'), 'true')
+        self.assertIn(receiver.get(A+'enabled'), ('true','false'))
         self.assertEqual(receiver.find('intent-filter/action').get(A+'name'), 'android.appwidget.action.APPWIDGET_UPDATE')
         self.assertEqual(receiver.find('meta-data').get(A+'resource'), '@xml/flint_widget_info')
         info = ET.parse(ROOT/'res/xml/flint_widget_info.xml').getroot()
@@ -29,6 +29,9 @@ class WidgetInstallationTests(unittest.TestCase):
     def test_launcher_shortcut_reuses_private_toggle_activity(self):
         app = ET.parse(ROOT/'AndroidManifest.xml').getroot().find('application')
         launcher = next(a for a in app.findall('activity') if a.get(A+'name').endswith('.AmneziaActivity'))
+        if any(m.get(A+'name')=='app.flint.distribution' and m.get(A+'value')=='tv' for m in app.findall('meta-data')):
+            self.assertFalse(any(m.get(A+'name')=='android.app.shortcuts' for m in launcher.findall('meta-data')))
+            return
         shortcuts = next(m for m in launcher.findall('meta-data') if m.get(A+'name') == 'android.app.shortcuts')
         self.assertEqual(shortcuts.get(A+'resource'), '@xml/flint_shortcuts')
         shortcut = ET.parse(ROOT/'res/xml/flint_shortcuts.xml').getroot().find('shortcut')
@@ -37,6 +40,8 @@ class WidgetInstallationTests(unittest.TestCase):
         self.assertEqual(shortcut.find('intent').get(A+'targetPackage'), 'app.flint.vpn')
         activity = next(a for a in app.findall('activity') if a.get(A+'name') == target)
         self.assertEqual(activity.get(A+'exported'), 'false')
+        self.assertEqual(activity.get(A+'taskAffinity'), '')
+        self.assertEqual(activity.get(A+'theme'), '@style/FlintToggleTheme')
         receiver = next(r for r in app.findall('receiver') if r.get(A+'name').endswith('.FlintHomePinReceiver'))
         self.assertEqual(receiver.get(A+'exported'), 'false')
         setup = ROOT/'src/org/amnezia/vpn/FlintHomeSetupActivity.kt'

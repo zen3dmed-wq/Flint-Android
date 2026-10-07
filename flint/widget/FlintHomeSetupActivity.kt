@@ -21,9 +21,16 @@ import android.widget.RemoteViews
 import android.widget.ScrollView
 import android.widget.TextView
 import java.util.UUID
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Visible fallback survives launchers that report pinning support but silently ignore a request. */
 class FlintHomeSetupActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListener {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var status: TextView
     private lateinit var prefs: SharedPreferences
     private var requestToken: String? = null
@@ -56,7 +63,7 @@ class FlintHomeSetupActivity : Activity(), SharedPreferences.OnSharedPreferenceC
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(12) })
         }
         button("Добавить виджет 1×1") { pinWidget() }
-        button("Добавить кнопку VPN") { pinShortcut() }
+        button("Добавить иконку VPN") { pinShortcut() }
         button("Как добавить вручную") { showManualHelp() }
         button("Настройки рабочего стола") {
             try { startActivity(Intent(Settings.ACTION_HOME_SETTINGS)) }
@@ -65,8 +72,10 @@ class FlintHomeSetupActivity : Activity(), SharedPreferences.OnSharedPreferenceC
         button("Закрыть") { finish() }
         setContentView(ScrollView(this).apply { addView(column) })
         window.setBackgroundDrawableResource(android.R.color.transparent)
-        window.setLayout(minOf(resources.displayMetrics.widthPixels - dp(32), dp(420)), ViewGroup.LayoutParams.WRAP_CONTENT)
+        FlintWidgetProvider.schedule(applicationContext)
     }
+
+    override fun onDestroy() { scope.cancel(); super.onDestroy() }
 
     override fun onStart() {
         super.onStart()
@@ -111,28 +120,33 @@ class FlintHomeSetupActivity : Activity(), SharedPreferences.OnSharedPreferenceC
         val result = flintRequestPin(
             { AppWidgetManager.getInstance(this).isRequestPinAppWidgetSupported },
             {
-                val extras = Bundle().apply {
-                    putParcelable(AppWidgetManager.EXTRA_APPWIDGET_PREVIEW, RemoteViews(packageName, R.layout.flint_widget))
-                }
+                // OEM launchers may reject a custom extras preview; the provider has all preview formats.
                 AppWidgetManager.getInstance(this).requestPinAppWidget(
-                    ComponentName(this, FlintWidgetProvider::class.java), extras, callback())
+                    ComponentName(this, FlintWidgetProvider::class.java), null, callback())
             })
         status.text = if (result == FlintPinResult.REQUESTED)
-            "Подтвердите добавление в окне рабочего стола. Если окно не появилось, нажмите «Добавить кнопку VPN» или добавьте виджет вручную."
-        else "Рабочий стол не принял запрос виджета. Попробуйте «Добавить кнопку VPN» или добавление вручную."
+            "Подтвердите добавление в окне рабочего стола. Если окно не появилось, нажмите «Добавить иконку VPN» или добавьте виджет вручную."
+        else "Рабочий стол не принял запрос виджета. Попробуйте «Добавить иконку VPN» или добавление вручную."
     }
 
     private fun pinShortcut() {
-        val result = flintRequestPin(
-            { getSystemService(ShortcutManager::class.java)?.isRequestPinShortcutSupported == true },
-            {
-                // This ID is also declared in flint_shortcuts.xml; reuse it to avoid new identities on every tap.
-                val shortcut = ShortcutInfo.Builder(this, "flint-vpn-toggle").build()
-                requireNotNull(getSystemService(ShortcutManager::class.java)).requestPinShortcut(shortcut, callback().intentSender)
-            })
-        status.text = if (result == FlintPinResult.REQUESTED)
-            "Подтвердите добавление кнопки на рабочий стол. Если окно не появилось, удерживайте значок Flint и перетащите «Вкл./выкл. VPN» на свободное место. У ярлыка постоянная иконка; состояние видно в уведомлении Flint."
-        else "Рабочий стол не принял запрос ярлыка. Удерживайте значок Flint и перетащите «Вкл./выкл. VPN» на свободное место. Проверьте блокировку расположения значков и разрешение добавлять ярлыки."
+        scope.launch {
+            try {
+            val info = withContext(Dispatchers.IO) {
+                val state = VpnStateStore.getVpnState()
+                val colour = flintHomeColour(FlintWidgetProvider.model(applicationContext, state).action, state.flintError)
+                FlintHomeShortcut.info(applicationContext, colour)
+            }
+            val result = flintRequestPin(
+                { getSystemService(ShortcutManager::class.java)?.isRequestPinShortcutSupported == true },
+                { requireNotNull(getSystemService(ShortcutManager::class.java)).requestPinShortcut(info, callback().intentSender) })
+            status.text = if (result == FlintPinResult.REQUESTED)
+                "Подтвердите добавление иконки VPN. Цвет фона меняется по состоянию подключения. Старую иконку «Вкл./выкл.» удалите с рабочего стола вручную — она не поддерживает смену цвета."
+            else "Рабочий стол не принял запрос. Удерживайте значок Flint и перетащите ярлык «VPN» на экран. Проверьте разрешение добавления значков."
+            } catch (_: Exception) {
+                if (!isFinishing) status.text = "Не удалось подготовить иконку. Откройте Flint и повторите добавление."
+            }
+        }
     }
 
     private fun showManualHelp() {

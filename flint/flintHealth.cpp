@@ -1,5 +1,6 @@
 #include "flintController.h"
 #include "flintTelemetry.h"
+#include "flintBalance.h"
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QElapsedTimer>
@@ -22,13 +23,7 @@ QString endpointKey(const QUrl &url) {
     QString host=url.host().toLower();if(host.contains(':'))host='['+host+']';
     return QString::fromLatin1(QCryptographicHash::hash((host+':'+QString::number(url.port(443))).toUtf8(),QCryptographicHash::Sha256).toHex());
 }
-double score(const QVariantMap &h) {
-    if(!h.value("available").isValid() || QDateTime::currentMSecsSinceEpoch()-h.value("checkedAt").toLongLong()>120000)return 10000;
-    if(!h.value("available").toBool())return 100000;
-    double result=h.value("latencyMs").toDouble();
-    if(h.value("loadPercent").isValid()&&QDateTime::currentMSecsSinceEpoch()-h.value("loadAt").toLongLong()<120000)result+=12*h.value("loadPercent").toDouble();
-    return result;
-}
+double score(const QVariantMap &h) { return FlintBalance::score(h,QDateTime::currentMSecsSinceEpoch()); }
 qint64 probe(const QString &uri,const QString &fingerprint) {
 #ifdef Q_OS_ANDROID
     auto context=QNativeInterface::QAndroidApplication::context();
@@ -90,6 +85,7 @@ void FlintController::runServerHealth(bool initialize) {
             if(!receiver||total.elapsed()>(initialize?90000:15000))break;
             QUrl u(p);QVariantMap h{{"checkedAt",QDateTime::currentMSecsSinceEpoch()},{"kind","tcp"},{"latencyMs",-1}};
             const auto key=serverKey(p);const auto old=previous.value(key).toMap();
+            h["node"]=endpointKey(u);
             if(u.host().isEmpty()) {result[key]=h;continue;}
             QElapsedTimer timer;timer.start();QTcpSocket socket;socket.connectToHost(u.host(),u.port(443));bool ok=socket.waitForConnected(1800);socket.abort();
             h["available"]=ok;if(ok)h["latencyMs"]=qMax<qint64>(1,timer.elapsed());
@@ -147,10 +143,15 @@ void FlintController::loadServerTelemetry(bool legacy) {
     });
 }
 void FlintController::evaluateAutomaticSwitch() {
-    if(!m_vpnActive||selectedCountry()!="AUTO"||!selectedSavedServerId().isEmpty()||QDateTime::currentMSecsSinceEpoch()-m_connectedAt<180000)return;
-    const auto current=m_health.value(serverKey(m_pendingBaseProfile)).toMap();
-    const bool bad=(current.value("available").isValid()&&!current.value("available").toBool()&&QDateTime::currentMSecsSinceEpoch()-current.value("checkedAt").toLongLong()<120000)||(current.value("loadPercent").isValid()&&current.value("loadPercent").toDouble()>=85&&QDateTime::currentMSecsSinceEpoch()-current.value("loadAt").toLongLong()<120000);
-    m_badHealthSamples=bad?m_badHealthSamples+1:0;if(m_badHealthSamples<3)return;
-    const auto best=bestHealthyProfile(cachedProfiles());const auto h=m_health.value(serverKey(best)).toMap();
-    if(!best.isEmpty()&&best!=m_pendingBaseProfile&&score(h)+200<score(current)&&(!h.value("loadPercent").isValid()||h.value("loadPercent").toDouble()<70)){m_badHealthSamples=0;m_connectedAt=QDateTime::currentMSecsSinceEpoch();emit automaticReconnectRequested();}
+    const auto profiles=cachedProfiles(); QStringList keys;
+    for(const auto &p:profiles) keys<<serverKey(p);
+    const auto now=QDateTime::currentMSecsSinceEpoch();
+    const auto next=m_balance.choose(keys,m_health,serverKey(m_pendingBaseProfile),
+        m_vpnActive&&m_tunnelConnected&&selectedCountry()=="AUTO"&&selectedSavedServerId().isEmpty()&&!m_profilePreparing,
+        m_connectedAt,now);
+    if(next.isEmpty())return;
+    for(const auto &p:profiles) if(serverKey(p)==next) {
+        m_autoSwitchProfile=p; m_connectedAt=now;
+        emit automaticReconnectRequested(); return;
+    }
 }

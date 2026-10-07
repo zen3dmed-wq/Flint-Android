@@ -6,10 +6,11 @@ Reject a different packaging mode rather than silently losing mmap alignment.
 from pathlib import Path
 import argparse,copy,struct,zipfile
 
-def trim(source,target):
+def trim(source,target,abis=None):
     source,target=Path(source),Path(target)
     assert source.resolve()!=target.resolve(), 'Input and output must differ'
-    keep={'arm64-v8a','armeabi-v7a'}
+    keep=set(abis or ['arm64-v8a','armeabi-v7a'])
+    assert keep and keep <= {'arm64-v8a','armeabi-v7a'}
     with zipfile.ZipFile(source) as archive:
         names=archive.namelist()
         for abi in keep:
@@ -30,5 +31,5 @@ def trim(source,target):
         assert {n.split('/')[1] for n in result.namelist() if n.startswith('lib/') and n.endswith('.so')}==keep
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('source');parser.add_argument('target')
-    args=parser.parse_args();trim(args.source,args.target)
+    parser=argparse.ArgumentParser();parser.add_argument('source');parser.add_argument('target');parser.add_argument('--abi',action='append',choices=['arm64-v8a','armeabi-v7a'])
+    args=parser.parse_args();trim(args.source,args.target,args.abi)

@@ -3,6 +3,7 @@
 #define FLINTCONTROLLER_H
 
 #include <QObject>
+#include "flintBalance.h"
 #include <QVariantList>
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
@@ -70,7 +71,8 @@ public:
     Q_INVOKABLE void initializeServers();
     Q_INVOKABLE bool initializeRussianRouting();
     Q_INVOKABLE bool selectSubscription(const QString &id);
-    void setVpnActive(bool active) { m_vpnActive = active; }
+    void setVpnActive(bool active) { m_vpnActive = active; if (!active) { m_tunnelConnected=false; m_balance.reset(); } }
+    void setVpnConnected(bool connected) { if (!connected) m_tunnelConnected=false; }
     void updateTraffic(quint64 received, quint64 sent) { m_receivedBytes = received; m_sentBytes = sent; emit trafficChanged(); }
     int sessionsCount() const { return m_sessionsCount; }
     QString selectedCountry() const;
@@ -159,7 +161,11 @@ private:
     QString withWorkingFingerprint(const QString &profile) const;
     QVariantMap m_health;
     bool m_healthBusy = false;
-    int m_healthRevision = 0, m_badHealthSamples = 0;
+    int m_healthRevision = 0;
+    FlintBalance::State m_balance;
+    QTimer m_balanceTimer;
+    bool m_tunnelConnected = false;
+    QString m_autoSwitchProfile;
     qint64 m_connectedAt = 0;
     QString m_pendingBaseProfile;
     quint64 m_receivedBytes = 0, m_sentBytes = 0;

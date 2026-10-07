@@ -1,13 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent" android:layout_height="match_parent">
-    <FrameLayout android:id="@+id/flint_widget_toggle" android:layout_width="48dp" android:layout_height="48dp"
-        android:layout_gravity="center" android:background="@drawable/flint_widget_background"
-        android:clickable="true" android:focusable="true" android:contentDescription="Flint. Включить или выключить VPN">
-        <ImageView android:layout_width="40dp" android:layout_height="40dp" android:layout_gravity="center"
-            android:src="@mipmap/flint_icon" android:scaleType="fitCenter" android:importantForAccessibility="no" />
-        <ImageView android:id="@+id/flint_widget_power" android:layout_width="18dp" android:layout_height="18dp"
-            android:layout_gravity="bottom|end" android:padding="2dp" android:background="@drawable/flint_widget_background"
-            android:src="@drawable/flint_widget_power" android:importantForAccessibility="no" />
-    </FrameLayout>
+    <ImageView android:id="@+id/flint_widget_toggle" android:layout_width="48dp" android:layout_height="48dp"
+        android:layout_gravity="center" android:src="@drawable/flint_emblem" android:scaleType="fitCenter"
+        android:clickable="true" android:focusable="true" android:contentDescription="Flint. Включить или выключить VPN" />
 </FrameLayout>

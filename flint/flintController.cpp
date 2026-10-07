@@ -73,7 +73,7 @@ void FlintController::requestHomeWidget()
 
 namespace {
 const QString kApiBase = QStringLiteral("https://flintmain.ru/api/v1");
-const QString kVersion = QStringLiteral("8.10.23");
+const QString kVersion = QStringLiteral("8.10.24");
 
 bool isProfileUri(const QString &s)
 {
@@ -178,6 +178,13 @@ FlintController::FlintController(SecureQSettings *settings, QObject *parent)
     m_telegramBotUrl = m_settings->value("Conf/flintTelegramBotUrl").toString();
     m_sessionsCount = m_settings->value("Conf/flintSessionsCount", 0).toInt();
 
+    // Controller lifetime, not the visible QML page. Android may still suspend/kill its UI process.
+    m_balanceTimer.setInterval(45000 + int(QDateTime::currentMSecsSinceEpoch()%15000));
+    connect(&m_balanceTimer, &QTimer::timeout, this, [this] {
+        if (m_tunnelConnected && selectedCountry()=="AUTO" && selectedSavedServerId().isEmpty() && !m_profilePreparing)
+            refreshServerHealth();
+    });
+    m_balanceTimer.start();
     m_tgTimer.setInterval(3000);
     connect(&m_tgTimer, &QTimer::timeout, this, &FlintController::checkTelegramLogin);
     if (!m_telegramLoginId.isEmpty() && !m_telegramVerifier.isEmpty())
@@ -566,6 +573,8 @@ QString FlintController::chooseProfile(const QStringList &profiles)
 
     const QString wanted = selectedCountry().trimmed().toUpper();
     if (wanted.isEmpty() || wanted == "AUTO") {
+        const auto target=m_autoSwitchProfile; m_autoSwitchProfile.clear();
+        if (profiles.contains(target) && !serverUnavailable("SERVER:"+QString::fromLatin1(QCryptographicHash::hash(target.toUtf8(),QCryptographicHash::Sha256).toHex()).toUpper())) return target;
         const QString best=bestHealthyProfile(profiles);
         if(!best.isEmpty())return best;
         const QString lastWorking = m_settings->value("Conf/flintWorkingProfile").toString();
@@ -1116,7 +1125,10 @@ void FlintController::profileInstallResult(bool success)
 
 void FlintController::markProfileConnected()
 {
-    m_connectedAt=QDateTime::currentMSecsSinceEpoch();m_badHealthSamples=0;
+    if (!m_tunnelConnected) { m_connectedAt=QDateTime::currentMSecsSinceEpoch(); m_balance.reset(); }
+    m_tunnelConnected=true;
+    if (m_pendingBaseProfile.isEmpty() && m_defaultServerId==m_settings->value("Conf/flintProfileServerId").toString())
+        m_pendingBaseProfile=m_settings->value("Conf/flintWorkingProfile").toString();
     if (!m_pendingProfile.isEmpty() && m_defaultServerId == m_settings->value("Conf/flintProfileServerId").toString())
         m_settings->setValue("Conf/flintWorkingProfile", m_pendingBaseProfile);
 }

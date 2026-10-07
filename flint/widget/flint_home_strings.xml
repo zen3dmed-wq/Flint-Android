@@ -3,10 +3,17 @@
     <string name="flint_toggle_short">Вкл./выкл.</string>
     <string name="flint_toggle_long">Вкл./выкл. VPN</string>
     <string name="flint_widget_description">Кнопка включения и выключения Flint VPN</string>
-    <style name="FlintHomeSetupTheme" parent="android:style/Theme.Material.Dialog.NoActionBar">
+    <style name="FlintHomeSetupTheme" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:windowMinWidthMajor">0dp</item>
         <item name="android:windowMinWidthMinor">0dp</item>
         <item name="android:colorAccent">#4AE6A3</item>
         <item name="android:windowCloseOnTouchOutside">true</item>
+    </style>
+    <style name="FlintToggleTheme" parent="android:style/Theme.Translucent.NoTitleBar">
+        <item name="android:windowDisablePreview">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowIsTranslucent">true</item>
     </style>
 </resources>

@@ -18,3 +18,8 @@ add_executable(telemetry-checks telemetry_test.cpp)
 target_include_directories(telemetry-checks PRIVATE ../../flint)
 target_link_libraries(telemetry-checks PRIVATE Qt6::Core Qt6::Network Qt6::Test)
 add_test(NAME telemetry-checks COMMAND telemetry-checks)
+
+add_executable(balance-checks balance_test.cpp)
+target_include_directories(balance-checks PRIVATE ../../flint)
+target_link_libraries(balance-checks PRIVATE Qt6::Core Qt6::Network Qt6::Test)
+add_test(NAME balance-checks COMMAND balance-checks)

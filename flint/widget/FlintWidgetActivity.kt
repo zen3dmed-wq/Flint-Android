@@ -19,6 +19,7 @@ class FlintWidgetActivity : ComponentActivity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
+        overridePendingTransition(0, 0)
         val now = SystemClock.elapsedRealtime()
         if (now - lastAction < 1500) { finish(); return }
         lastAction = now
@@ -46,6 +47,7 @@ class FlintWidgetActivity : ComponentActivity() {
             } finally { finish() }
         }
     }
+    override fun finish() { super.finish(); overridePendingTransition(0, 0) }
     override fun onDestroy() { scope.cancel(); super.onDestroy() }
     companion object { private var lastAction = -1500L }
 }

@@ -5,7 +5,8 @@ import shutil
 def apply(root: Path, assets: Path):
     android = root / "client/android"
     for name in ["FlintWidgetModel.kt", "FlintWidgetProvider.kt", "FlintWidgetActivity.kt",
-                 "FlintPinRequest.kt", "FlintHomeSetupActivity.kt", "FlintHomePinReceiver.kt"]:
+                 "FlintPinRequest.kt", "FlintHomeSetupActivity.kt", "FlintHomePinReceiver.kt",
+                 "FlintHomeIcon.kt", "FlintHomeColour.kt", "FlintHomeShortcut.kt"]:
         shutil.copy2(assets / "widget" / name, android / "src/org/amnezia/vpn" / name)
     for name, folder in [("flint_widget.xml", "layout"), ("flint_widget_info.xml", "xml"),
                          ("flint_widget_background.xml", "drawable"), ("flint_widget_connected.xml", "drawable"),
@@ -26,14 +27,15 @@ def apply(root: Path, assets: Path):
                         '            <meta-data\n' + launcher_anchor)
     assert text.count("</application>") == 1
     text = text.replace("</application>", '''
-        <receiver android:name="org.amnezia.vpn.FlintWidgetProvider" android:exported="false"
+        <receiver android:name="org.amnezia.vpn.FlintWidgetProvider" android:exported="true"
             android:enabled="true" android:label="Flint VPN" android:icon="@mipmap/flint_icon">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/flint_widget_info" />
         </receiver>
         <activity android:name="org.amnezia.vpn.FlintWidgetActivity" android:exported="false"
             android:excludeFromRecents="true" android:launchMode="singleTop"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+            android:taskAffinity="" android:noHistory="true"
+            android:theme="@style/FlintToggleTheme" />
         <activity android:name="org.amnezia.vpn.FlintHomeSetupActivity" android:exported="false"
             android:excludeFromRecents="true" android:theme="@style/FlintHomeSetupTheme" />
         <receiver android:name="org.amnezia.vpn.FlintHomePinReceiver" android:exported="false" />
@@ -41,10 +43,17 @@ def apply(root: Path, assets: Path):
     manifest.write_text(text, encoding="utf-8")
     state = android / "src/org/amnezia/vpn/VpnState.kt"
     text = state.read_text(encoding="utf-8")
+    text = text.replace("val vpnProto: VpnProto? = null", "val vpnProto: VpnProto? = null, val flintError: Boolean = false")
+    service = android / "src/org/amnezia/vpn/AmneziaVpnService.kt"
+    ss = service.read_text(encoding="utf-8")
+    assert "VpnState(protocolState, serverName, serverIndex, vpnProto)" in ss
+    ss = ss.replace("VpnState(protocolState, serverName, serverIndex, vpnProto)",
+                    "VpnState(protocolState, serverName, serverIndex, vpnProto, protocolState == DISCONNECTED && lastConnectionError != null)")
+    service.write_text(ss, encoding="utf-8")
     assert "dataStore.updateData(f)" in text
     text = text.replace("dataStore.updateData(f)", '''val updated = dataStore.updateData(f)
             // Widget rendering must never enter the storage recovery/delete path.
-            runCatching { FlintWidgetProvider.updateAll(app, updated) }
+            runCatching { FlintWidgetProvider.schedule(app) }
                 .onFailure { Log.w(TAG, "Widget update unavailable: ${it.javaClass.simpleName}") }''')
     state.write_text(text, encoding="utf-8")
     activity = android / "src/org/amnezia/vpn/AmneziaActivity.kt"
@@ -55,6 +64,7 @@ def apply(root: Path, assets: Path):
     fun requestFlintWidget() {
         runOnUiThread {
             try {
+                FlintWidgetProvider.schedule(applicationContext)
                 startActivity(Intent(this, FlintHomeSetupActivity::class.java))
             } catch (_: RuntimeException) {
                 Toast.makeText(this, "Удерживайте значок Flint на рабочем столе → Вкл./выкл. VPN", Toast.LENGTH_LONG).show()
@@ -63,4 +73,7 @@ def apply(root: Path, assets: Path):
     }
 
 ''' + anchor)
+    init = "fun qtAndroidControllerInitialized() {"
+    assert init in text
+    text = text.replace(init, init + "\n        FlintWidgetProvider.schedule(applicationContext)")
     activity.write_text(text, encoding="utf-8")

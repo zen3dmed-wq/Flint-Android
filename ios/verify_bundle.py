@@ -11,8 +11,8 @@ def read(path):
 info = read(app/'Info.plist')
 assert info['CFBundleIdentifier'] == 'app.flint.vpn'
 assert info['CFBundleDisplayName'] == info['CFBundleName'] == 'Flint'
-assert info['CFBundleShortVersionString'] == '8.10.23'
-assert info['CFBundleVersion'] == '2193'
+assert info['CFBundleShortVersionString'] == '8.10.24'
+assert info['CFBundleVersion'] == '2194'
 extensions = list((app/'PlugIns').glob('*.appex'))
 assert len(extensions) == 1
 ext = extensions[0]

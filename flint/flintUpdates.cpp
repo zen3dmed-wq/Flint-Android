@@ -68,7 +68,12 @@ void FlintUpdates::fetch(std::function<void(bool)> done) {
 #else
     const QString platform = "android";
 #endif
-    m_account->authorizedGet("/app/update?platform=" + platform + "&version=" + FlintUpdatePolicy::version,
+    QString target;
+#ifdef Q_OS_ANDROID
+    target=QJniObject::callStaticObjectMethod("org/amnezia/vpn/FlintBuild","updateTarget","()Ljava/lang/String;").toString();
+    QJniEnvironment env; if(env->ExceptionCheck()) {env->ExceptionClear();target.clear();}
+#endif
+    m_account->authorizedGet("/app/update?platform=" + platform + "&version=" + FlintUpdatePolicy::version + target,
         [this, epoch, done](int status, const QByteArray &raw, const QString &) {
         if (epoch != m_epoch) return;
         if (status != 200) { fail(status == 401 ? tr("Войдите в аккаунт для проверки обновлений.") : tr("Не удалось проверить обновления. Повторите позже.")); done(false); return; }

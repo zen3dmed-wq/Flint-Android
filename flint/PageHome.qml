@@ -79,7 +79,7 @@ PageType {
         traceConnection("REQUESTED")
     }
     function connectionReport() {
-        return "Flint 8.10.23 / 2193\nmode=" + (autoConnection ? "auto" : "manual") +
+        return "Flint 8.10.24 / 2194\nmode=" + (autoConnection ? "auto" : "manual") +
             "\nruDirect=" + FlintController.ruDirectEnabled + "\ncore.error=" + lastConnectionError +
             "\n" + connectionEvents.join("\n") + "\n" + (lastNativeAttempt || FlintController.vpnDiagnostics())
     }
@@ -511,11 +511,6 @@ PageType {
     function startInitialization() {
         FlintController.initializeServers()
         PageController.showNotificationMessage("Автонастройка серверов запущена. Результаты появятся в списке серверов.")
-    }
-    Timer {
-        interval: 45000 + Math.floor(Math.random() * 15000); repeat: true
-        running: ConnectionController.isConnected && FlintController.selectedCountry === "AUTO" && !FlintController.selectedSavedServerId && Qt.application.state === Qt.ApplicationActive
-        onTriggered: if (!root.connectionPending) FlintController.refreshServerHealth()
     }
     Connections {
         target: FlintController
@@ -1666,7 +1661,7 @@ PageType {
                 onClicked: { settingsPopup.close(); updatesPopup.open(); FlintUpdateController.check(true) }
             }
             Text { text: "Настройки Flint"; color: root.ink; font.pixelSize: 21; font.bold: true }
-            Text { text: "Flint Android 8.10.23"; color: root.muted }
+            Text { text: "Flint Android 8.10.24"; color: root.muted }
             FlintButton {
                 Layout.fillWidth: true
                 text: "Диагностика подключения"
