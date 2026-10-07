@@ -1,0 +1,30 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.software.leanback" android:required="${isTvRequired}" />
+    <queries>
+        <package android:name="ru.yandex.yandexmaps" />
+        <package android:name="ru.yandex.yandexnavi" />
+    </queries>
+    <application android:label="Flint Kotlin (тест)" android:icon="@drawable/flint_logo"
+        android:banner="@drawable/tv_banner" android:theme="@style/FlintTheme"
+        android:allowBackup="false" android:supportsRtl="true" android:usesCleartextTraffic="true"
+        android:extractNativeLibs="true">
+        <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="${launcherCategory}" />
+            </intent-filter>
+        </activity>
+        <service android:name=".vpn.FlintVpnService" android:permission="android.permission.BIND_VPN_SERVICE"
+            android:exported="false" android:process=":vpn" android:foregroundServiceType="systemExempted">
+            <intent-filter><action android:name="android.net.VpnService" /></intent-filter>
+            <meta-data android:name="android.net.VpnService.SUPPORTS_ALWAYS_ON" android:value="false" />
+        </service>
+    </application>
+</manifest>

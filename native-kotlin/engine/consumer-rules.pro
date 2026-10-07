@@ -1,0 +1,3 @@
+-keep class go.** { *; }
+-keep class org.amnezia.vpn.protocol.xray.libXray.** { *; }
+-keepclasseswithmembernames class * { native <methods>; }

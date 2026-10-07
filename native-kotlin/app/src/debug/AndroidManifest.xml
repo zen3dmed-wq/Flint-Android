@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Instrumentation fixture only; this activity is absent from release APKs. -->
+        <activity android:name="app.flint.prototype.testing.UiHarnessActivity"
+            android:exported="false" android:theme="@style/FlintTheme" />
+    </application>
+</manifest>

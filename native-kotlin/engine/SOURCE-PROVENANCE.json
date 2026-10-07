@@ -1,0 +1,96 @@
+{
+  "upstream": "amnezia-client 5.0.3.0 with Flint 8.10.25 patches",
+  "adaptations": [
+    "endpoint-only DNS replacement preserving SNI",
+    "IPv6 endpoint host route",
+    "localhost SOCKS binding",
+    "native failure cleanup",
+    "safe native logging"
+  ],
+  "files": [
+    {
+      "source": "client/android/protocolApi/src/main/kotlin/Protocol.kt",
+      "target": "org/amnezia/vpn/protocol/Protocol.kt",
+      "originalSha256": "ed04f4e56e3a6fb28028859af514a135b87493ec1700d7a4deed09e3b00dc8d8",
+      "sha256": "fed560a0771bee13d47616cdd2c4e19b41f894ae93a9dfa12ad77ea4984213b0"
+    },
+    {
+      "source": "client/android/protocolApi/src/main/kotlin/ProtocolConfig.kt",
+      "target": "org/amnezia/vpn/protocol/ProtocolConfig.kt",
+      "originalSha256": "563232911cf5672d1f3545961a1763ef32fe3abb8fa9c7e584744a1378a64c6d",
+      "sha256": "563232911cf5672d1f3545961a1763ef32fe3abb8fa9c7e584744a1378a64c6d"
+    },
+    {
+      "source": "client/android/protocolApi/src/main/kotlin/ProtocolState.kt",
+      "target": "org/amnezia/vpn/protocol/ProtocolState.kt",
+      "originalSha256": "f72d0d3969ca1a9690b35c0012142e17a0a8b40ae7972d6c3018b3750c381fab",
+      "sha256": "f72d0d3969ca1a9690b35c0012142e17a0a8b40ae7972d6c3018b3750c381fab"
+    },
+    {
+      "source": "client/android/protocolApi/src/main/kotlin/Statistics.kt",
+      "target": "org/amnezia/vpn/protocol/Statistics.kt",
+      "originalSha256": "826111ec84b671aa408789613858cd4698dd092276747c9b3db063cec0ac8589",
+      "sha256": "826111ec84b671aa408789613858cd4698dd092276747c9b3db063cec0ac8589"
+    },
+    {
+      "source": "client/android/protocolApi/src/main/kotlin/Status.kt",
+      "target": "org/amnezia/vpn/protocol/Status.kt",
+      "originalSha256": "7859a0792b33960cabc31ec9edcecc62286c940b552596e6c932b2230f9ecf68",
+      "sha256": "7859a0792b33960cabc31ec9edcecc62286c940b552596e6c932b2230f9ecf68"
+    },
+    {
+      "source": "client/android/protocolApi/src/main/kotlin/Exceptions.kt",
+      "target": "org/amnezia/vpn/protocol/Exceptions.kt",
+      "originalSha256": "247e00c304cc524e2cdab33098616d7cb4baca78678e8c5cfafac6b5f31d9e41",
+      "sha256": "247e00c304cc524e2cdab33098616d7cb4baca78678e8c5cfafac6b5f31d9e41"
+    },
+    {
+      "source": "client/android/protocolApi/src/main/kotlin/FlintRussianApps.kt",
+      "target": "org/amnezia/vpn/protocol/FlintRussianApps.kt",
+      "originalSha256": "06956f2b9f49d25e9d57b87e34918d91409b37f961d06820407aa4b644e45f93",
+      "sha256": "06956f2b9f49d25e9d57b87e34918d91409b37f961d06820407aa4b644e45f93"
+    },
+    {
+      "source": "client/android/utils/src/main/kotlin/net/InetNetwork.kt",
+      "target": "org/amnezia/vpn/util/net/InetNetwork.kt",
+      "originalSha256": "2a7a2304c1b7e6c69626cb4aaa4353c44a4b0adba4cf385dfad3786253b6790f",
+      "sha256": "2a7a2304c1b7e6c69626cb4aaa4353c44a4b0adba4cf385dfad3786253b6790f"
+    },
+    {
+      "source": "client/android/utils/src/main/kotlin/net/IpAddress.kt",
+      "target": "org/amnezia/vpn/util/net/IpAddress.kt",
+      "originalSha256": "4ce424f10f99eca86e4c20b33a20d1f4479fa06c4cfbfeb5839b393b0444792e",
+      "sha256": "4ce424f10f99eca86e4c20b33a20d1f4479fa06c4cfbfeb5839b393b0444792e"
+    },
+    {
+      "source": "client/android/utils/src/main/kotlin/net/IpRange.kt",
+      "target": "org/amnezia/vpn/util/net/IpRange.kt",
+      "originalSha256": "c7c9ef3c38f75a3bee3d712f1ff7db0f35e8299ad074d9ccd395e8c61762bd8f",
+      "sha256": "c7c9ef3c38f75a3bee3d712f1ff7db0f35e8299ad074d9ccd395e8c61762bd8f"
+    },
+    {
+      "source": "client/android/utils/src/main/kotlin/net/IpRangeSet.kt",
+      "target": "org/amnezia/vpn/util/net/IpRangeSet.kt",
+      "originalSha256": "5dccf68ba8040ade7cb513eabc888ec1a3aefe5cc7f0117060d3e7819c4a230e",
+      "sha256": "5dccf68ba8040ade7cb513eabc888ec1a3aefe5cc7f0117060d3e7819c4a230e"
+    },
+    {
+      "source": "client/android/utils/src/main/kotlin/net/NetworkUtils.kt",
+      "target": "org/amnezia/vpn/util/net/NetworkUtils.kt",
+      "originalSha256": "1769cf86dc7aa39ca825844189312a0b600537e9b1ac628f061159af4b909536",
+      "sha256": "1769cf86dc7aa39ca825844189312a0b600537e9b1ac628f061159af4b909536"
+    },
+    {
+      "source": "client/android/xray/src/main/kotlin/Xray.kt",
+      "target": "org/amnezia/vpn/protocol/xray/Xray.kt",
+      "originalSha256": "3eba9ecd8bf0e513564325beb1471fba8fb9248e41ec5bdbe6558d6b9b04474a",
+      "sha256": "b9d077fb25305ae58d039defe2505c6ef9bc35cef8a0dab45dfea566a19a8113"
+    },
+    {
+      "source": "client/android/xray/src/main/kotlin/XrayConfig.kt",
+      "target": "org/amnezia/vpn/protocol/xray/XrayConfig.kt",
+      "originalSha256": "fc172c941dd8737eb493c58113bc6966bebb977e0118e6dbd6b5d2c41a5ef554",
+      "sha256": "fc172c941dd8737eb493c58113bc6966bebb977e0118e6dbd6b5d2c41a5ef554"
+    }
+  ]
+}
