@@ -42,4 +42,3 @@ import json, pathlib, sys
 pathlib.Path('evidence/result.json').write_text(json.dumps({'phoneExit': int(sys.argv[1]), 'tvExit': int(sys.argv[2])}))
 PY
 test "$phone_result" = 0 && test "$tv_result" = 0
-

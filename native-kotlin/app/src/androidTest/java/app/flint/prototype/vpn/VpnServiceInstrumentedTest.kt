@@ -398,4 +398,3 @@ class VpnServiceInstrumentedTest {
         finally { c.disconnect() }
     }
 }
-

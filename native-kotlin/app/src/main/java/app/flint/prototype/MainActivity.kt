@@ -133,6 +133,7 @@ class MainActivity : Activity(), FlintUiCallbacks {
         runCatching { JSONObject(prefs.getString("fingerprints", "{}").orEmpty()).let { json -> json.keys().forEach { fingerprints[it] = json.getString(it) } } }
         account = FlintAccount.shared(this)
         accountScreens = AccountScreens(this, account, scope) { reload -> refreshAccountProfiles(reload) }
+        accountScreens.supportChanged = { state = state.copy(supportUnread = account.unreadSupportTickets); render() }
         state = state.copy(selectedServerId = prefs.getString("selected", null),
             ruDirect = savedInstanceState?.getBoolean("ruDirect", true) ?: true)
         pendingFile = savedInstanceState?.getString("pendingFile")?.takeIf { validPendingFile(it)?.isFile == true }
@@ -167,8 +168,11 @@ class MainActivity : Activity(), FlintUiCallbacks {
         }
     }
 
-    override fun onStart() { super.onStart(); resumed = true; bindVpn() }
-    override fun onResume() { super.onResume(); sendMessage(app.flint.prototype.vpn.VpnContract.REFRESH_NOTIFICATION) }
+    override fun onStart() { super.onStart(); resumed = true; accountScreens.foreground(true); bindVpn() }
+    override fun onResume() {
+        super.onResume(); sendMessage(app.flint.prototype.vpn.VpnContract.REFRESH_NOTIFICATION)
+        scope.launch { runCatching { account.refreshSupportTickets() }; state = state.copy(supportUnread = account.unreadSupportTickets); render() }
+    }
     override fun onRequestPermissionsResult(code: Int, permissions: Array<out String>, results: IntArray) {
         super.onRequestPermissionsResult(code, permissions, results)
         if (code == NotificationSettings.REQUEST) {
@@ -177,7 +181,7 @@ class MainActivity : Activity(), FlintUiCallbacks {
                 android.widget.Toast.makeText(this, "Значок VPN скрыт. Включить: Настройки Flint → Значок VPN.", android.widget.Toast.LENGTH_LONG).show()
         }
     }
-    override fun onStop() { resumed = false; unbindVpn(); super.onStop() }
+    override fun onStop() { accountScreens.foreground(false); resumed = false; unbindVpn(); super.onStop() }
     override fun onDestroy() {
         if (::accountScreens.isInitialized) accountScreens.close()
         scope.cancel()

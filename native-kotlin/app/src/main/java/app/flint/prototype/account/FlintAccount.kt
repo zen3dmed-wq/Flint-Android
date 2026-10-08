@@ -23,7 +23,7 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-class ApiError(val status: Int, val code: String, message: String) : Exception(message)
+class ApiError(val status: Int, val code: String, message: String, val retryAfterSeconds: Long? = null) : Exception(message)
 data class ApiReply(val status: Int, val data: JSONObject)
 
 /** Fixed first-party API; secrets are encrypted with a non-exportable Android key. */
@@ -41,6 +41,13 @@ class FlintAccount(private val context: Context,
     var config: JSONObject = cached("config"); private set
     var subscriptions: List<JSONObject> = objects(cached("subscriptions"), "items"); private set
     var locations: JSONObject = JSONObject(); private set
+    var unreadSupportTickets: Int = 0; private set
+    suspend fun refreshSupportTickets(): List<JSONObject> {
+        if (!loggedIn) { unreadSupportTickets = 0; return emptyList() }
+        val result = request("GET", "/support/tickets").data
+        unreadSupportTickets = result.optInt("unreadTickets", 0).coerceAtLeast(0)
+        return objects(result, "items")
+    }
     val loggedIn: Boolean get() = tokens.optString("accessToken").isNotBlank()
     var selectedId: String
         get() = prefs.getString("selected", "").orEmpty()
@@ -55,7 +62,7 @@ class FlintAccount(private val context: Context,
         val id = if (androidId.isNotBlank()) MessageDigest.getInstance("SHA-256")
             .digest(("flint-device:" + androidId).toByteArray()).joinToString("") { "%02x".format(it) }
         else prefs.getString("device", null) ?: UUID.randomUUID().toString().also { prefs.edit().putString("device", it).commit() }
-        return JSONObject().put("deviceId", id).put("platform", if (BuildConfig.IS_TV) "android-tv" else "android")
+        return JSONObject().put("deviceId", id).put("platform", "android")
             .put("model", "${Build.MANUFACTURER} ${Build.MODEL}").put("osVersion", Build.VERSION.RELEASE)
             .put("appVersion", BuildConfig.VERSION_NAME)
     }
@@ -99,6 +106,7 @@ class FlintAccount(private val context: Context,
         epoch++; tokens = JSONObject(data.toString()); vault.write(tokens)
         me = JSONObject(); subscriptions = emptyList(); selectedId = ""
         locations = JSONObject(); locationsFetchedAt = 0
+        unreadSupportTickets = 0
         prefs.edit().remove("me").remove("subscriptions").remove("orderDraft").remove("supportDraft").remove("supportInput").apply()
     }
     suspend fun logout() {
@@ -107,6 +115,7 @@ class FlintAccount(private val context: Context,
             finally {
                 epoch++; tokens = JSONObject(); vault.write(tokens); me = JSONObject(); subscriptions = emptyList()
                 locations = JSONObject(); locationsFetchedAt = 0
+                unreadSupportTickets = 0
                 prefs.edit().remove("me").remove("subscriptions").remove("selected").remove("orderDraft").remove("supportDraft").remove("supportInput").apply()
             }
         }
@@ -146,6 +155,7 @@ class FlintAccount(private val context: Context,
             c.instanceFollowRedirects = false; c.useCaches = false
             c.setRequestProperty("Accept", "application/json")
             c.setRequestProperty("User-Agent", "Flint/${BuildConfig.VERSION_NAME} Android")
+            c.setRequestProperty("X-Client", "android/${BuildConfig.VERSION_NAME}")
             if (!token.isNullOrBlank()) c.setRequestProperty("Authorization", "Bearer $token")
             if (!key.isNullOrBlank()) c.setRequestProperty("Idempotency-Key", key)
             if (body != null) {
@@ -162,7 +172,12 @@ class FlintAccount(private val context: Context,
             val data = runCatching { JSONObject(bytes.toString(Charsets.UTF_8)) }.getOrDefault(JSONObject())
             if (status !in 200..299) {
                 val code = data.string("code").ifBlank { data.optJSONObject("error")?.string("code").orEmpty() }
-                throw ApiError(status, code, friendly(status, code))
+                val detail = data.string("detail").take(1200)
+                val fields = data.optJSONObject("errors")?.let { errors -> errors.keys().asSequence().mapNotNull {
+                    errors.optJSONArray(it)?.optString(0)?.takeIf(String::isNotBlank)
+                }.take(3).joinToString("\n") }.orEmpty()
+                val explanation = fields.ifBlank { detail }.ifBlank { friendly(status, code) }
+                throw ApiError(status, code, explanation, c.getHeaderField("Retry-After")?.toLongOrNull()?.coerceIn(1, 86_400))
             }
             ApiReply(status, data)
         } catch (e: ApiError) { throw e }

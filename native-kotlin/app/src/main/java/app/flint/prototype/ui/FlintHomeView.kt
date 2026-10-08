@@ -158,6 +158,7 @@ class FlintHomeView(context: Context, private val isTv: Boolean, private val cal
         (server.getChildAt(1) as TextView).text = next.serverLabel
         (server.getChildAt(2) as TextView).text = if (next.selectedServerId == null) "По доступности и загрузке" else "Сменить сервер →"
         (devices.getChildAt(2) as TextView).text = if (next.loggedIn) "Устройства и доступ" else "Войти в аккаунт"
+        (support.getChildAt(2) as TextView).text = if (next.supportUnread > 0) "Новых ответов: ${next.supportUnread}" else "Flint готов помочь"
         subscription.visibility = if (next.subscriptionTitle.isBlank() && next.trafficText.isBlank()) GONE else VISIBLE
         subscriptionTitle.text = next.subscriptionTitle.ifBlank { "Подписка Flint" }; trafficText.text = next.trafficText; expiry.text = next.expiryText
         syncing = true; routeToggle.isChecked = next.ruDirect; syncing = false

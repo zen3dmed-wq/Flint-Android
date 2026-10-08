@@ -22,6 +22,7 @@ data class FlintUiState(
     val subscriptionTitle: String = "",
     val expiryText: String = "",
     val loggedIn: Boolean = false,
+    val supportUnread: Int = 0,
     val message: String = "",
     val hasProfile: Boolean = false,
     val busy: Boolean = false,

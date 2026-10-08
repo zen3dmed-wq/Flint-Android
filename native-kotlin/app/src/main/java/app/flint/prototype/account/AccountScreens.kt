@@ -36,7 +36,7 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
         logo = title in setOf("Аккаунт Flint", "Вход во Flint")).also { p ->
         panels.add(p); p.dialog.setOnDismissListener { polls.remove(p)?.cancel(); panels.remove(p) }
     }
-    fun close() { polls.values.toList().forEach { it.cancel() }; polls.clear(); panels.toList().forEach { it.dialog.dismiss() }; panels.clear() }
+    fun close() { supportChat.close(); polls.values.toList().forEach { it.cancel() }; polls.clear(); panels.toList().forEach { it.dialog.dismiss() }; panels.clear() }
     private fun task(p: FlintStyle.Panel, action: suspend () -> Unit) {
         if (p.busy) return
         p.busy = true; p.message.text = "Загрузка…"
@@ -70,7 +70,7 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
         s.add(p.body, s.button("Войти через Telegram") { p.dialog.dismiss(); telegram(false, after) }, 48)
         s.add(p.body, s.button("Создать аккаунт") { submit(true) }, 48)
         val links = api.config.optJSONObject("links") ?: JSONObject()
-        listOf("userAgreement" to "Условия использования", "privacyPolicy" to "Политика конфиденциальности").forEach { (key, title) ->
+        listOf("support" to "Не получается войти? Поддержка", "userAgreement" to "Условия использования", "privacyPolicy" to "Политика конфиденциальности").forEach { (key, title) ->
             if (links.string(key).isNotBlank()) s.add(p.body, s.button(title) { openLink(links.string(key), p) }, 44)
         }
     }
@@ -432,75 +432,10 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
         addQr(p, url)
         s.add(p.body, s.label("QR содержит секретную ссылку подписки. Не отправляйте его посторонним. Это общий ключ: устройства с ним нельзя отключить по отдельности.", 12f, color = s.muted))
     }
-    fun support() {
-        if (!requireAccount { support() }) return
-        val p = panel("Поддержка")
-        val capability = api.config.optJSONObject("flintIntegration")
-        var available = capability?.let { !it.has("supportEnabled") || it.optBoolean("supportEnabled") } ?: true
-        val warning = s.label("", 13f, color = s.muted); s.add(p.body, warning)
-        val field = s.field("Опишите проблему").apply {
-            setSingleLine(false); minLines = 4; gravity = Gravity.TOP or Gravity.START
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-            setText(api.draft("supportDraft")?.optJSONObject("body")?.string("text")
-                ?: api.draft("supportInput")?.string("text").orEmpty())
-        }
-        s.add(p.body, field, 140)
-        val tickets = s.column()
-        val send = s.primary("Отправить в поддержку") {}
-        val refresh = s.button("Обновить ответы") {}
-        fun unavailable() {
-            available = false; send.isEnabled = false; refresh.isEnabled = false
-            warning.text = "Доставка обращений ещё не подключена. Администратор сможет включить её через API и админку."
-        }
-        fun drawTickets(items: List<JSONObject>) {
-            tickets.removeAllViews()
-            items.forEach { ticket ->
-                val card = s.column().apply { background = s.shape(0xFF102635.toInt()); setPadding(s.dp(14), s.dp(12), s.dp(14), s.dp(12)) }
-                s.add(card, s.label("Обращение " + ticket.string("id").take(10), 14f, true, s.mint), gap = 0)
-                objects(ticket, "messages").forEach { message ->
-                    val support = message.string("author") == "support"
-                    s.add(card, s.label((if (support) "Поддержка: " else "Вы: ") + message.string("text"), 14f,
-                        color = if (support) s.mint else s.ink))
-                }
-                s.add(tickets, card)
-            }
-        }
-        suspend fun reload() {
-            try { drawTickets(objects(api.request("GET", "/support/tickets").data, "items")) }
-            catch (e: ApiError) { if (e.status in setOf(404,405,501)) unavailable() else throw e }
-        }
-        s.add(p.body, send, 48); s.add(p.body, refresh, 48); s.add(p.body, tickets)
-        send.setOnClickListener {
-            if (p.busy || !available) return@setOnClickListener
-            val text = field.text.toString().trim()
-            if (text.isEmpty()) { p.error("Опишите проблему"); return@setOnClickListener }
-            val pending = api.draft("supportDraft")
-            if (pending != null && pending.optJSONObject("body")?.string("text") != text) {
-                field.setText(pending.optJSONObject("body")?.string("text"))
-                p.error("Повторите отправку сохранённого сообщения, чтобы проверить его доставку."); return@setOnClickListener
-            }
-            task(p) {
-                field.isEnabled = false; send.isEnabled = false
-                try {
-                    val draft = pending ?: JSONObject().put("key", UUID.randomUUID().toString()).put("body",
-                        JSONObject().put("text", text).put("platform", if (BuildConfig.IS_TV) "android-tv" else "android"))
-                    api.saveDraft("supportDraft", draft)
-                    api.request("POST", "/support/tickets", draft.getJSONObject("body"), idempotencyKey = draft.string("key"))
-                    api.saveDraft("supportDraft", null); api.saveDraft("supportInput", null); field.text.clear()
-                    p.message.text = "Обращение сохранено. Ответ появится здесь."; reload()
-                } finally { field.isEnabled = true; send.isEnabled = available }
-            }
-        }
-        refresh.setOnClickListener { task(p) { reload() } }
-        field.addTextChangedListener(object : android.text.TextWatcher {
-            override fun beforeTextChanged(t: CharSequence?, st: Int, c: Int, a: Int) {}
-            override fun onTextChanged(t: CharSequence?, st: Int, b: Int, c: Int) {
-                api.saveDraft("supportInput", t?.takeIf { it.isNotBlank() }?.let { JSONObject().put("text", it.toString()) })
-            }
-            override fun afterTextChanged(e: android.text.Editable?) {}
-        })
-        if (available) task(p) { reload() } else unavailable()
-    }
+    var supportChanged: () -> Unit = {}
+    private val supportChat by lazy { SupportScreens(activity, api, scope) { supportChanged() } }
+    fun support() { if (requireAccount { support() }) supportChat.show() }
+    fun foreground(value: Boolean) { supportChat.setForeground(value) }
     private fun confirm(title: String, message: String, action: () -> Unit) {
         val p = panel(title); s.add(p.body, s.label(message, color = s.muted))
         s.add(p.body, s.button("Подтвердить") { p.dialog.dismiss(); action() }, 48)

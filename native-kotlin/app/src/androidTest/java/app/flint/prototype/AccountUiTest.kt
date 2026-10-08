@@ -10,13 +10,69 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AccountUiTest {
+    private fun writeSupport(text: String) {
+        val root = UiTestSupport.awaitWindowContaining("Отправить в поддержку")
+        fun field(node: android.view.accessibility.AccessibilityNodeInfo): android.view.accessibility.AccessibilityNodeInfo? {
+            if(node.isEditable) return node
+            for(i in 0 until node.childCount) node.getChild(i)?.let { field(it)?.let { f -> return f } }
+            return null
+        }
+        org.junit.Assert.assertTrue(requireNotNull(field(root)).performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT,
+            android.os.Bundle().apply { putCharSequence(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,text) }))
+    }
+    @Test fun supportChatRepliesReadCloseAndRatingFollowV1Contract() {
+        ActivityScenario.launch<AccountHarnessActivity>(Intent(UiTestSupport.instrumentation.targetContext,AccountHarnessActivity::class.java).putExtra("screen","support")).use {
+            UiTestSupport.awaitWindowContaining("Тема: Общий вопрос")
+            writeSupport("Первая строка\nОписание проблемы"); UiTestSupport.clickAccessibilityText("Отправить в поддержку")
+            UiTestSupport.awaitWindowContaining("Обращение №ticket-new", "Анна", "Здравствуйте! Уточните")
+            org.junit.Assert.assertEquals("Первая строка",AccountHarnessActivity.supportFixture.bodies.first().getString("subject"))
+            writeSupport("Телефон Samsung"); UiTestSupport.clickAccessibilityText("Отправить в поддержку")
+            UiTestSupport.awaitWindowContaining("Спасибо, проверяем подключение.")
+            org.junit.Assert.assertTrue(AccountHarnessActivity.requests.any { it == "POST /support/tickets/ticket-new/messages" })
+            org.junit.Assert.assertTrue(AccountHarnessActivity.requests.any { it.startsWith("GET /support/tickets/ticket-new?afterMessageId=") })
+            val limit = android.os.SystemClock.uptimeMillis()+5000
+            while(AccountHarnessActivity.requests.none { it == "POST /support/tickets/ticket-new/read" } && android.os.SystemClock.uptimeMillis()<limit) android.os.SystemClock.sleep(50)
+            org.junit.Assert.assertTrue(AccountHarnessActivity.requests.any { it == "POST /support/tickets/ticket-new/read" })
+            UiTestSupport.clickAccessibilityText("Закрыть обращение")
+            UiTestSupport.awaitWindowContaining("Закрыть обращение?")
+            UiTestSupport.clickAccessibilityText("Закрыть обращение")
+            UiTestSupport.awaitWindowContaining("Оценить работу поддержки")
+            UiTestSupport.clickAccessibilityText("Оценить работу поддержки")
+            UiTestSupport.awaitWindowContaining("Отправить оценку")
+            UiTestSupport.clickAccessibilityText("Отправить оценку")
+            UiTestSupport.awaitWindowContaining("Спасибо за оценку")
+        }
+    }
+    @Test fun supportRetryKeepsIdempotencyKeyAfterLostResponse() {
+        ActivityScenario.launch<AccountHarnessActivity>(Intent(UiTestSupport.instrumentation.targetContext,AccountHarnessActivity::class.java).putExtra("screen","support").putExtra("supportTimeout",true)).use {
+            UiTestSupport.awaitWindowContaining("Тема: Общий вопрос")
+            writeSupport("Повтор без дубликата"); UiTestSupport.clickAccessibilityText("Отправить в поддержку")
+            UiTestSupport.awaitWindowContaining("Тестовый обрыв связи")
+            UiTestSupport.clickAccessibilityText("Отправить в поддержку")
+            UiTestSupport.awaitWindowContaining("Сообщение отправлено")
+            val keys=AccountHarnessActivity.supportFixture.keys
+            org.junit.Assert.assertEquals(2,keys.size);org.junit.Assert.assertEquals(keys[0],keys[1])
+        }
+    }
+    @Test fun supportStopsPollingWhenActivityIsStopped() {
+        ActivityScenario.launch<AccountHarnessActivity>(Intent(UiTestSupport.instrumentation.targetContext,AccountHarnessActivity::class.java).putExtra("screen","support")).use { scenario ->
+            UiTestSupport.awaitWindowContaining("Тема: Общий вопрос")
+            writeSupport("Проверка паузы");UiTestSupport.clickAccessibilityText("Отправить в поддержку")
+            UiTestSupport.awaitWindowContaining("Сообщение отправлено")
+            scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
+            android.os.SystemClock.sleep(1000)
+            val before=AccountHarnessActivity.requests.count { it.startsWith("GET /support/tickets/ticket-new?") }
+            android.os.SystemClock.sleep(13_000)
+            org.junit.Assert.assertEquals(before,AccountHarnessActivity.requests.count { it.startsWith("GET /support/tickets/ticket-new?") })
+        }
+    }
     @Test fun productScreensHaveRealNativeContentWithoutProductionWrites() {
         for ((screen, labels) in listOf(
             "purchase" to arrayOf("Выберите тариф", "1 Месяц", "3 Месяца", "6 Месяцев", "12 Месяцев"),
             "subscriptions" to arrayOf("Мои подписки", "199,6 GB / 1000,0 GB"),
             "friends" to arrayOf("Пригласить друга", "FLINT-TEST"),
             "devices" to arrayOf("Устройства", "Добавить устройство по QR", "Сеансы входа в аккаунт")
-            ,"support" to arrayOf("Поддержка", "Отправить в поддержку", "Обновить ответы", "Обращение ticket-tes")
+            ,"support" to arrayOf("Поддержка", "Отправить в поддержку", "Обращения", "Тема: Общий вопрос")
             ,"settings" to arrayOf("Настройки Flint", "Добавить виджет на экран", "Закрыть")
             ,"identity" to arrayOf("Аккаунт Flint", "Подписка активна", "Способы входа · почта и Telegram")
             ,"routing" to arrayOf("Раздельное проксирование", "Добавить сайт", "zakupki.gov.ru")
@@ -56,7 +112,7 @@ class AccountUiTest {
             val deadline = android.os.SystemClock.uptimeMillis() + 5000
             while ("GET /config" !in AccountHarnessActivity.requests && android.os.SystemClock.uptimeMillis() < deadline) android.os.SystemClock.sleep(50)
             UiTestSupport.clickAccessibilityText("Поддержка")
-            val root = UiTestSupport.awaitWindowContaining("Отправить в поддержку", "Обновить ответы")
+            val root = UiTestSupport.awaitWindowContaining("Отправить в поддержку", "Обращения")
             fun editable(node: android.view.accessibility.AccessibilityNodeInfo): android.view.accessibility.AccessibilityNodeInfo? {
                 if (node.isEditable) return node
                 for (i in 0 until node.childCount) node.getChild(i)?.let { child -> editable(child)?.let { return it } }
@@ -71,7 +127,7 @@ class AccountUiTest {
     }
     @Test fun supportSendsExactTextAndDisplaysRepliesInline() {
         ActivityScenario.launch<AccountHarnessActivity>(Intent(UiTestSupport.instrumentation.targetContext, AccountHarnessActivity::class.java).putExtra("screen", "support")).use {
-            val root = UiTestSupport.awaitWindowContaining("Отправить в поддержку", "Обновить ответы", "Обращение ticket-tes")
+            val root = UiTestSupport.awaitWindowContaining("Отправить в поддержку", "Обращения", "Тема: Общий вопрос")
             fun input(node: android.view.accessibility.AccessibilityNodeInfo): android.view.accessibility.AccessibilityNodeInfo? {
                 if (node.isEditable) return node
                 for (i in 0 until node.childCount) node.getChild(i)?.let { c -> input(c)?.let { return it } }
@@ -81,7 +137,7 @@ class AccountUiTest {
             val args = android.os.Bundle().apply { putCharSequence(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "Проверка формы поддержки") }
             org.junit.Assert.assertTrue(field.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT, args))
             UiTestSupport.clickAccessibilityText("Отправить в поддержку")
-            UiTestSupport.awaitWindowContaining("Обращение сохранено. Ответ появится здесь.")
+            UiTestSupport.awaitWindowContaining("Сообщение отправлено", "Анна", "Здравствуйте! Уточните")
             org.junit.Assert.assertEquals(1, AccountHarnessActivity.requests.count { it == "POST /support/tickets" })
         }
     }
