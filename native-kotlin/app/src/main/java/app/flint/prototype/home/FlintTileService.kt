@@ -139,7 +139,7 @@ class FlintTileService : TileService() {
             s.add(p.body, s.label(help, color = s.muted))
             if (!File(activity.filesDir, "last-vpn-config.json").isFile)
                 s.add(p.body, s.label("Сначала подключитесь к выбранному серверу во Flint и разрешите VPN.", color = s.muted))
-            if (Build.VERSION.SDK_INT >= 33 && TileService.isQuickSettingsSupported()) {
+            if (Build.VERSION.SDK_INT >= 33) {
                 val add = s.primary("Добавить в шторку") {}
                 add.setOnClickListener {
                     add.isEnabled = false

@@ -22,7 +22,8 @@ concurrency:
   cancel-in-progress: true
 jobs:
   ios-arm64:
-    runs-on: macos-15
+    # Cross-compile the same iPhone arm64 target on the standard Intel host pool.
+    runs-on: macos-15-intel
     timeout-minutes: 120
     env:
       QT_VERSION: '6.10.3'
