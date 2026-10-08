@@ -284,8 +284,11 @@ class VpnServiceInstrumentedTest {
             val line = shell("dumpsys vpn_management").lineSequence().firstOrNull {
                 it.trimStart().startsWith("NetworkCapabilities:") && "VPN" in it && "Uids:" in it
             } ?: throw AssertionError("System VPN UID ranges are missing")
-            val raw = Regex("Uids: <\\{([^}]*)}>").find(line)?.groupValues?.get(1)
-                ?: throw AssertionError("Unexpected system VPN UID range format")
+            val marker = "Uids: <{"
+            val start = line.indexOf(marker)
+            val end = line.indexOf("}>", start + marker.length)
+            assertTrue("Unexpected system VPN UID range format", start >= 0 && end > start + marker.length)
+            val raw = line.substring(start + marker.length, end)
             return raw.split(',').map { value ->
                 val bounds = value.trim().split('-').map { it.toInt() }
                 assertTrue(bounds.size in 1..2)
