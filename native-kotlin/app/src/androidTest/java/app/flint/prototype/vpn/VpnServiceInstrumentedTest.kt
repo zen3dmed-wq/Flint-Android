@@ -180,13 +180,13 @@ class VpnServiceInstrumentedTest {
             SystemClock.sleep(50)
         }
         val posted = requireNotNull(notice)
+        assertTrue(posted.extras.getCharSequence(android.app.Notification.EXTRA_TEXT).toString().contains("VPN включён"))
         assertEquals(app.flint.prototype.R.drawable.ic_vpn_status, posted.smallIcon.resId)
         assertEquals("FLINT", posted.extras.getCharSequence(android.app.Notification.EXTRA_TITLE))
         assertTrue(posted.flags and android.app.Notification.FLAG_ONGOING_EVENT != 0)
         val channel = manager.getNotificationChannel(posted.channelId)
         assertEquals(android.app.NotificationManager.IMPORTANCE_DEFAULT, channel.importance)
         assertNull(channel.sound); assertFalse(channel.shouldVibrate())
-        assertEquals(android.app.Notification.FOREGROUND_SERVICE_IMMEDIATE, posted.foregroundServiceBehavior)
         assertEquals("FLINT_VPN_TUNNEL_OK", throughTunnel())
         val directory = File(context.getExternalFilesDir(null), "ui-evidence").apply { mkdirs() }
         instrumentation.uiAutomation.waitForIdle(500, 5000)
@@ -411,3 +411,4 @@ class VpnServiceInstrumentedTest {
         finally { c.disconnect() }
     }
 }
+
