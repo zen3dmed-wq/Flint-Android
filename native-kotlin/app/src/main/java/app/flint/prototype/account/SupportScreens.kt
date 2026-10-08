@@ -94,7 +94,7 @@ class SupportScreens(private val activity: Activity, private val api: FlintAccou
             input.visibility = if (listing || closed) View.GONE else View.VISIBLE
             send.visibility = if (listing || closed) View.GONE else View.VISIBLE
             val exhausted = messageLimit || messages.values.count { it.string("author") == "user" } >= 300
-            send.isEnabled = !loading && (ticket != null || (category.isNotBlank() && listLoaded)) && !exhausted
+            send.isEnabled = !loading && (ticket != null || (category.isNotBlank() && listLoaded)) && (!exhausted || api.draft("supportDraft") != null)
             limits.text = if (exhausted) "В этом чате уже 300 ваших сообщений. Закройте его и создайте новое обращение."
                 else "Открыто обращений: ${list.count { it.string("status") != "closed" }} из 3 · до 5 новых в час"
             input.isEnabled = !loading
