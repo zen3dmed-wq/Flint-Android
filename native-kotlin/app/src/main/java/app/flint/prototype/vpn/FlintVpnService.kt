@@ -2,9 +2,7 @@ package app.flint.prototype.vpn
 
 import android.app.Notification
 import android.app.Application
-import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -18,7 +16,6 @@ import android.os.Message
 import android.os.Messenger
 import android.os.Process
 import android.util.AtomicFile
-import app.flint.prototype.R
 import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
@@ -58,6 +55,7 @@ class FlintVpnService : VpnService() {
     private var nativeStarted = false
     private var destroyed = false
     private var foreground = false
+    private var notificationChannel = VpnNotifications.CHANNEL
     private var lastStartId = 0
     private var pendingGeneration: Long? = null
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -70,10 +68,11 @@ class FlintVpnService : VpnService() {
             // The same-app binding is the only supported client of this service.
             if (msg.sendingUid != Process.myUid()) return
             when (msg.what) {
-                VpnContract.REGISTER -> msg.replyTo?.let { clients.add(it); sendSnapshot(it) }
+                VpnContract.REGISTER -> msg.replyTo?.let { clients.add(it); sendSnapshot(it); refreshNotification() }
                 VpnContract.UNREGISTER -> clients.remove(msg.replyTo)
                 VpnContract.REQUEST_STATUS -> msg.replyTo?.let(::sendSnapshot)
                 VpnContract.DISCONNECT -> requestStop()
+                VpnContract.REFRESH_NOTIFICATION -> refreshNotification()
                 5 -> { forgetSaved = true; requestStop() }
             }
         }
@@ -81,7 +80,7 @@ class FlintVpnService : VpnService() {
 
     override fun onCreate() {
         super.onCreate()
-        createChannel()
+        notificationChannel = VpnNotifications.ensureChannel(this)
         scope.launch { for (ignored in widgetUpdates) updateWidget() }
         scope.launch {
             for (command in commands) {
@@ -372,7 +371,7 @@ class FlintVpnService : VpnService() {
     private fun publish(value: Snapshot) {
         snapshot = value.copy(timestamp = System.currentTimeMillis())
         clients.toList().forEach(::sendSnapshot)
-        if (foreground) getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification())
+        refreshNotification()
         if (lastWidgetState != value.state) { lastWidgetState = value.state; widgetUpdates.trySend(value.state) }
     }
 
@@ -397,13 +396,10 @@ class FlintVpnService : VpnService() {
         try { client.send(message) } catch (_: Exception) { clients.remove(client) }
     }
 
-    private fun createChannel() {
-        getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "FLINT VPN", NotificationManager.IMPORTANCE_LOW).apply {
-                setShowBadge(false)
-                setSound(null, null)
-            }
-        )
+    private fun refreshNotification() {
+        if (foreground && VpnNotifications.canPost(this)) runCatching {
+            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification())
+        }
     }
 
     private fun notification(): Notification {
@@ -414,20 +410,7 @@ class FlintVpnService : VpnService() {
             "error" -> snapshot.message
             else -> "VPN выключен"
         }
-        val stop = PendingIntent.getService(this, 1,
-            Intent(this, FlintVpnService::class.java).setAction(VpnContract.ACTION_DISCONNECT),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val builder = Notification.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_vpn_status).setContentTitle("FLINT")
-            .setContentText(content).setOngoing(true).setShowWhen(false)
-            .setCategory(Notification.CATEGORY_SERVICE)
-            .addAction(Notification.Action.Builder(null, "Отключить", stop).build())
-        (packageManager.getLaunchIntentForPackage(packageName)
-            ?: packageManager.getLeanbackLaunchIntentForPackage(packageName))?.let { intent ->
-            builder.setContentIntent(PendingIntent.getActivity(this, 0, intent,
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
-        }
-        return builder.build()
+        return VpnNotifications.build(this, notificationChannel, content)
     }
 
     private fun showForeground() {
@@ -490,7 +473,6 @@ class FlintVpnService : VpnService() {
         val generation: Long = 0, val timestamp: Long = System.currentTimeMillis()
     )
     companion object {
-        private const val CHANNEL_ID = "flint-native-vpn"
-        private const val NOTIFICATION_ID = 8125
+        private const val NOTIFICATION_ID = VpnNotifications.ID
     }
 }

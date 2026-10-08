@@ -75,7 +75,7 @@ jobs:
         if: always()
         run: |
           mkdir -p native-kotlin/evidence
-          timeout 15s adb pull /sdcard/Android/data/app.flint.vpn.kotlin/files/ui-evidence native-kotlin/evidence/ || true
+          timeout 15s adb pull /sdcard/Android/data/app.flint.vpn/files/ui-evidence native-kotlin/evidence/ || true
           timeout 10s adb logcat -d -s AndroidRuntime:E > native-kotlin/evidence/android-runtime.txt || true
       - name: Upload emulator evidence
         if: always()

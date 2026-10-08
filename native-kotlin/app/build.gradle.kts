@@ -3,11 +3,11 @@ android {
     namespace = "app.flint.prototype"
     compileSdk = 36
     defaultConfig {
-        applicationId = "app.flint.vpn.kotlin"
+        applicationId = "app.flint.vpn"
         minSdk = 30
         targetSdk = 36
-        versionCode = 3001
-        versionName = "8.11.1"
+        versionCode = 3002
+        versionName = "8.11.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     flavorDimensions += "screen"

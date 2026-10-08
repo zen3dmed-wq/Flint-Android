@@ -168,6 +168,15 @@ class MainActivity : Activity(), FlintUiCallbacks {
     }
 
     override fun onStart() { super.onStart(); resumed = true; bindVpn() }
+    override fun onResume() { super.onResume(); sendMessage(app.flint.prototype.vpn.VpnContract.REFRESH_NOTIFICATION) }
+    override fun onRequestPermissionsResult(code: Int, permissions: Array<out String>, results: IntArray) {
+        super.onRequestPermissionsResult(code, permissions, results)
+        if (code == NotificationSettings.REQUEST) {
+            sendMessage(app.flint.prototype.vpn.VpnContract.REFRESH_NOTIFICATION)
+            if (results.firstOrNull() != android.content.pm.PackageManager.PERMISSION_GRANTED)
+                android.widget.Toast.makeText(this, "Значок VPN скрыт. Включить: Настройки Flint → Значок VPN.", android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
     override fun onStop() { resumed = false; unbindVpn(); super.onStop() }
     override fun onDestroy() {
         if (::accountScreens.isInitialized) accountScreens.close()
@@ -357,10 +366,7 @@ class MainActivity : Activity(), FlintUiCallbacks {
             return
         }
         // Notification permission is independent of VPN startup and must not retract its file.
-        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
-            != android.content.pm.PackageManager.PERMISSION_GRANTED) try {
-            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATIONS)
-        } catch (_: Exception) { /* The foreground service remains the tunnel owner. */ }
+        if (!BuildConfig.IS_TV) NotificationSettings.requestOnce(this)
     }
 
     override fun onSelectServer(id: String?) {
@@ -680,6 +686,5 @@ class MainActivity : Activity(), FlintUiCallbacks {
         private const val REQUEST_VPN = 11
         private const val REQUEST_QR = 12
         private const val REQUEST_FILE = 13
-        private const val REQUEST_NOTIFICATIONS = 14
     }
 }

@@ -162,6 +162,54 @@ class VpnServiceInstrumentedTest {
         assertFalse("A local TUN without working forwarding is not connected", binding.states.contains("connected"))
     }
 
+    @Test fun huskyNotificationPersistsWithRealVpnAndMainHidden() {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("flintLocalVpnTest") == "true")
+        shell("pm grant ${context.packageName} android.permission.POST_NOTIFICATIONS")
+        shell("appops set ${context.packageName} POST_NOTIFICATION allow")
+        foregroundActivity()
+        shell("appops set ${context.packageName} ACTIVATE_VPN allow")
+        val binding = bind(); binding.await(); connect(fixtureConfig())
+        binding.await { it.getString(VpnContract.STATE) == "connected" }
+        shell("input keyevent KEYCODE_HOME")
+        val manager = context.getSystemService(android.app.NotificationManager::class.java)
+        val deadline = SystemClock.uptimeMillis() + 5000
+        var notice: android.app.Notification? = null
+        while (SystemClock.uptimeMillis() < deadline) {
+            notice = manager.activeNotifications.firstOrNull { it.id == VpnNotifications.ID }?.notification
+            if (notice?.extras?.getCharSequence(android.app.Notification.EXTRA_TEXT)?.contains("VPN включён") == true) break
+            SystemClock.sleep(50)
+        }
+        val posted = requireNotNull(notice)
+        assertEquals(app.flint.prototype.R.drawable.ic_vpn_status, posted.smallIcon.resId)
+        assertEquals("FLINT", posted.extras.getCharSequence(android.app.Notification.EXTRA_TITLE))
+        assertTrue(posted.flags and android.app.Notification.FLAG_ONGOING_EVENT != 0)
+        val channel = manager.getNotificationChannel(posted.channelId)
+        assertEquals(android.app.NotificationManager.IMPORTANCE_DEFAULT, channel.importance)
+        assertNull(channel.sound); assertFalse(channel.shouldVibrate())
+        assertEquals(android.app.Notification.FOREGROUND_SERVICE_IMMEDIATE, posted.foregroundServiceBehavior)
+        assertEquals("FLINT_VPN_TUNNEL_OK", throughTunnel())
+        val directory = File(context.getExternalFilesDir(null), "ui-evidence").apply { mkdirs() }
+        instrumentation.uiAutomation.waitForIdle(500, 5000)
+        File(directory, "vpn-status-icon-real.png").outputStream().use {
+            assertTrue(instrumentation.uiAutomation.takeScreenshot().compress(Bitmap.CompressFormat.PNG, 100, it))
+        }
+        foregroundActivity(); binding.send(VpnContract.REFRESH_NOTIFICATION)
+        assertEquals("FLINT_VPN_TUNNEL_OK", throughTunnel())
+    }
+
+    @Test fun blockedNotificationsNeverDisconnectWorkingTunnel() {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("flintLocalVpnTest") == "true")
+        shell("appops set ${context.packageName} POST_NOTIFICATION ignore")
+        try {
+            assertFalse(VpnNotifications.canPost(context))
+            foregroundActivity(); shell("appops set ${context.packageName} ACTIVATE_VPN allow")
+            val binding = bind(); binding.await(); connect(fixtureConfig())
+            binding.await { it.getString(VpnContract.STATE) == "connected" }
+            binding.send(VpnContract.REFRESH_NOTIFICATION)
+            assertEquals("FLINT_VPN_TUNNEL_OK", throughTunnel())
+        } finally { shell("appops set ${context.packageName} POST_NOTIFICATION allow") }
+    }
+
     @Test fun widgetAndShortcutToggleWithoutForegroundingMainActivity() {
         assumeTrue(InstrumentationRegistry.getArguments().getString("flintLocalVpnTest") == "true")
         foregroundActivity()

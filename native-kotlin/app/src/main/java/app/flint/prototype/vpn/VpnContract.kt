@@ -12,6 +12,7 @@ object VpnContract {
     const val UNREGISTER = 2
     const val REQUEST_STATUS = 3
     const val DISCONNECT = 4
+    const val REFRESH_NOTIFICATION = 6
     const val STATUS = 100
     const val STATE = "state"
     const val MESSAGE = "message"

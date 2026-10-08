@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 mkdir -p build evidence/phone evidence/tv
 fixture_pid=''
 collect() {
-  timeout 15s adb pull /sdcard/Android/data/app.flint.vpn.kotlin/files/ui-evidence evidence/ >/dev/null 2>&1 || true
+  timeout 15s adb pull /sdcard/Android/data/app.flint.vpn/files/ui-evidence evidence/ >/dev/null 2>&1 || true
   timeout 10s adb logcat -d > evidence/emulator-logcat.txt 2>&1 || true
   timeout 5s adb shell wm size reset >/dev/null 2>&1 || true
   timeout 5s adb shell wm density reset >/dev/null 2>&1 || true
@@ -27,7 +27,7 @@ gradle --no-daemon :app:connectedPhoneDebugAndroidTest \
 phone_result=$?
 cp -a app/build/outputs/androidTest-results evidence/phone/ || true
 cp -a app/build/reports/androidTests evidence/phone/ || true
-timeout 15s adb pull /sdcard/Android/data/app.flint.vpn.kotlin/files/ui-evidence evidence/phone/ || true
+timeout 15s adb pull /sdcard/Android/data/app.flint.vpn/files/ui-evidence evidence/phone/ || true
 adb shell wm size 1280x720
 adb shell wm density 160
 gradle --no-daemon :app:connectedPhoneDebugAndroidTest \
@@ -36,7 +36,7 @@ gradle --no-daemon :app:connectedPhoneDebugAndroidTest \
 tv_result=$?
 cp -a app/build/outputs/androidTest-results evidence/tv/ || true
 cp -a app/build/reports/androidTests evidence/tv/ || true
-timeout 15s adb pull /sdcard/Android/data/app.flint.vpn.kotlin/files/ui-evidence evidence/tv/ || true
+timeout 15s adb pull /sdcard/Android/data/app.flint.vpn/files/ui-evidence evidence/tv/ || true
 python3 - "$phone_result" "$tv_result" <<'PY'
 import json, pathlib, sys
 pathlib.Path('evidence/result.json').write_text(json.dumps({'phoneExit': int(sys.argv[1]), 'tvExit': int(sys.argv[2])}))

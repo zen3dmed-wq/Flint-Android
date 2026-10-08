@@ -1,19 +1,25 @@
-# Flint 8.11.1 — native Android / Android TV
+# Flint 8.11.2 — native Android / Android TV
 
-Release build of the native Kotlin client. The user confirmed that 8.11.0 carries
-VPN traffic on their phone. This release restores Qt 8.10.25 product screen
-structure, sizes and centers dialogs to fit content, and opens support directly; it keeps the same application ID and
-signer as 0.1/0.2, so those installations update in place without losing data.
+Native Kotlin client, now using the original production application ID
+`app.flint.vpn` as requested. Version 8.11.2 / code 3002. Release signing must
+match the deployed Qt certificate; inspect the delivered APK checks for evidence.
 
-## Installation
+## Installation and migration
 
-Separate phone and Android TV APKs, each with automatic ARM32/ARM64 selection.
-Android 11/API 30 or newer. Package `app.flint.vpn.kotlin`; launcher name `Flint`.
-The older Qt application (`app.flint.vpn`) remains installed separately, allowing
-rollback without deleting its account/settings. Only one VPN can run at a time.
+Separate phone and Android TV APKs, ARM32/ARM64 automatically selected.
+Android 11/API 30 or newer. The release replaces an older Qt Flint with the same
+application ID and certificate. Its data directory is preserved, but Qt's encrypted
+QSettings are not read by Kotlin: sign in again to restore account subscriptions
+and reimport manually added links when moving from Qt.
+The earlier `app.flint.vpn.kotlin` test/native packages remain separate; Android
+does not transfer their private account/profile data into the production package.
+Only one VPN can run at a time. Save manually imported links before removing them.
 
 ## Product behavior
 
+- Exact Qt monochrome husky status icon, immediate persistent service notification,
+  DEFAULT importance with sound/vibration disabled. Existing user channel blocks or
+  custom settings are retained. Settings explain Android/OEM icon controls.
 - Original Qt artwork and PT Root UI font, four-state mascot/ring/button colors,
   compact main page, small traffic bar, subscription selection, TV-only D-pad focus.
 - Qt order and separate flows for settings, profile, login methods, referrals,
@@ -49,8 +55,8 @@ exact run and results; a source README is not proof of a passing run.
 Backend support, purchase completion, device revocation, referral website URLs and
 update publication require their configured backend capabilities. The website,
 admin settings, real support inbox and user payments are not modified by tests.
-API APK uploads for this package must use `app.flint.vpn.kotlin` and its signing
-certificate; a Qt APK is not an update for it. No certificate checks are bypassed.
+API APK uploads use `app.flint.vpn` and the existing production signing
+certificate. No certificate checks are bypassed.
 
 This is an Xray client: WireGuard/AmneziaWG/OpenVPN engines and arbitrary external
 geosite/geoip files are not bundled. This limits parity with the underlying Amnezia

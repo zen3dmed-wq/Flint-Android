@@ -28,7 +28,7 @@ app.flint.prototype.NativePhoneUiTest,app.flint.prototype.ImportInstrumentationT
 ```
 
 For example, use `adb shell am instrument -w -r -e class <filter>
-app.flint.vpn.kotlin.test/androidx.test.runner.AndroidJUnitRunner`, or the
+app.flint.vpn.test/androidx.test.runner.AndroidJUnitRunner`, or the
 equivalent Gradle runner argument.
 
 When invoking the Gradle connected-test task, also pass
@@ -68,7 +68,7 @@ Do not apply these viewport overrides to a user's physical device.
 
 ## Evidence
 
-Pull `/sdcard/Android/data/app.flint.vpn.kotlin/files/ui-evidence/` as a CI artifact.
+Pull `/sdcard/Android/data/app.flint.vpn/files/ui-evidence/` as a CI artifact.
 Expected PNG/JSON pairs:
 
 - `phone-disconnected-fixture`
