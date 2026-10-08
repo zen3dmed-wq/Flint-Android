@@ -32,7 +32,7 @@ class ParityPolicyTest {
     }
     @Test fun failedNodeBypassesLoadCooldownButNeedsAvailableBackup() {
         val now = 500_000L
-        val profiles = listOf(server("a", "192.0.2.1"), server("b", "192.0.2.1").copy(port=8443), server("unknown", "192.0.2.3"))
+        val profiles = listOf(server("a", "192.0.2.1"), ServerProfile("b", "b", "192.0.2.1", 8443, "vless", "{}"), server("unknown", "192.0.2.3"))
         val state = ServerBalance.State()
         fun health(at: Long) = mapOf("a" to ServerBalance.Health(false,null,at), "b" to ServerBalance.Health(true,80,at,95,at), "unknown" to ServerBalance.Health(null,null,at))
         assertNull(state.choose(profiles,health(now),"a",false,now-1000,now))
