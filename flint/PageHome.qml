@@ -79,7 +79,7 @@ PageType {
         traceConnection("REQUESTED")
     }
     function connectionReport() {
-        return "Flint 8.10.26 / 2196\nmode=" + (autoConnection ? "auto" : "manual") +
+        return "Flint 8.10.27 / 2197\nmode=" + (autoConnection ? "auto" : "manual") +
             "\nruDirect=" + FlintController.ruDirectEnabled + "\ncore.error=" + lastConnectionError +
             "\n" + connectionEvents.join("\n") + "\n" + (lastNativeAttempt || FlintController.vpnDiagnostics())
     }
@@ -1661,7 +1661,7 @@ PageType {
                 onClicked: { settingsPopup.close(); updatesPopup.open(); FlintUpdateController.check(true) }
             }
             Text { text: "Настройки Flint"; color: root.ink; font.pixelSize: 21; font.bold: true }
-            Text { text: "Flint Android 8.10.26"; color: root.muted }
+            Text { text: "Flint Android 8.10.27"; color: root.muted }
             FlintButton {
                 Layout.fillWidth: true
                 text: "Диагностика подключения"
@@ -1841,4 +1841,3 @@ PageType {
         }
     }
 }
-
