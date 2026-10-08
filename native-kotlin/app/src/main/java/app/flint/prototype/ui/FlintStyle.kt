@@ -44,6 +44,19 @@ class FlintStyle(val context: Context, val tv: Boolean = BuildConfig.IS_TV) {
         stateListAnimator = null; background = surface(); isFocusable = true; isFocusableInTouchMode = tv
         setOnClickListener { action() }
     }
+    fun primary(text: String, action: () -> Unit) = button(text, action).apply {
+        background = surface(mint); setTextColor(0xFF052A20.toInt())
+    }
+    fun buttons(parent: LinearLayout, vararg buttons: Button) {
+        val row = row()
+        buttons.forEachIndexed { i, button -> row.addView(button, LinearLayout.LayoutParams(0, dp(48), 1f).apply { if (i > 0) marginStart = dp(10) }) }
+        add(parent, row, 48)
+    }
+    fun closeButton(panel: Panel) {
+        val row = row().apply { gravity = Gravity.END }
+        row.addView(button("Закрыть") { panel.dialog.dismiss() }, LinearLayout.LayoutParams(dp(114), dp(46)))
+        add(panel.footer, row, 46, 10)
+    }
     fun field(hint: String, password: Boolean = false) = EditText(context).apply {
         this.hint = hint; textSize = 14f; setTextColor(ink); setHintTextColor(muted)
         setSingleLine(true); background = shape(0xFF112838.toInt()); setPadding(dp(14), dp(10), dp(14), dp(10))
@@ -53,27 +66,34 @@ class FlintStyle(val context: Context, val tv: Boolean = BuildConfig.IS_TV) {
     fun add(parent: LinearLayout, view: View, height: Int = -2, gap: Int = 10) {
         parent.addView(view, LinearLayout.LayoutParams(-1, if (height < 0) height else dp(height)).apply { topMargin = dp(gap) })
     }
-    fun panel(title: String, wide: Boolean = false): Panel {
+    fun panel(title: String, wide: Boolean = false, maxHeight: Int = 640,
+              maxWidth: Int = if (wide) 690 else 460, topAligned: Boolean = false,
+              showClose: Boolean = true, logo: Boolean = false): Panel {
         val dialog = Dialog(context); dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
         val outer = column().apply { setPadding(dp(18), dp(18), dp(18), dp(18)); background = shape(dark, line, 23) }
         val head = row()
+        if (title.isEmpty() && !logo && !showClose) head.visibility = View.GONE
+        if (logo) head.addView(ImageView(context).apply { setImageResource(app.flint.prototype.R.drawable.flint_logo) },
+            LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(10) })
         head.addView(label(title, 22f, true), LinearLayout.LayoutParams(0, -2, 1f))
-        head.addView(button("×") { dialog.dismiss() }, LinearLayout.LayoutParams(dp(44), dp(44)))
+        if (showClose) head.addView(button("×") { dialog.dismiss() }, LinearLayout.LayoutParams(dp(44), dp(44)))
         outer.addView(head)
         val content = column()
         outer.addView(ScrollView(context).apply { addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(8) })
         val message = label("", 12f, color = muted)
         outer.addView(message, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        val footer = column(); outer.addView(footer, LinearLayout.LayoutParams(-1, -2))
         dialog.setContentView(outer); dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
         dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         dialog.show()
         val metrics = context.resources.displayMetrics
-        dialog.window?.setLayout(minOf(metrics.widthPixels - dp(28), dp(if (wide) 690 else 460)), minOf(metrics.heightPixels - dp(60), dp(640)))
-        if (tv) head.getChildAt(1).requestFocus()
-        return Panel(dialog, content, message)
+        dialog.window?.setLayout(minOf(metrics.widthPixels - dp(28), dp(maxWidth)), minOf(metrics.heightPixels - dp(60), dp(maxHeight)))
+        if (topAligned && !tv) dialog.window?.let { w -> w.setGravity(Gravity.TOP or Gravity.CENTER_HORIZONTAL); w.attributes = w.attributes.apply { y = dp(12) } }
+        if (tv && showClose) head.getChildAt(head.childCount - 1).requestFocus()
+        return Panel(dialog, content, message, footer)
     }
     fun notice(title: String, text: String) = panel(title).also { add(it.body, label(text, color = muted)) }
-    data class Panel(val dialog: Dialog, val body: LinearLayout, val message: TextView) {
+    data class Panel(val dialog: Dialog, val body: LinearLayout, val message: TextView, val footer: LinearLayout) {
         var busy = false
         fun error(text: String) { message.text = text }
     }

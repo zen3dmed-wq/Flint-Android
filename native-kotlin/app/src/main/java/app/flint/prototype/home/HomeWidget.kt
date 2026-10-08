@@ -17,6 +17,8 @@ import android.widget.RemoteViews
 import app.flint.prototype.BuildConfig
 import app.flint.prototype.R
 import app.flint.prototype.ui.FlintStyle
+import app.flint.prototype.vpn.FlintVpnService
+import app.flint.prototype.vpn.VpnContract
 import java.io.File
 
 class HomeWidget : AppWidgetProvider() {
@@ -37,16 +39,19 @@ class HomeWidget : AppWidgetProvider() {
         fun shortcut(context: Context, state: String) = ShortcutInfo.Builder(context, "flint-vpn-toggle-v2")
             .setShortLabel("VPN").setLongLabel("Включить / выключить Flint VPN")
             .setIcon(Icon.createWithAdaptiveBitmap(icon(context, state, true)))
-            .setIntent(Intent(context, ToggleActivity::class.java).setAction("app.flint.TOGGLE"))
+            .setIntent(Intent(context, ToggleActivity::class.java).setAction("app.flint.TOGGLE")
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION or Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS))
             .build()
+        fun toggleIntent(context: Context): PendingIntent = PendingIntent.getForegroundService(context, 41,
+            Intent(context, FlintVpnService::class.java).setAction(VpnContract.ACTION_TOGGLE),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         fun refresh(context: Context, state: String) {
             if (BuildConfig.IS_TV) return
             runCatching {
                 File(context.filesDir, "widget-state").writeText(state)
                 val views = RemoteViews(context.packageName, R.layout.flint_widget)
                 views.setImageViewBitmap(R.id.flint_widget_toggle, icon(context, state))
-                val toggle = PendingIntent.getActivity(context, 40, Intent(context, ToggleActivity::class.java).setAction("app.flint.TOGGLE"), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-                views.setOnClickPendingIntent(R.id.flint_widget_toggle, toggle)
+                views.setOnClickPendingIntent(R.id.flint_widget_toggle, toggleIntent(context))
                 views.setContentDescription(R.id.flint_widget_toggle, if (state == "connected") "Flint. Отключить VPN" else "Flint. Подключить VPN")
                 val manager = AppWidgetManager.getInstance(context); val component = ComponentName(context, HomeWidget::class.java)
                 manager.updateAppWidget(manager.getAppWidgetIds(component), views)
@@ -60,7 +65,9 @@ class HomeWidget : AppWidgetProvider() {
         fun setup(activity: Activity) {
             val s = FlintStyle(activity); val p = s.panel("Кнопка Flint")
             s.add(p.body, s.label("Включайте и выключайте VPN одним нажатием с рабочего стола.", color = s.muted))
-            val help = "Удерживайте пустое место рабочего стола → Виджеты → Flint Kotlin. В ColorOS проверьте раздел обычных виджетов Android. Если запрос не появляется, добавьте иконку VPN и проверьте разрешение добавлять значки."
+            val help = "Удерживайте пустое место рабочего стола → Виджеты → Flint VPN. В ColorOS проверьте раздел обычных виджетов Android. Если запрос не появляется, добавьте иконку VPN и проверьте разрешение добавлять значки."
+            if (!File(activity.filesDir, "last-vpn-config.json").isFile)
+                s.add(p.body, s.label("Сначала подключитесь к выбранному серверу в Flint и разрешите VPN. Кнопка запомнит последнее подключение.", color = s.muted))
             s.add(p.body, s.button("Добавить виджет 1×1") {
                 val m = AppWidgetManager.getInstance(activity)
                 val accepted = runCatching { m.isRequestPinAppWidgetSupported && m.requestPinAppWidget(ComponentName(activity, HomeWidget::class.java), null, null) }.getOrDefault(false)

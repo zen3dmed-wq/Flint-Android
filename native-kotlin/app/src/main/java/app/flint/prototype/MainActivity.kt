@@ -629,14 +629,7 @@ class MainActivity : Activity(), FlintUiCallbacks {
     override fun onSubscriptions() = accountScreens.subscriptions()
     override fun onPurchase() = accountScreens.purchase()
     override fun onDevices() = accountScreens.devices()
-    override fun onSupport() {
-        val s = FlintStyle(this); val p = s.panel("Flint Assist")
-        val text = s.label("Если соединение даст сбой — подскажу, что делать.", color = s.muted)
-        s.add(p.body, text)
-        s.add(p.body, s.button("Написать оператору") { p.dialog.dismiss(); accountScreens.support() }, 48)
-        s.add(p.body, s.button("Подключение") { text.text = "Выберите «Автоматически» или запустите «Автонастройку» в списке серверов. Flint проверит соединение и сохранит рабочие параметры." }, 48)
-        s.add(p.body, s.button("Госзакупки") { text.text = "zakupki.gov.ru, ЕИС и выбранные российские сервисы идут напрямую, когда включены «Сайты РФ». Свои сайты можно добавить в «Правила»." }, 48)
-    }
+    override fun onSupport() { AssistScreen(this) { accountScreens.support() }.show() }
     override fun onTvPair() = accountScreens.telegram()
     override fun onProbe(initialize: Boolean) {
         if (!initialize) { checkServers(); scope.launch { runCatching { refreshLoads() } }; return }
@@ -654,35 +647,29 @@ class MainActivity : Activity(), FlintUiCallbacks {
         }
     }
     override fun onSettings() {
-        val s = FlintStyle(this); val p = s.panel("Настройки Flint")
-        s.add(p.body, s.label("Flint Android ${BuildConfig.VERSION_NAME}", color = s.muted))
+        val s = FlintStyle(this); val p = s.panel("", maxHeight = 470, maxWidth = 440, showClose = false)
         s.add(p.body, s.button("Пригласить друга") { p.dialog.dismiss(); accountScreens.friends() }, 48)
         s.add(p.body, s.button("Обновление приложения") { p.dialog.dismiss(); showUpdates() }, 48)
-        s.add(p.body, s.button("Диагностика подключения") { s.notice("Подключение", "Flint ${BuildConfig.VERSION_NAME}\nAndroid ${Build.VERSION.RELEASE}\nРежим: ${if (state.selectedServerId == null) "автоматически" else "вручную"}\nСайты РФ: ${state.ruDirect}\n${state.phase}\n${state.message}") }, 48)
+        s.add(p.body, s.label("Настройки Flint", 21f, true))
+        s.add(p.body, s.label("Flint Android ${BuildConfig.VERSION_NAME}", color = s.muted))
+        s.add(p.body, s.button("Диагностика подключения") {
+            p.dialog.dismiss()
+            val text = "Flint ${BuildConfig.VERSION_NAME}\nAndroid ${Build.VERSION.RELEASE}\nРежим: ${if (state.selectedServerId == null) "автоматически" else "вручную"}\nСайты РФ: ${state.ruDirect}\n${state.phase}\n${state.message}"
+            val d = s.notice("Диагностика подключения", text)
+            s.add(d.footer, s.button("Скопировать") { getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Flint", text)); d.message.text = "Скопировано" }, 48)
+            s.closeButton(d)
+        }, 48)
         if (!BuildConfig.IS_TV) s.add(p.body, s.button("Добавить виджет на экран") { p.dialog.dismiss(); showWidgetSetup() }, 48)
         s.add(p.body, s.button(if (account.loggedIn) account.title else "Войти во Flint") { p.dialog.dismiss(); if (account.loggedIn) accountScreens.identity() else accountScreens.login() }, 48)
+        s.closeButton(p)
     }
-    private fun customSites(): List<String> = runCatching { JSONArray(prefs.getString("directSites", "[]")).let { a -> (0 until a.length()).map { a.getString(it) } } }.getOrDefault(emptyList())
+    private fun customSites(): List<String> = DirectSites.read(prefs)
     private fun routingPolicy(): String? = if (prefs.getBoolean("automaticRouting", true)) account.config.optJSONObject("routing")?.optJSONObject("russianServices")?.toString()
         else JSONObject().put("version", 1).put("geosite", JSONArray()).put("geoip", JSONArray()).put("domains", JSONArray()).put("ips", JSONArray()).toString()
     override fun onRouting() {
-        val s = FlintStyle(this); val p = s.panel("Сайты РФ")
-        s.add(p.body, s.label("Российские сайты и приложения работают напрямую. Остальной трафик идёт через VPN.", color = s.muted))
-        val auto = Switch(this).apply { text = "Определять автоматически"; setTextColor(s.ink); isChecked = prefs.getBoolean("automaticRouting", true) }
-        s.add(p.body, auto, 48)
-        auto.setOnCheckedChangeListener { _, enabled -> prefs.edit().putBoolean("automaticRouting", enabled).apply(); if (state.phase == FlintPhase.CONNECTED) connectSelected() }
-        val field = s.field("Сайт или IP / подсеть"); s.add(p.body, field, 50)
-        s.add(p.body, s.button("Добавить") {
-            try {
-                val normalized = XrayConfigBuilder.normalizeSite(field.text.toString())
-                prefs.edit().putString("directSites", JSONArray((customSites() + normalized).distinct()).toString()).apply()
-                p.dialog.dismiss(); onRouting(); if (state.phase == FlintPhase.CONNECTED) connectSelected()
-            } catch (e: ImportException) { p.error(e.message.orEmpty()) }
-        }, 48)
-        customSites().forEach { site -> s.add(p.body, s.button("$site     ×") {
-            prefs.edit().putString("directSites", JSONArray(customSites().filter { it != site }).toString()).apply()
-            p.dialog.dismiss(); onRouting(); if (state.phase == FlintPhase.CONNECTED) connectSelected()
-        }, 46) }
+        RoutingScreen(this, prefs, scope, ::routingPolicy, { state.ruDirect }, ::onRuDirectChanged) {
+            onRuDirectChanged(state.ruDirect)
+        }.show()
     }
     private fun showUpdates() { app.flint.prototype.updates.UpdateScreen(this, account, scope).show() }
     private fun showWidgetSetup() { app.flint.prototype.home.HomeWidget.setup(this) }

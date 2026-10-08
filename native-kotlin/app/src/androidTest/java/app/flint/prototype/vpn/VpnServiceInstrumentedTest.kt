@@ -162,6 +162,41 @@ class VpnServiceInstrumentedTest {
         assertFalse("A local TUN without working forwarding is not connected", binding.states.contains("connected"))
     }
 
+    @Test fun widgetAndShortcutToggleWithoutForegroundingMainActivity() {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("flintLocalVpnTest") == "true")
+        foregroundActivity()
+        shell("appops set ${context.packageName} ACTIVATE_VPN allow")
+        val binding = bind(); binding.await()
+        connect(fixtureConfig())
+        binding.await { it.getString(VpnContract.STATE) == "connected" }
+        shell("input keyevent KEYCODE_HOME")
+        val toggle = app.flint.prototype.home.HomeWidget.toggleIntent(context)
+        assertTrue("Widget click must go to a service, not an Activity", toggle.isForegroundService)
+        fun assertMainHidden() {
+            instrumentation.waitForIdleSync()
+            instrumentation.runOnMainSync {
+                assertFalse("Home widget must never bring MainActivity to the foreground",
+                    ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)
+                        .any { it.javaClass.name == "app.flint.prototype.MainActivity" })
+            }
+        }
+        fun awaitColor(state: String) {
+            val deadline = SystemClock.uptimeMillis() + 5000
+            while (SystemClock.uptimeMillis() < deadline && app.flint.prototype.home.HomeWidget.stored(context) != state) SystemClock.sleep(50)
+            assertEquals("Launcher color must reflect the actual service", state, app.flint.prototype.home.HomeWidget.stored(context))
+        }
+        toggle.send()
+        binding.await { it.getString(VpnContract.STATE) == "disconnected" }
+        awaitColor("disconnected"); assertMainHidden()
+        toggle.send()
+        binding.await { it.getString(VpnContract.STATE) == "connected" }
+        assertEquals("FLINT_VPN_TUNNEL_OK", throughTunnel()); awaitColor("connected"); assertMainHidden()
+        // Existing and newly pinned shortcuts both target this isolated trampoline.
+        context.startActivity(app.flint.prototype.home.HomeWidget.shortcut(context, "connected").intent)
+        binding.await { it.getString(VpnContract.STATE) == "disconnected" }
+        awaitColor("disconnected"); assertMainHidden()
+    }
+
     private fun foregroundActivity() {
         context.startActivity(Intent().setClassName(context.packageName, "app.flint.prototype.MainActivity").apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

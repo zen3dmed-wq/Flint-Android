@@ -90,14 +90,14 @@ class FlintAccount(private val context: Context,
         require(data.string("accessToken").isNotBlank() && data.string("refreshToken").isNotBlank()) { "Некорректный ответ входа" }
         epoch++; tokens = JSONObject(data.toString()); vault.write(tokens)
         me = JSONObject(); subscriptions = emptyList(); selectedId = ""
-        prefs.edit().remove("me").remove("subscriptions").remove("orderDraft").remove("supportDraft").apply()
+        prefs.edit().remove("me").remove("subscriptions").remove("orderDraft").remove("supportDraft").remove("supportInput").apply()
     }
     suspend fun logout() {
         authLock.withLock {
             try { raw("POST", "/auth/logout", JSONObject().put("refreshToken", tokens.string("refreshToken")), tokens.string("accessToken"), null) }
             finally {
                 epoch++; tokens = JSONObject(); vault.write(tokens); me = JSONObject(); subscriptions = emptyList()
-                prefs.edit().remove("me").remove("subscriptions").remove("selected").remove("orderDraft").remove("supportDraft").apply()
+                prefs.edit().remove("me").remove("subscriptions").remove("selected").remove("orderDraft").remove("supportDraft").remove("supportInput").apply()
             }
         }
     }
@@ -161,7 +161,10 @@ class FlintAccount(private val context: Context,
         finally { c.disconnect() }
     }
     fun draft(kind: String): JSONObject? = prefs.getString(kind, null)?.let { runCatching { JSONObject(it) }.getOrNull() }
-    fun saveDraft(kind: String, value: JSONObject?) { prefs.edit().putString(kind, value?.toString()).commit() }
+    fun saveDraft(kind: String, value: JSONObject?) {
+        val edit = prefs.edit().putString(kind, value?.toString())
+        if (kind == "supportInput") edit.apply() else edit.commit()
+    }
     private fun cached(key: String) = runCatching { JSONObject(prefs.getString(key, "{}").orEmpty()) }.getOrDefault(JSONObject())
     private fun cache(key: String, value: JSONObject) { prefs.edit().putString(key, value.toString()).apply() }
     companion object {

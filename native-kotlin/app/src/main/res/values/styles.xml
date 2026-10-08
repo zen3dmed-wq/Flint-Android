@@ -1,6 +1,6 @@
 <resources>
     <style name="FlintTheme" parent="android:style/Theme.Material.NoActionBar">
-        <item name="android:fontFamily">sans</item>
+        <item name="android:fontFamily">@font/flint_ui</item>
         <item name="android:colorAccent">#4AE0AB</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>

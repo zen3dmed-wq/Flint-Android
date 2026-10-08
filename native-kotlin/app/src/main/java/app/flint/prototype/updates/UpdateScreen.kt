@@ -27,7 +27,6 @@ class UpdateScreen(private val activity: Activity, private val api: FlintAccount
                 if (!data.optBoolean("updateAvailable") || latest == null) { p.message.text = "Установлена актуальная версия"; return@launch }
                 s.add(p.body, s.label("Доступна версия ${latest.string("version")}", 19f, true, s.mint))
                 s.add(p.body, s.label(latest.string("notes"), color = s.muted))
-                s.add(p.body, s.label("Тестовая Kotlin-сборка устанавливается отдельно. Установщик проверит, что обновление предназначено именно для неё.", 12f, color = s.muted))
                 val file = File(activity.cacheDir, "flint-updates/update.apk")
                 val download = s.button("Скачать обновление") {}
                 s.add(p.body, download, 50)

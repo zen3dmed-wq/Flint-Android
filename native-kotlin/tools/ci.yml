@@ -1,4 +1,4 @@
-name: Flint Kotlin prototype
+name: Flint Android and TV
 on:
   pull_request:
     paths: ['native-kotlin/**', '.github/workflows/kotlin-prototype.yml']
@@ -51,7 +51,7 @@ jobs:
       - name: Upload APKs and unit reports
         uses: actions/upload-artifact@v4
         with:
-          name: Flint-Kotlin-Prototype-build
+          name: Flint-Native-build
           path: |
             native-kotlin/app/build/outputs/apk/
             native-kotlin/app/build/reports/tests/
@@ -80,7 +80,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Flint-Kotlin-Prototype-device-tests
+          name: Flint-Native-device-tests
           path: |
             native-kotlin/app/build/reports/androidTests/
             native-kotlin/app/build/outputs/androidTest-results/

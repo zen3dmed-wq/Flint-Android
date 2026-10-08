@@ -9,16 +9,25 @@ import org.json.JSONObject
 
 /** Fake backend is restricted to debug builds. No production account requests. */
 class AccountHarnessActivity : Activity() {
+    companion object { val requests = java.util.concurrent.CopyOnWriteArrayList<String>() }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var screens: AccountScreens
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
-        val api = FlintAccount(this) { method, path, _, _, _ ->
+        requests.clear()
+        val api = FlintAccount(this) { method, path, body, _, key ->
+            requests.add("$method $path")
             val data = when {
                 path == "/auth/login" -> """{"accessToken":"test-only-access","refreshToken":"test-only-refresh"}"""
                 path == "/me" -> """{"id":"ui-fixture","email":"test@example.invalid","hasPassword":true}"""
                 path == "/subscriptions" -> """{"items":[{"id":"fixture-sub","status":"active","plan":{"name":"12 Месяцев"},"expiresAt":"2027-09-17T11:04:00Z","traffic":{"usedBytes":199600000000,"limitBytes":1000000000000,"updatedAt":"2026-10-08T07:00:00Z"}}]}"""
-                path == "/config" -> """{"purchasesEnabled":true}"""
+                path == "/config" -> """{"purchasesEnabled":true,"referralsEnabled":true,"flintIntegration":{"supportEnabled":true}}"""
+                method == "POST" && path == "/support/tickets" -> {
+                    check(body?.optString("text") == "Проверка формы поддержки")
+                    check(!key.isNullOrBlank())
+                    """{"id":"ticket-test"}"""
+                }
+                path == "/support/tickets" -> """{"items":[{"id":"ticket-test","messages":[{"author":"user","text":"Помогите подключить телевизор"},{"author":"support","text":"Нажмите «Добавить с помощью QR» на телевизоре"}]}]}"""
                 path == "/plans" -> """{"items":[{"id":"1","name":"1 Месяц","durationDays":30,"price":{"amount":120,"currency":"RUB"}},{"id":"3","name":"3 Месяца","durationDays":90,"price":{"amount":340,"currency":"RUB"}},{"id":"6","name":"6 Месяцев","durationDays":180,"price":{"amount":680,"currency":"RUB"}},{"id":"12","name":"12 Месяцев","durationDays":360,"price":{"amount":1300,"currency":"RUB"}}]}"""
                 path == "/payment-methods" -> """{"items":[{"id":"fixture-card","title":"Карта, СБП, крипта"}]}"""
                 path == "/referrals" -> """{"code":"FLINT-TEST","invitedCount":3,"bonusDays":12,"terms":{"bonusPercent":10,"minPurchaseDays":30,"maxBonusDays":90},"referrer":{}}"""
@@ -45,6 +54,14 @@ class AccountHarnessActivity : Activity() {
                 "purchase" -> screens.purchase()
                 "friends" -> screens.friends()
                 "devices" -> screens.devices()
+                "support" -> screens.support()
+                "identity" -> screens.identity()
+                "assist" -> AssistScreen(this@AccountHarnessActivity) { screens.support() }.show()
+                "routing" -> {
+                    val prefs = getSharedPreferences("routing-ui-fixture", MODE_PRIVATE)
+                    prefs.edit().clear().commit()
+                    RoutingScreen(this@AccountHarnessActivity, prefs, scope, { null }, { true }, {}, {}).show()
+                }
                 else -> screens.subscriptions()
             }
         }

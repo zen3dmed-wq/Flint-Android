@@ -55,7 +55,7 @@ object XrayConfigBuilder {
                 else -> false
             }
             if (requiresDatabase) throw ImportException(
-                "Профиль Xray использует внешние базы geosite/geoip, которых нет в тестовой версии. " +
+                "Профиль Xray требует отдельные файлы баз geosite/geoip. " +
                     "Импортируйте ссылку VLESS, VMess, Trojan или Shadowsocks либо JSON с явными доменами и IP-адресами.")
         }
         val rules = config.optJSONObject("routing")?.optJSONArray("rules")
@@ -75,7 +75,7 @@ object XrayConfigBuilder {
         }
     }
 
-    private fun applyRussianRouting(config: JSONObject, catalog: JSONObject, customDomains: List<String>, policyJson: String?) {
+    fun russianRules(catalog: JSONObject, customDomains: List<String>, policyJson: String?): Pair<List<String>, List<String>> {
         val defaults = JSONObject().put("version", 1).put("geosite", JSONArray(listOf("category-ru", "tld-ru")))
             .put("geoip", JSONArray(listOf("ru", "private"))).put("domains", JSONArray(listOf("domain:zakupki.gov.ru"))).put("ips", JSONArray())
         val proposed = policyJson?.let { runCatching { JSONObject(it) }.getOrNull() }
@@ -101,6 +101,11 @@ object XrayConfigBuilder {
         }
         customDomains.forEach { val normalized = normalizeSite(it); if (isIp(normalized)) ips.add(normalized) else domains.add("domain:$normalized") }
 
+        return domains.toList() to ips.toList()
+    }
+
+    private fun applyRussianRouting(config: JSONObject, catalog: JSONObject, customDomains: List<String>, policyJson: String?) {
+        val (domains, ips) = russianRules(catalog, customDomains, policyJson)
         val outbounds = config.getJSONArray("outbounds")
         val existingTags = (0 until outbounds.length()).map { outbounds.getJSONObject(it).optString("tag") }.toSet()
         var directTag = "flint-direct"

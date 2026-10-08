@@ -31,7 +31,10 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
     private val s = FlintStyle(activity)
     private val panels = mutableListOf<FlintStyle.Panel>()
     private val polls = mutableMapOf<FlintStyle.Panel, Job>()
-    private fun panel(title: String, wide: Boolean = false) = s.panel(title, wide).also { p ->
+    private fun panel(title: String, wide: Boolean = false) = s.panel(title, wide,
+        maxHeight = when (title) { "Пригласить друга" -> 480; "Купить / продлить подписку", "Поддержка" -> 760; "Мои подписки" -> 660; else -> 680 },
+        maxWidth = if (wide) 690 else if (title in setOf("Купить / продлить подписку", "Поддержка", "Мои подписки", "Пригласить друга")) 560 else 520,
+        topAligned = title !in setOf("Аккаунт Flint", "Вход во Flint"), logo = title in setOf("Аккаунт Flint", "Вход во Flint")).also { p ->
         panels.add(p); p.dialog.setOnDismissListener { polls.remove(p)?.cancel(); panels.remove(p) }
     }
     fun close() { polls.values.toList().forEach { it.cancel() }; polls.clear(); panels.toList().forEach { it.dialog.dismiss() }; panels.clear() }
@@ -51,27 +54,22 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
         login(next); return false
     }
     fun login(after: () -> Unit = {}) {
-        val p = panel("Аккаунт Flint")
-        s.add(p.body, s.label("Один аккаунт на всех устройствах", color = s.muted))
+        val p = panel("Вход во Flint")
+        s.add(p.body, s.label("Windows • Android • TV", 11f, color = s.muted))
         val email = s.field("Электронная почта").apply { inputType = 33 }
         val password = s.field("Пароль", true)
-        val referral = s.field("Код приглашения — необязательно")
         s.add(p.body, email, 50); s.add(p.body, password, 50)
-        var register = false
-        referral.visibility = View.GONE; s.add(p.body, referral, 50)
-        val submit = s.button("Войти") {
-            if (email.text.isBlank() || password.text.isBlank()) { p.error("Укажите почту и пароль."); return@button }
+        fun submit(register: Boolean) {
+            if (email.text.isBlank() || password.text.isBlank()) { p.error("Укажите почту и пароль."); return }
+            if (register && password.text.length !in 8..128) { p.error("Пароль должен содержать от 8 до 128 символов."); return }
             task(p) {
-                api.login(email.text.toString(), password.text.toString(), register, referral.text.toString())
+                api.login(email.text.toString(), password.text.toString(), register)
                 password.text.clear(); changed(true); p.dialog.dismiss(); after()
             }
         }
-        s.add(p.body, submit, 48)
+        s.add(p.body, s.primary("Войти") { submit(false) }, 48)
         s.add(p.body, s.button("Войти через Telegram") { p.dialog.dismiss(); telegram(false, after) }, 48)
-        s.add(p.body, s.button("Регистрация / вход по почте") {
-            register = !register; submit.text = if (register) "Зарегистрироваться" else "Войти"
-            referral.visibility = if (register) View.VISIBLE else View.GONE
-        }, 48)
+        s.add(p.body, s.button("Создать аккаунт") { submit(true) }, 48)
         val links = api.config.optJSONObject("links") ?: JSONObject()
         listOf("userAgreement" to "Условия использования", "privacyPolicy" to "Политика конфиденциальности").forEach { (key, title) ->
             if (links.string(key).isNotBlank()) s.add(p.body, s.button(title) { openLink(links.string(key), p) }, 44)
@@ -80,9 +78,29 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
     fun identity() {
         if (!requireAccount { identity() }) return
         val p = panel("Аккаунт Flint")
-        task(p) { api.refresh(); changed(false); drawIdentity(p) }
+        task(p) {
+            api.refresh(); changed(false)
+            s.add(p.body, s.label("Windows • Android • TV", 11f, color = s.muted))
+            s.add(p.body, s.label(api.title, 18f, true))
+            val active = api.subscriptions.any { it.string("status") == "active" }
+            s.add(p.body, s.label(if (active) "Подписка активна" else "Нет активной подписки", color = if (active) s.mint else s.muted))
+            val sessions = s.label("", color = s.muted); s.add(p.body, sessions)
+            s.add(p.body, s.button("Способы входа · почта и Telegram") { p.dialog.dismiss(); loginMethods() }, 48)
+            if (api.me.optBoolean("trialAvailable")) s.add(p.body, s.primary("Попробовать бесплатно") { task(p) {
+                api.request("POST", "/subscriptions/trial", JSONObject()); api.refresh(); changed(true); p.dialog.dismiss()
+            } }, 48)
+            s.add(p.body, s.button("Выйти") { confirm("Выйти из Flint?", "Сохранённые вручную серверы останутся.") {
+                task(p) { try { api.logout() } finally { changed(true); p.dialog.dismiss() } }
+            } }, 48)
+            s.closeButton(p)
+            runCatching { objects(api.request("GET", "/me/sessions").data, "items").size }.getOrNull()?.let { sessions.text = "Сеансов входа: $it" }
+        }
     }
-    private fun drawIdentity(p: FlintStyle.Panel) {
+    private fun loginMethods() {
+        val p = panel("Способы входа")
+        task(p) { api.refresh(); changed(false); drawLoginMethods(p) }
+    }
+    private fun drawLoginMethods(p: FlintStyle.Panel) {
         p.body.removeAllViews()
         s.add(p.body, s.label(api.title, 19f, true))
         s.add(p.body, s.label("Подписка принадлежит этому аккаунту. Почта и Telegram — способы входа в один аккаунт.", color = s.muted))
@@ -94,16 +112,11 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
             s.add(p.body, email, 50); s.add(p.body, password, 50)
             s.add(p.body, s.button("Привязать почту") { task(p) {
                 api.request("POST", "/me/email-login", JSONObject().put("email", email.text.toString().trim()).put("password", password.text.toString()))
-                password.text.clear(); api.refresh(); changed(false); drawIdentity(p)
+                password.text.clear(); api.refresh(); changed(false); drawLoginMethods(p)
             } }, 48)
         }
-        if (telegram == null || telegram.length() == 0) s.add(p.body, s.button("Привязать Telegram") { p.dialog.dismiss(); telegram(true) { identity() } }, 48)
-        if (api.me.optBoolean("trialAvailable")) s.add(p.body, s.button("Попробовать бесплатно") { task(p) {
-            api.request("POST", "/subscriptions/trial", JSONObject()); api.refresh(); changed(true); p.dialog.dismiss()
-        } }, 48)
-        s.add(p.body, s.button("Выйти из аккаунта") { confirm("Выйти из Flint?", "Сохранённые вручную серверы останутся.") {
-            task(p) { try { api.logout() } finally { changed(true); p.dialog.dismiss() } }
-        } }, 48)
+        if (telegram == null || telegram.length() == 0) s.add(p.body, s.button("Привязать мой Telegram") { p.dialog.dismiss(); telegram(true) { loginMethods() } }, 48)
+        s.add(p.body, s.button("Обновить аккаунт") { task(p) { api.refresh(); changed(false); drawLoginMethods(p) } }, 48)
     }
     fun telegram(link: Boolean = false, after: () -> Unit = {}) {
         val p = panel(if (link) "Привязать Telegram" else if (BuildConfig.IS_TV) "Добавить телевизор" else "Войти через Telegram")
@@ -144,22 +157,25 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
     fun subscriptions() {
         if (!requireAccount { subscriptions() }) return
         val p = panel("Мои подписки")
+        s.buttons(p.footer, s.button("Обновить") { p.dialog.dismiss(); subscriptions() }, s.button("Закрыть") { p.dialog.dismiss() })
         fun draw() {
             p.body.removeAllViews()
+            s.add(p.body, s.label("Выберите подписку для подключения. У каждой свой список серверов и трафик.", color = s.muted))
             api.subscriptions.forEach { sub ->
                 val id = sub.string("id")
                 val active = sub.string("status").equals("active", true) &&
                     (sub.string("expiresAt").isBlank() || epoch(sub.string("expiresAt")) > System.currentTimeMillis()) &&
                     sub.optJSONObject("traffic")?.optBoolean("limitReached") != true
                 val card = s.column().apply {
-                    background = s.surface(if (id == api.selectedId) 0xFF174A3F.toInt() else s.card)
+                    background = s.surface(if (id == api.selectedId) 0xFF57E4B0.toInt() else s.card)
                     setPadding(s.dp(14), s.dp(12), s.dp(14), s.dp(12))
                     isFocusable = true; isFocusableInTouchMode = BuildConfig.IS_TV
                     isEnabled = active; alpha = if (active) 1f else .55f
                     contentDescription = subTitle(sub) + if (id == api.selectedId) ", выбрана" else ""
                     setOnClickListener { if (active) task(p) { api.selectedId = id; changed(true); p.dialog.dismiss() } }
                 }
-                s.add(card, s.label((if (id == api.selectedId) "✓  " else "") + subTitle(sub), 17f, true), gap = 0)
+                s.add(card, s.label(subTitle(sub) + (if (id == api.selectedId) " · выбрана" else ""), 17f, true,
+                    if (id == api.selectedId) 0xFF052A20.toInt() else s.ink), gap = 0)
                 val bar = FrameLayout(activity).apply { background = s.shape(0xFF77818E.toInt(), android.graphics.Color.TRANSPARENT, 8); clipToOutline = true }
                 val fill = View(activity).apply { background = s.shape(0xFF008CFF.toInt(), android.graphics.Color.TRANSPARENT, 8) }
                 bar.addView(fill, FrameLayout.LayoutParams(0, -1))
@@ -168,19 +184,17 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
                     val width = ((right - left) * fraction(sub)).toInt()
                     if (fill.layoutParams.width != width) fill.layoutParams = FrameLayout.LayoutParams(width, -1)
                 }
-                s.add(card, bar, 22); s.add(card, s.label(expiry(sub), 12f, color = s.muted))
+                s.add(card, bar, 22); s.add(card, s.label(expiry(sub), 12f, color = if (id == api.selectedId) 0xFF164C3C.toInt() else s.muted))
                 if (!active) s.add(card, s.label("Подписка неактивна", 12f, color = s.muted), gap = 6)
                 s.add(p.body, card)
             }
             if (api.subscriptions.isEmpty()) s.add(p.body, s.label("У вас пока нет подписок", color = s.muted))
-            s.add(p.body, s.button("Купить / продлить подписку") { p.dialog.dismiss(); purchase() }, 48)
-            s.add(p.body, s.button("Обновить список") { task(p) { api.refresh(); changed(false); draw() } }, 46)
         }
         draw(); task(p) { api.refresh(); changed(false); draw() }
     }
     fun purchase() {
         if (!requireAccount { purchase() }) return
-        val p = panel("Купить / продлить подписку", true)
+        val p = panel("Купить / продлить подписку")
         val saved = api.draft("orderDraft")
         if (saved != null) { order(p, saved); return }
         task(p) {
@@ -311,10 +325,10 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
             s.add(p.body, s.label("Друг может зарегистрироваться по почте и указать этот код. Telegram необязателен.", color = s.muted))
             val terms = data.optJSONObject("terms")
             if (terms != null) s.add(p.body, s.label("Бонус ${terms.optDouble("bonusPercent")}% при покупке от ${terms.optInt("minPurchaseDays")} дней. Максимум ${terms.optInt("maxBonusDays")} бонусных дней.", 12f, color = s.muted))
-            val invitation = referralUrl ?: "Приглашаю во Flint! При регистрации по почте укажите код $code."
+            val invitation = referralUrl ?: "Приглашаю во Flint! Зарегистрируйтесь в приложении по почте, затем откройте Настройки → Пригласить друга и введите код: $code"
             s.add(p.body, s.button(if (referralUrl != null) "Скопировать ссылку" else "Скопировать приглашение") { copy(invitation); p.message.text = "Скопировано" }, 48)
             s.add(p.body, s.button("Поделиться") { activity.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, invitation), "Пригласить друга")) }, 48)
-            if (data.isNull("referrer")) {
+            if (data.isNull("referrer") || data.optJSONObject("referrer")?.length() == 0) {
                 val field = s.field("Код пригласившего друга"); s.add(p.body, field, 50)
                 s.add(p.body, s.button("Применить код") { task(p) {
                     api.request("POST", "/referrals/apply", JSONObject().put("code", field.text.toString().trim())); p.dialog.dismiss(); friends()
@@ -387,33 +401,71 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
     fun support() {
         if (!requireAccount { support() }) return
         val p = panel("Поддержка")
-        task(p) {
-            try {
-                val tickets = objects(api.request("GET", "/support/tickets").data, "items")
-                tickets.forEach { ticket -> s.add(p.body, s.button(ticket.string("subject").ifBlank { "Обращение" }) { ticket(ticket.string("id")) }, 48) }
-                val field = s.field("Опишите проблему").apply { setSingleLine(false); minLines = 4 }
-                s.add(p.body, field, 120)
-                s.add(p.body, s.button("Отправить") { task(p) {
-                    var draft = api.draft("supportDraft")
-                    if (draft == null) { require(field.text.isNotBlank()); draft = JSONObject().put("key", UUID.randomUUID().toString()).put("body", JSONObject().put("text", field.text.toString()).put("platform", if (BuildConfig.IS_TV) "android-tv" else "android")); api.saveDraft("supportDraft", draft) }
-                    api.request("POST", "/support/tickets", draft.getJSONObject("body"), idempotencyKey = draft.string("key"))
-                    api.saveDraft("supportDraft", null); p.dialog.dismiss(); support()
-                } }, 48)
-            } catch (e: ApiError) {
-                if (e.status !in setOf(404, 405, 501)) throw e
-                val link = api.config.optJSONObject("links")?.string("support").orEmpty()
-                s.add(p.body, s.label("Обращения внутри приложения пока недоступны. Свяжитесь с поддержкой Flint.", color = s.muted))
-                if (link.isNotBlank()) s.add(p.body, s.button("Написать в поддержку") { if (link.startsWith("https://t.me/")) openTelegram(link, p) else openLink(link, p) }, 48)
+        val capability = api.config.optJSONObject("flintIntegration")
+        var available = capability?.let { !it.has("supportEnabled") || it.optBoolean("supportEnabled") } ?: true
+        val warning = s.label("", 13f, color = s.muted); s.add(p.body, warning)
+        val field = s.field("Опишите проблему").apply {
+            setSingleLine(false); minLines = 4; gravity = Gravity.TOP or Gravity.START
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            setText(api.draft("supportDraft")?.optJSONObject("body")?.string("text")
+                ?: api.draft("supportInput")?.string("text").orEmpty())
+        }
+        s.add(p.body, field, 140)
+        val tickets = s.column()
+        val send = s.primary("Отправить в поддержку") {}
+        val refresh = s.button("Обновить ответы") {}
+        fun unavailable() {
+            available = false; send.isEnabled = false; refresh.isEnabled = false
+            warning.text = "Доставка обращений ещё не подключена. Администратор сможет включить её через API и админку."
+        }
+        fun drawTickets(items: List<JSONObject>) {
+            tickets.removeAllViews()
+            items.forEach { ticket ->
+                val card = s.column().apply { background = s.shape(0xFF102635.toInt()); setPadding(s.dp(14), s.dp(12), s.dp(14), s.dp(12)) }
+                s.add(card, s.label("Обращение " + ticket.string("id").take(10), 14f, true, s.mint), gap = 0)
+                objects(ticket, "messages").forEach { message ->
+                    val support = message.string("author") == "support"
+                    s.add(card, s.label((if (support) "Поддержка: " else "Вы: ") + message.string("text"), 14f,
+                        color = if (support) s.mint else s.ink))
+                }
+                s.add(tickets, card)
             }
         }
-    }
-    private fun ticket(id: String) {
-        val p = panel("Обращение")
-        task(p) {
-            val data = api.request("GET", "/support/tickets/${Uri.encode(id)}").data
-            s.add(p.body, s.label(data.string("subject"), 18f, true))
-            objects(data, "messages").forEach { s.add(p.body, s.label(it.string("text").ifBlank { it.string("message") })) }
+        suspend fun reload() {
+            try { drawTickets(objects(api.request("GET", "/support/tickets").data, "items")) }
+            catch (e: ApiError) { if (e.status in setOf(404,405,501)) unavailable() else throw e }
         }
+        s.add(p.body, send, 48); s.add(p.body, refresh, 48); s.add(p.body, tickets)
+        send.setOnClickListener {
+            if (p.busy || !available) return@setOnClickListener
+            val text = field.text.toString().trim()
+            if (text.isEmpty()) { p.error("Опишите проблему"); return@setOnClickListener }
+            val pending = api.draft("supportDraft")
+            if (pending != null && pending.optJSONObject("body")?.string("text") != text) {
+                field.setText(pending.optJSONObject("body")?.string("text"))
+                p.error("Повторите отправку сохранённого сообщения, чтобы проверить его доставку."); return@setOnClickListener
+            }
+            task(p) {
+                field.isEnabled = false; send.isEnabled = false
+                try {
+                    val draft = pending ?: JSONObject().put("key", UUID.randomUUID().toString()).put("body",
+                        JSONObject().put("text", text).put("platform", if (BuildConfig.IS_TV) "android-tv" else "android"))
+                    api.saveDraft("supportDraft", draft)
+                    api.request("POST", "/support/tickets", draft.getJSONObject("body"), idempotencyKey = draft.string("key"))
+                    api.saveDraft("supportDraft", null); api.saveDraft("supportInput", null); field.text.clear()
+                    p.message.text = "Обращение сохранено. Ответ появится здесь."; reload()
+                } finally { field.isEnabled = true; send.isEnabled = available }
+            }
+        }
+        refresh.setOnClickListener { task(p) { reload() } }
+        field.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(t: CharSequence?, st: Int, c: Int, a: Int) {}
+            override fun onTextChanged(t: CharSequence?, st: Int, b: Int, c: Int) {
+                api.saveDraft("supportInput", t?.takeIf { it.isNotBlank() }?.let { JSONObject().put("text", it.toString()) })
+            }
+            override fun afterTextChanged(e: android.text.Editable?) {}
+        })
+        if (available) task(p) { reload() } else unavailable()
     }
     private fun confirm(title: String, message: String, action: () -> Unit) {
         val p = panel(title); s.add(p.body, s.label(message, color = s.muted))

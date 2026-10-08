@@ -33,6 +33,8 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.amnezia.vpn.protocol.ProtocolState
 import org.amnezia.vpn.protocol.xray.Xray
 import org.json.JSONObject
@@ -50,6 +52,7 @@ class FlintVpnService : VpnService() {
     private var stateJob: Job? = null
     private var monitorJob: Job? = null
     private val widgetUpdates = Channel<String>(Channel.CONFLATED)
+    private val widgetLock = Mutex()
     private var lastWidgetState = ""
     private var forgetSaved = false
     private var nativeStarted = false
@@ -79,7 +82,7 @@ class FlintVpnService : VpnService() {
     override fun onCreate() {
         super.onCreate()
         createChannel()
-        scope.launch { for (state in widgetUpdates) withContext(Dispatchers.IO) { app.flint.prototype.home.HomeWidget.refresh(this@FlintVpnService, state) } }
+        scope.launch { for (ignored in widgetUpdates) updateWidget() }
         scope.launch {
             for (command in commands) {
                 try {
@@ -101,6 +104,21 @@ class FlintVpnService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         lastStartId = startId
+        if (intent?.action == VpnContract.ACTION_TOGGLE) {
+            // A widget click is a foreground-service PendingIntent, not an Activity.
+            // Query this live state; neither a cached color nor the UI decides.
+            if (!startForegroundSafely(startId)) return START_NOT_STICKY
+            if (snapshot.state in setOf("connected", "connecting") || prefs.getBoolean("desired", false)) {
+                requestStop()
+            } else if (snapshot.state != "disconnecting") {
+                val request = generation.incrementAndGet()
+                pendingGeneration = request
+                publish(snapshot.copy(state = "connecting", generation = request))
+                commands.trySend(Command.Connect(request, null, fromWidget = true))
+                watchNativeDeadline(request, 30_000)
+            }
+            return START_STICKY
+        }
         if (intent?.action == VpnContract.ACTION_DISCONNECT || intent?.action == "app.flint.prototype.vpn.FORGET") {
             if (intent.action == "app.flint.prototype.vpn.FORGET") forgetSaved = true
             requestStop()
@@ -261,11 +279,15 @@ class FlintVpnService : VpnService() {
                 }
                 prefs.edit().putBoolean("desired", false).commit()
                 recoveryFile.delete()
-                val message = if (prepare(this) != null) "Разрешение VPN не предоставлено."
+                val message = if (prepare(this) != null) "Откройте Flint и разрешите подключение VPN один раз. Затем кнопка на экране будет работать самостоятельно."
+                    else if (error.message == "widget_profile") "Сначала выберите сервер и подключитесь в Flint. После этого кнопка на экране сможет включать VPN самостоятельно."
                     else if (error.message == "data_path") "Туннель запущен, но интернет через сервер не отвечает. Выберите другую локацию или выполните автонастройку."
                     else "Не удалось запустить VPN. Проверьте профиль или выберите другой сервер."
                 val stage = if (error.message == "data_path") "DATA_PATH" else "CORE_START"
                 publish(snapshot.copy(state = "error", message = message + "\nДиагностика: $stage / ${org.amnezia.vpn.util.Log.lastIssue}"))
+                updateWidget()
+                if (command.generation != generation.get() || destroyed) return
+                if (command.fromWidget) android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show()
                 pendingGeneration = null
                 leaveForeground()
                 stopSelfResult(lastStartId)
@@ -285,6 +307,9 @@ class FlintVpnService : VpnService() {
         }
         if (request == generation.get() && !destroyed) {
             publish(Snapshot(generation = request))
+            // Complete the launcher update before stopSelf can destroy :vpn.
+            updateWidget()
+            if (request != generation.get() || destroyed) return
             pendingGeneration = null
             leaveForeground()
             stopSelfResult(lastStartId)
@@ -299,7 +324,14 @@ class FlintVpnService : VpnService() {
     }
 
     private fun readConfig(command: Command.Connect): JSONObject {
-        val raw = if (command.recover) {
+        val raw = if (command.fromWidget) {
+            val saved = AtomicFile(File(filesDir, "last-vpn-config.json"))
+            check(saved.baseFile.isFile) { "widget_profile" }
+            saved.openRead().use { input ->
+                require(saved.baseFile.length() in 1..VpnContract.MAX_CONFIG_BYTES.toLong())
+                input.readBytes().toString(Charsets.UTF_8)
+            }
+        } else if (command.recover) {
             require(prefs.getBoolean("desired", false))
             recoveryFile.openRead().use { input ->
                 require(recoveryFile.baseFile.length() in 1..VpnContract.MAX_CONFIG_BYTES.toLong())
@@ -340,6 +372,11 @@ class FlintVpnService : VpnService() {
         clients.toList().forEach(::sendSnapshot)
         if (foreground) getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification())
         if (lastWidgetState != value.state) { lastWidgetState = value.state; widgetUpdates.trySend(value.state) }
+    }
+
+    private suspend fun updateWidget() = widgetLock.withLock {
+        val current = snapshot.state
+        withContext(Dispatchers.IO) { app.flint.prototype.home.HomeWidget.refresh(this@FlintVpnService, current) }
     }
 
     private fun sendSnapshot(client: Messenger) {
@@ -441,7 +478,7 @@ class FlintVpnService : VpnService() {
     }
 
     private sealed interface Command {
-        data class Connect(val generation: Long, val fileName: String?, val recover: Boolean = false) : Command
+        data class Connect(val generation: Long, val fileName: String?, val recover: Boolean = false, val fromWidget: Boolean = false) : Command
         data class Stop(val generation: Long) : Command
     }
     private data class Snapshot(

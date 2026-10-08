@@ -15,7 +15,7 @@
         <package android:name="ru.yandex.yandexmaps" />
         <package android:name="ru.yandex.yandexnavi" />
     </queries>
-    <application android:label="Flint Kotlin (тест)" android:icon="@mipmap/flint_icon"
+    <application android:label="Flint" android:icon="@mipmap/flint_icon"
         android:banner="@drawable/tv_banner" android:theme="@style/FlintTheme"
         android:allowBackup="false" android:supportsRtl="true" android:usesCleartextTraffic="true"
         android:extractNativeLibs="true">
@@ -24,7 +24,7 @@
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/flint_widget_info" />
         </receiver>
-        <activity android:name=".home.ToggleActivity" android:exported="false" android:excludeFromRecents="true" android:theme="@style/FlintToggleTheme" />
+        <activity android:name=".home.ToggleActivity" android:exported="false" android:excludeFromRecents="true" android:taskAffinity="" android:theme="@style/FlintToggleTheme" />
         <provider android:name=".updates.FlintUpdateProvider" android:authorities="${applicationId}.updates" android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/update_paths" />
         </provider>

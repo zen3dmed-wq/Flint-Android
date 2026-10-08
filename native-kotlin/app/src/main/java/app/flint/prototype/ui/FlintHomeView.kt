@@ -164,7 +164,9 @@ class FlintHomeView(context: Context, private val isTv: Boolean, private val cal
         routeToggle.contentDescription = "Сайты РФ: ${if (next.ruDirect) "напрямую" else "через VPN"}"
         serverRows.forEach { (id, button) -> next.servers.find { it.id == id }?.let { item ->
             button.text = "${item.name}\n${serverHint(item)}"
-            if (item.available == false) button.background = s.surface(0xFF35404A.toInt())
+            val selected = id == next.selectedServerId
+            button.background = s.surface(if (item.available == false) 0xFF35404A.toInt() else if (selected) 0xFF57E4B0.toInt() else s.card)
+            button.setTextColor(if (selected && item.available != false) 0xFF052A20.toInt() else s.ink)
         } }
         qr.isEnabled = !next.busy; clipboard.isEnabled = !next.busy; requestLayout()
     }
@@ -183,7 +185,7 @@ class FlintHomeView(context: Context, private val isTv: Boolean, private val cal
     private fun showServers() {
         serverRows.clear()
         popup?.dialog?.dismiss()
-        popup = s.panel("Локация").also { p ->
+        popup = s.panel("Выбор сервера", maxHeight = 600, showClose = false).also { p ->
             fun entry(name: String, id: String?, hint: String, unavailable: Boolean = false) {
                 val b = s.button("$name\n$hint") { p.dialog.dismiss(); callbacks.onSelectServer(id) }
                 b.gravity = Gravity.CENTER_VERTICAL or Gravity.START; b.setPadding(s.dp(16), s.dp(8), s.dp(16), s.dp(8))
@@ -197,8 +199,9 @@ class FlintHomeView(context: Context, private val isTv: Boolean, private val cal
             state.servers.forEach { item -> entry(item.name, item.id,
                 (if (item.available == false) "Недоступен" else item.latencyMs?.let { "$it мс" } ?: "Не проверен") +
                     (item.loadPercent?.let { " · Загрузка $it%" } ?: " · Загрузка: нет данных"), item.available == false) }
-            s.add(p.body, s.button("Проверить") { callbacks.onProbe(false) }, 46)
-            s.add(p.body, s.button("Автонастройка") { p.dialog.dismiss(); callbacks.onProbe(true) }, 46)
+            s.buttons(p.footer, s.button("Проверить") { callbacks.onProbe(false) },
+                s.button("Автонастройка") { p.dialog.dismiss(); callbacks.onProbe(true) })
+            s.closeButton(p)
         }
     }
     override fun onDetachedFromWindow() { popup?.dialog?.dismiss(); super.onDetachedFromWindow() }
