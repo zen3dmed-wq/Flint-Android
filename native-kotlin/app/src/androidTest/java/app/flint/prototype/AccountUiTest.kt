@@ -43,6 +43,8 @@ class AccountUiTest {
                     org.junit.Assert.assertFalse("$screen fits on this screen and must not scroll", scroll.canScrollVertically(1))
                     val bounds = android.graphics.Rect(); p.getGlobalVisibleRect(bounds)
                     org.junit.Assert.assertEquals(p.height, bounds.height())
+                    val position = IntArray(2); p.getLocationOnScreen(position)
+                    bounds.set(position[0], position[1], position[0] + p.width, position[1] + p.height)
                     val visible = android.graphics.Rect(); activity.window.decorView.getWindowVisibleDisplayFrame(visible)
                     org.junit.Assert.assertTrue("$screen centered: $bounds inside $visible", kotlin.math.abs(bounds.centerY() - visible.centerY()) < 24 * activity.resources.displayMetrics.density)
                 }
@@ -54,7 +56,15 @@ class AccountUiTest {
             val deadline = android.os.SystemClock.uptimeMillis() + 5000
             while ("GET /config" !in AccountHarnessActivity.requests && android.os.SystemClock.uptimeMillis() < deadline) android.os.SystemClock.sleep(50)
             UiTestSupport.clickAccessibilityText("Поддержка")
-            val root = UiTestSupport.awaitWindowContaining("Опишите проблему", "Отправить в поддержку")
+            val root = UiTestSupport.awaitWindowContaining("Отправить в поддержку", "Обновить ответы")
+            fun editable(node: android.view.accessibility.AccessibilityNodeInfo): android.view.accessibility.AccessibilityNodeInfo? {
+                if (node.isEditable) return node
+                for (i in 0 until node.childCount) node.getChild(i)?.let { child -> editable(child)?.let { return it } }
+                return null
+            }
+            val field = requireNotNull(editable(root)) { "Support must immediately show an editable message field" }
+            org.junit.Assert.assertTrue(field.isEnabled)
+            org.junit.Assert.assertEquals("Опишите проблему", field.hintText?.toString())
             org.junit.Assert.assertTrue(root.findAccessibilityNodeInfosByText("Госзакупки").isEmpty())
             org.junit.Assert.assertTrue(root.findAccessibilityNodeInfosByText("Написать оператору").isEmpty())
         }
