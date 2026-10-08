@@ -15,7 +15,7 @@ class AccountHarnessActivity : Activity() {
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         requests.clear()
-        supportFixture = SupportFixture(intent.getBooleanExtra("supportTimeout",false))
+        supportFixture = SupportFixture(intent.getBooleanExtra("supportTimeout",false), intent.getIntExtra("supportOpenCount",0), intent.getBooleanExtra("supportRateLimited",false))
         val api = FlintAccount(this) { method, path, body, _, key ->
             requests.add("$method $path")
             if (path.startsWith("/support/")) return@FlintAccount supportFixture.request(method,path,body,key)

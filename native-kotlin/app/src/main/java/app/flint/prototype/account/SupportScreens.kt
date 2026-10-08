@@ -17,6 +17,7 @@ class SupportScreens(private val activity: Activity, private val api: FlintAccou
     private val s = FlintStyle(activity)
     private var session: Session? = null
     private var foreground = true
+    private var retryAt = 0L
     fun close() { session?.p?.dialog?.dismiss(); session = null }
     fun setForeground(value: Boolean) { foreground = value; session?.poll() }
     fun show() { close(); session = Session().also { it.load() } }
@@ -38,11 +39,17 @@ class SupportScreens(private val activity: Activity, private val api: FlintAccou
         private var list = emptyList<JSONObject>()
         private var readId = ""
         private var readInFlight = false
-        private var retryAt = 0L
+        private var listLoaded = false
+        private var messageLimit = false
+        private var listing = true
         private var revision = 0
         private var loading = false
         private val info = s.label("Напишите нам — ответ появится в этом чате.", color = s.muted)
+        private val limits = s.label("До 3 открытых обращений · до 5 новых в час", 11f, color = s.muted)
         private val history = s.column()
+        private val ticketList = s.column()
+        private val create = s.primary("Создать тикет") { newTicket() }
+        private val back = s.button("Все обращения") { launch { refreshList(); showList() } }
         private val categoryButton = s.button("Загрузка тем…") { chooseCategory() }
         private val input = s.field("Опишите проблему").apply {
             setSingleLine(false); minLines = 2; maxLines = 4; gravity = Gravity.TOP or Gravity.START
@@ -54,8 +61,8 @@ class SupportScreens(private val activity: Activity, private val api: FlintAccou
         private val rate = s.button("Оценить работу поддержки") { rating() }
 
         init {
-            s.buttons(p.body, s.button("Обращения") { showList() }, s.button("Новое обращение") { newTicket() })
-            s.add(p.body, info); s.add(p.body, categoryButton, 44)
+            s.add(p.body, create, 48); s.add(p.body, back, 44); s.add(p.body, ticketList)
+            s.add(p.body, info); s.add(p.body, limits); s.add(p.body, categoryButton, 44)
             s.add(p.body, history)
             s.add(p.footer, input, 94); s.add(p.footer, send, 48)
             s.buttons(p.body, finish, rate)
@@ -75,15 +82,24 @@ class SupportScreens(private val activity: Activity, private val api: FlintAccou
         }
         private fun controls() {
             val closed = ticket?.string("status") == "closed"
-            categoryButton.visibility = if (ticket == null) View.VISIBLE else View.GONE
+            create.visibility = if (listing) View.VISIBLE else View.GONE
+            create.isEnabled = !loading && listLoaded
+            back.visibility = if (listing) View.GONE else View.VISIBLE
+            ticketList.visibility = if (listing) View.VISIBLE else View.GONE
+            info.visibility = if (listing) View.GONE else View.VISIBLE
+            history.visibility = if (listing) View.GONE else View.VISIBLE
+            categoryButton.visibility = if (!listing && ticket == null) View.VISIBLE else View.GONE
             categoryButton.text = "Тема: " + (categories.find { it.string("id") == category }?.string("title") ?: "загрузка…")
             categoryButton.isEnabled = categories.isNotEmpty() && !loading
-            input.visibility = if (closed) View.GONE else View.VISIBLE
-            send.visibility = if (closed) View.GONE else View.VISIBLE
-            send.isEnabled = !loading && (ticket != null || category.isNotBlank())
+            input.visibility = if (listing || closed) View.GONE else View.VISIBLE
+            send.visibility = if (listing || closed) View.GONE else View.VISIBLE
+            val exhausted = messageLimit || messages.values.count { it.string("author") == "user" } >= 300
+            send.isEnabled = !loading && (ticket != null || (category.isNotBlank() && listLoaded)) && !exhausted
+            limits.text = if (exhausted) "В этом чате уже 300 ваших сообщений. Закройте его и создайте новое обращение."
+                else "Открыто обращений: ${list.count { it.string("status") != "closed" }} из 3 · до 5 новых в час"
             input.isEnabled = !loading
-            finish.visibility = if (ticket != null && !closed) View.VISIBLE else View.GONE
-            rate.visibility = if (ticket?.optBoolean("canRate") == true) View.VISIBLE else View.GONE
+            finish.visibility = if (!listing && ticket != null && !closed) View.VISIBLE else View.GONE
+            rate.visibility = if (!listing && ticket?.optBoolean("canRate") == true) View.VISIBLE else View.GONE
             finish.isEnabled = !loading; rate.isEnabled = !loading
         }
         private fun launch(action: suspend () -> Unit) {
@@ -99,6 +115,7 @@ class SupportScreens(private val activity: Activity, private val api: FlintAccou
                     if (e.status in setOf(400,409,422)) api.saveDraft("supportDraft", null)
                     if (e.status == 429) retryAt = System.currentTimeMillis() + (e.retryAfterSeconds ?: 60) * 1000L
                     if (e.code == "too_many_open_tickets") { runCatching { refreshList() }; showList() }
+                    if (e.code == "ticket_message_limit") messageLimit = true
                     if (e.code in setOf("ticket_closed", "ticket_message_limit", "ticket_already_rated", "ticket_not_closed")) {
                         api.saveDraft("supportDraft", null)
                         runCatching { refreshTicket(false) }
@@ -111,13 +128,17 @@ class SupportScreens(private val activity: Activity, private val api: FlintAccou
             categories = objects(api.request("GET", "/support/categories").data, "items")
             category = (categories.find { it.string("id") == "other" } ?: categories.firstOrNull())?.string("id").orEmpty()
             refreshList()
-            val pending = api.draft("supportDraft")
-            val saved = pending?.string("ticketId").orEmpty().ifBlank { api.draft("supportInput")?.string("ticketId").orEmpty() }
-            if (saved.isNotBlank() && list.any { it.string("id") == saved }) open(saved)
-            else if (input.text.isBlank()) list.firstOrNull { it.string("status") != "closed" }?.let { open(it.string("id")) }
+            showList()
             if (categories.isEmpty() && ticket == null) p.error("Сервис пока не предлагает темы обращений.")
         }
-        private suspend fun refreshList() { list = api.refreshSupportTickets(); unreadChanged() }
+        private suspend fun refreshList() { list = api.refreshSupportTickets(); listLoaded = true; unreadChanged(); if (listing) renderList(); controls() }
+        private fun creationLimit(): String? {
+            if (list.count { it.string("status") != "closed" } >= 3) return "У вас уже 3 открытых обращения. Продолжите существующий чат или закройте решённый вопрос."
+            val cutoff = System.currentTimeMillis() - 3_600_000L
+            if (list.count { runCatching { java.time.Instant.parse(it.string("createdAt")).toEpochMilli() > cutoff }.getOrDefault(false) } >= 5)
+                return "Можно создать не больше 5 обращений в час. Продолжите существующий чат или попробуйте позже."
+            return null
+        }
         private fun chooseCategory() {
             val picker = child("Тема обращения")
             categories.forEach { item -> s.add(picker.body, s.button(item.string("title")) {
@@ -125,26 +146,28 @@ class SupportScreens(private val activity: Activity, private val api: FlintAccou
             }, 46) }
         }
         private fun showList() {
-            val picker = child("Обращения")
-            fun draw() {
-                picker.body.removeAllViews()
-                if (list.isEmpty()) s.add(picker.body, s.label("Обращений пока нет.", color = s.muted))
+            listing = true; renderList(); controls(); poll()
+        }
+        private fun renderList() {
+                ticketList.removeAllViews()
+                if (list.isEmpty()) s.add(ticketList, s.label("Обращений пока нет. Нажмите «Создать тикет», чтобы написать нам.", color = s.muted))
                 list.forEach { item ->
                     val unread = item.optInt("unreadCount").takeIf { it > 0 }?.let { " · новых: $it" }.orEmpty()
-                    s.add(picker.body, s.button("№${item.string("id")} · ${status(item)}$unread\n${item.string("subject")}") {
-                        picker.dialog.dismiss(); launch { open(item.string("id")) }
+                    s.add(ticketList, s.button("№${item.string("id")} · ${status(item)}$unread\n${item.string("subject")}") {
+                        launch { open(item.string("id")) }
                     }, 76)
                 }
-            }
-            draw()
-            s.add(picker.footer, s.button("Обновить список") { scope.launch {
-                try { refreshList(); draw() } catch (e: Exception) { picker.error(e.message.orEmpty()) }
-            } }, 46)
+                s.add(ticketList, s.button("Обновить список") { launch { refreshList() } }, 46)
         }
         private fun newTicket() {
             if (loading) return
+            val pending = api.draft("supportDraft")
+            if (pending != null && pending.string("ticketId").isEmpty()) {
+                listing = false; ticket = null; input.setText(pending.optJSONObject("body")?.string("text")); controls(); return
+            }
+            creationLimit()?.let { p.error(it); showList(); return }
             if (api.draft("supportDraft") != null) { p.error("Сначала повторите отправку сохранённого сообщения, чтобы проверить доставку."); return }
-            revision++; ticket = null; messages.clear(); readId = ""; history.removeAllViews()
+            listing = false; revision++; ticket = null; messageLimit = false; messages.clear(); readId = ""; history.removeAllViews()
             input.text.clear(); info.text = "Новое обращение"; p.message.text = ""; controls(); poll()
         }
         private suspend fun open(id: String) {
@@ -152,7 +175,7 @@ class SupportScreens(private val activity: Activity, private val api: FlintAccou
                 p.error("Повторите отправку сохранённого сообщения перед сменой обращения."); return
             }
             val value = api.request("GET", "/support/tickets/${encoded(id)}").data
-            revision++; messages.clear(); readId = ""; ticket = value
+            listing = false; revision++; messageLimit = false; messages.clear(); readId = ""; ticket = value
             objects(value, "messages").forEach { messages[it.string("id")] = it }
             val saved = api.draft("supportInput")
             input.setText(saved?.takeIf { it.string("ticketId") == id }?.string("text").orEmpty())
@@ -188,7 +211,7 @@ class SupportScreens(private val activity: Activity, private val api: FlintAccou
             controls()
         }
         private fun markRead() {
-            if (!foreground || !p.dialog.isShowing || readInFlight) return
+            if (listing || !foreground || !p.dialog.isShowing || readInFlight || System.currentTimeMillis() < retryAt) return
             val id = ticket?.string("id") ?: return
             val cursor = messages.keys.lastOrNull() ?: return
             if (cursor == readId) return
@@ -208,7 +231,7 @@ class SupportScreens(private val activity: Activity, private val api: FlintAccou
         }
         fun poll() {
             pollJob?.cancel(); pollJob = null
-            if (!foreground || !p.dialog.isShowing || ticket == null || ticket?.string("status") == "closed") return
+            if (listing || !foreground || !p.dialog.isShowing || ticket == null || ticket?.string("status") == "closed") return
             pollJob = scope.launch {
                 while (isActive && foreground && ticket?.string("status") != "closed") {
                     delay(maxOf(12_000L, retryAt - System.currentTimeMillis()))
@@ -231,6 +254,14 @@ class SupportScreens(private val activity: Activity, private val api: FlintAccou
                 input.setText(pending.optJSONObject("body")?.string("text")); p.error("Повторите отправку сохранённого сообщения без изменений."); return
             }
             launch {
+                // A retry may recover an already-created ticket: never block its saved key locally.
+                if (id.isEmpty() && pending == null) {
+                    refreshList()
+                    creationLimit()?.let { p.error(it); showList(); return@launch }
+                }
+                if (id.isNotEmpty() && pending == null && (messageLimit || messages.values.count { it.string("author") == "user" } >= 300)) {
+                    p.error("Достигнут лимит 300 сообщений. Закройте этот чат и создайте новый."); return@launch
+                }
                 val body = JSONObject().put("text", text)
                 if (id.isEmpty()) body.put("category", category).put("subject", text.lineSequence().first().take(100))
                 val draft = pending ?: JSONObject().put("kind", if (id.isEmpty()) "create" else "message").put("ticketId", id)

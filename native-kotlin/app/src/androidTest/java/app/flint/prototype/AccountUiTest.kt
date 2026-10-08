@@ -10,6 +10,11 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AccountUiTest {
+    private fun createSupport() {
+        UiTestSupport.awaitWindowContaining("Создать тикет", "Помогите подключить телевизор")
+        UiTestSupport.clickAccessibilityText("Создать тикет")
+        UiTestSupport.awaitWindowContaining("Тема: Общий вопрос")
+    }
     private fun writeSupport(text: String) {
         val root = UiTestSupport.awaitWindowContaining("Отправить в поддержку")
         fun field(node: android.view.accessibility.AccessibilityNodeInfo): android.view.accessibility.AccessibilityNodeInfo? {
@@ -22,7 +27,7 @@ class AccountUiTest {
     }
     @Test fun supportChatRepliesReadCloseAndRatingFollowV1Contract() {
         ActivityScenario.launch<AccountHarnessActivity>(Intent(UiTestSupport.instrumentation.targetContext,AccountHarnessActivity::class.java).putExtra("screen","support")).use {
-            UiTestSupport.awaitWindowContaining("Тема: Общий вопрос")
+            createSupport()
             writeSupport("Первая строка\nОписание проблемы"); UiTestSupport.clickAccessibilityText("Отправить в поддержку")
             UiTestSupport.awaitWindowContaining("Обращение №ticket-new", "Анна", "Здравствуйте! Уточните")
             org.junit.Assert.assertEquals("Первая строка",AccountHarnessActivity.supportFixture.bodies.first().getString("subject"))
@@ -45,7 +50,7 @@ class AccountUiTest {
     }
     @Test fun supportRetryKeepsIdempotencyKeyAfterLostResponse() {
         ActivityScenario.launch<AccountHarnessActivity>(Intent(UiTestSupport.instrumentation.targetContext,AccountHarnessActivity::class.java).putExtra("screen","support").putExtra("supportTimeout",true)).use {
-            UiTestSupport.awaitWindowContaining("Тема: Общий вопрос")
+            createSupport()
             writeSupport("Повтор без дубликата"); UiTestSupport.clickAccessibilityText("Отправить в поддержку")
             UiTestSupport.awaitWindowContaining("Тестовый обрыв связи")
             UiTestSupport.clickAccessibilityText("Отправить в поддержку")
@@ -54,9 +59,27 @@ class AccountUiTest {
             org.junit.Assert.assertEquals(2,keys.size);org.junit.Assert.assertEquals(keys[0],keys[1])
         }
     }
+    @Test fun supportThreeOpenTicketsPreventFourthWithoutBlockingExistingChat() {
+        ActivityScenario.launch<AccountHarnessActivity>(Intent(UiTestSupport.instrumentation.targetContext,AccountHarnessActivity::class.java).putExtra("screen","support").putExtra("supportOpenCount",3)).use {
+            UiTestSupport.awaitWindowContaining("Открыто обращений: 3 из 3", "Открытый вопрос 1")
+            UiTestSupport.clickAccessibilityText("Создать тикет")
+            UiTestSupport.awaitWindowContaining("Открытый вопрос 1", "Открытый вопрос 2", "Открытый вопрос 3")
+            org.junit.Assert.assertEquals(0,AccountHarnessActivity.requests.count { it == "POST /support/tickets" })
+        }
+    }
+    @Test fun supportRateLimitHonorsRetryAfterAndKeepsDraft() {
+        ActivityScenario.launch<AccountHarnessActivity>(Intent(UiTestSupport.instrumentation.targetContext,AccountHarnessActivity::class.java).putExtra("screen","support").putExtra("supportRateLimited",true)).use {
+            createSupport()
+            writeSupport("Проверка лимита");UiTestSupport.clickAccessibilityText("Отправить в поддержку")
+            UiTestSupport.awaitWindowContaining("Лимит новых обращений")
+            UiTestSupport.clickAccessibilityText("Отправить в поддержку")
+            UiTestSupport.awaitWindowContaining("Слишком много запросов")
+            org.junit.Assert.assertEquals(1,AccountHarnessActivity.requests.count { it == "POST /support/tickets" })
+        }
+    }
     @Test fun supportStopsPollingWhenActivityIsStopped() {
         ActivityScenario.launch<AccountHarnessActivity>(Intent(UiTestSupport.instrumentation.targetContext,AccountHarnessActivity::class.java).putExtra("screen","support")).use { scenario ->
-            UiTestSupport.awaitWindowContaining("Тема: Общий вопрос")
+            createSupport()
             writeSupport("Проверка паузы");UiTestSupport.clickAccessibilityText("Отправить в поддержку")
             UiTestSupport.awaitWindowContaining("Сообщение отправлено")
             scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
@@ -72,7 +95,7 @@ class AccountUiTest {
             "subscriptions" to arrayOf("Мои подписки", "199,6 GB / 1000,0 GB"),
             "friends" to arrayOf("Пригласить друга", "FLINT-TEST"),
             "devices" to arrayOf("Устройства", "Добавить устройство по QR", "Сеансы входа в аккаунт")
-            ,"support" to arrayOf("Поддержка", "Отправить в поддержку", "Обращения", "Тема: Общий вопрос")
+            ,"support" to arrayOf("Поддержка", "Создать тикет", "Помогите подключить телевизор", "Закрыто")
             ,"settings" to arrayOf("Настройки Flint", "Добавить виджет на экран", "Закрыть")
             ,"identity" to arrayOf("Аккаунт Flint", "Подписка активна", "Способы входа · почта и Telegram")
             ,"routing" to arrayOf("Раздельное проксирование", "Добавить сайт", "zakupki.gov.ru")
@@ -107,12 +130,13 @@ class AccountUiTest {
             }
         }
     }
-    @Test fun mainSupportOpensMessageFieldDirectly() {
+    @Test fun mainSupportOpensTicketListAndCreateOpensComposer() {
         ActivityScenario.launch<AccountHarnessActivity>(Intent(UiTestSupport.instrumentation.targetContext, AccountHarnessActivity::class.java).putExtra("screen", "home")).use {
             val deadline = android.os.SystemClock.uptimeMillis() + 5000
             while ("GET /config" !in AccountHarnessActivity.requests && android.os.SystemClock.uptimeMillis() < deadline) android.os.SystemClock.sleep(50)
             UiTestSupport.clickAccessibilityText("Поддержка")
-            val root = UiTestSupport.awaitWindowContaining("Отправить в поддержку", "Обращения")
+            createSupport()
+            val root = UiTestSupport.awaitWindowContaining("Отправить в поддержку", "Все обращения")
             fun editable(node: android.view.accessibility.AccessibilityNodeInfo): android.view.accessibility.AccessibilityNodeInfo? {
                 if (node.isEditable) return node
                 for (i in 0 until node.childCount) node.getChild(i)?.let { child -> editable(child)?.let { return it } }
@@ -127,7 +151,8 @@ class AccountUiTest {
     }
     @Test fun supportSendsExactTextAndDisplaysRepliesInline() {
         ActivityScenario.launch<AccountHarnessActivity>(Intent(UiTestSupport.instrumentation.targetContext, AccountHarnessActivity::class.java).putExtra("screen", "support")).use {
-            val root = UiTestSupport.awaitWindowContaining("Отправить в поддержку", "Обращения", "Тема: Общий вопрос")
+            createSupport()
+            val root = UiTestSupport.awaitWindowContaining("Отправить в поддержку", "Все обращения", "Тема: Общий вопрос")
             fun input(node: android.view.accessibility.AccessibilityNodeInfo): android.view.accessibility.AccessibilityNodeInfo? {
                 if (node.isEditable) return node
                 for (i in 0 until node.childCount) node.getChild(i)?.let { c -> input(c)?.let { return it } }

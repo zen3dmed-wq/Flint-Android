@@ -6,18 +6,19 @@ import org.json.JSONObject
 import java.net.URLDecoder
 
 /** Strict local implementation of the 2026-10-08 support contract; never sends externally. */
-class SupportFixture(private val failFirstCreate: Boolean = false) {
+class SupportFixture(private val failFirstCreate: Boolean = false, private val openCount: Int = 0, private val rateLimited: Boolean = false) {
     val bodies = mutableListOf<JSONObject>()
     val keys = mutableListOf<String>()
     private var failed = false
     private var created: JSONObject? = null
     private val dedup = mutableMapOf<String, Pair<String, JSONObject>>()
+    private val openTickets by lazy { (1..openCount).map { n -> JSONObject().put("id","open-$n").put("subject","Открытый вопрос $n").put("status","new").put("messages",JSONArray()) } }
     private val old = JSONObject("""{"id":"ticket-test","category":"custom-general","subject":"Помогите подключить телевизор","status":"closed","closedBy":"support","unreadCount":0,"canRate":true,"messages":[{"id":"m-old","author":"support","authorName":"Анна","text":"Нажмите «Добавить с помощью QR» на телевизоре","createdAt":"2026-10-08T09:30:00Z"}]}""")
     @Synchronized fun request(method: String, path: String, body: JSONObject?, key: String?): ApiReply {
         if (path == "/support/categories") return ApiReply(200, JSONObject("""{"items":[{"id":"custom-general","title":"Общий вопрос"}]}"""))
         if (path == "/support/tickets" && method == "GET") {
             val items = JSONArray()
-            listOfNotNull(created, old).forEach { items.put(JSONObject(it.toString()).apply { remove("messages") }) }
+            (listOfNotNull(created, old) + openTickets).forEach { items.put(JSONObject(it.toString()).apply { remove("messages") }) }
             return ApiReply(200, JSONObject().put("items",items).put("unreadTickets", if ((created?.optInt("unreadCount") ?: 0) > 0) 1 else 0))
         }
         if (path == "/support/tickets" && method == "POST") {
@@ -25,6 +26,7 @@ class SupportFixture(private val failFirstCreate: Boolean = false) {
             check(body.string("subject").length in 1..100 && '\n' !in body.string("subject"))
             check(body.string("text").length in 1..4000); check(!body.has("platform")); check(!key.isNullOrBlank())
             bodies.add(JSONObject(body.toString())); keys.add(key)
+            if (rateLimited) throw ApiError(429,"rate_limited","Лимит новых обращений: повторите через 60 секунд",60)
             val record = dedup[key]
             if (record != null) { check(record.first == body.toString()); return ApiReply(201,JSONObject(record.second.toString())) }
             val ticket = JSONObject().put("id","ticket-new").put("category",body.string("category"))
@@ -36,7 +38,7 @@ class SupportFixture(private val failFirstCreate: Boolean = false) {
             return ApiReply(201,JSONObject(ticket.toString()))
         }
         val id = path.removePrefix("/support/tickets/").substringBefore('/').substringBefore('?')
-        val ticket = listOfNotNull(created,old).firstOrNull { it.string("id") == id } ?: throw ApiError(404,"not_found","Обращение не найдено")
+        val ticket = (listOfNotNull(created,old) + openTickets).firstOrNull { it.string("id") == id } ?: throw ApiError(404,"not_found","Обращение не найдено")
         val messages = ticket.getJSONArray("messages")
         if (method == "GET") {
             val value = JSONObject(ticket.toString())
