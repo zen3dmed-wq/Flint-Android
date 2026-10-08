@@ -11,6 +11,7 @@ import android.net.InetAddresses
 import android.os.*
 import android.text.InputType
 import android.widget.EditText
+import android.widget.Switch
 import app.flint.prototype.data.ProfileStore
 import app.flint.prototype.data.QrImageDecoder
 import app.flint.prototype.data.ProfileCollection
@@ -90,9 +91,6 @@ class MainActivity : Activity(), FlintUiCallbacks {
                     info.getBoolean("ruDirect", state.ruDirect) else state.ruDirect,
                 serverLabel = if (localPreparation) state.serverLabel else info.getString("serverName").orEmpty().ifBlank { selectedLabel() })
             render()
-            if (phase == FlintPhase.ERROR && state.selectedServerId == null && !preparing && automaticAttempts.isNotEmpty()) {
-                profiles.firstOrNull { it.id !in automaticAttempts }?.let { connectSelected(it.id) }
-            }
             true
         } else false
     })
@@ -579,7 +577,14 @@ class MainActivity : Activity(), FlintUiCallbacks {
     override fun onSubscriptions() = accountScreens.subscriptions()
     override fun onPurchase() = accountScreens.purchase()
     override fun onDevices() = accountScreens.devices()
-    override fun onSupport() = accountScreens.support()
+    override fun onSupport() {
+        val s = FlintStyle(this); val p = s.panel("Flint Assist")
+        val text = s.label("Если соединение даст сбой — подскажу, что делать.", color = s.muted)
+        s.add(p.body, text)
+        s.add(p.body, s.button("Написать оператору") { p.dialog.dismiss(); accountScreens.support() }, 48)
+        s.add(p.body, s.button("Подключение") { text.text = "Выберите «Автоматически» или запустите «Автонастройку» в списке серверов. Flint проверит соединение и сохранит рабочие параметры." }, 48)
+        s.add(p.body, s.button("Госзакупки") { text.text = "zakupki.gov.ru, ЕИС и выбранные российские сервисы идут напрямую, когда включены «Сайты РФ». Свои сайты можно добавить в «Правила»." }, 48)
+    }
     override fun onTvPair() = accountScreens.telegram()
     override fun onProbe(initialize: Boolean) {
         if (!initialize) { checkServers(); scope.launch { runCatching { refreshLoads() } }; return }

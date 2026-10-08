@@ -163,9 +163,11 @@ class FlintVpnService : VpnService() {
         stopNative()
         if (command.generation != generation.get() || destroyed) return
         publish(Snapshot(state = "connecting", generation = command.generation))
+        var attemptedConfig: JSONObject? = null
         try {
             check(prepare(this) == null) { "permission" }
             val config = withContext(nativeDispatcher) { readConfig(command) }
+            attemptedConfig = config
             require(config.optString("protocol").equals("xray", true)) { "protocol" }
             require(config.optJSONObject("xray_config_data")?.optString("config")?.isNotBlank() == true) { "config" }
             if (command.generation != generation.get() || destroyed) return
@@ -196,6 +198,7 @@ class FlintVpnService : VpnService() {
                 }
             }
             withContext(nativeDispatcher) {
+                org.amnezia.vpn.util.Log.clear()
                 native.initialize(applicationContext, nativeState) { _ ->
                     // Native errors may contain endpoints/credentials. Keep display safe.
                     scope.launch {
@@ -231,12 +234,31 @@ class FlintVpnService : VpnService() {
             if (error is CancellationException) throw error
             stopNative()
             if (command.generation == generation.get() && !destroyed) {
+                val old = attemptedConfig
+                if (old != null && old.optBoolean("flintAutomatic")) {
+                    val tried = old.optJSONArray("flintTried") ?: org.json.JSONArray()
+                    tried.put(old.optString("flintServerId"))
+                    val ids = (0 until tried.length()).map { tried.optString(it) }.toSet()
+                    val candidates = old.optJSONArray("flintCandidates") ?: org.json.JSONArray()
+                    val next = (0 until candidates.length()).mapNotNull { candidates.optJSONObject(it) }.firstOrNull { it.optString("id") !in ids }
+                    if (next != null && ids.size < 5) {
+                        val config = AutomaticMonitor.switchConfig(old, next).put("flintTried", tried)
+                        val dir = File(filesDir, VpnContract.CONFIG_DIRECTORY).apply { mkdirs() }
+                        val file = File(dir, java.util.UUID.randomUUID().toString() + ".json")
+                        withContext(Dispatchers.IO) { file.writeText(config.toString()) }
+                        val request = generation.incrementAndGet(); pendingGeneration = request
+                        publish(snapshot.copy(state = "connecting", message = "Пробуем другой сервер…", generation = request))
+                        commands.trySend(Command.Connect(request, file.name)); watchNativeDeadline(request, 30_000)
+                        return
+                    }
+                }
                 prefs.edit().putBoolean("desired", false).commit()
                 recoveryFile.delete()
                 val message = if (prepare(this) != null) "Разрешение VPN не предоставлено."
                     else if (error.message == "data_path") "Туннель запущен, но интернет через сервер не отвечает. Выберите другую локацию или выполните автонастройку."
                     else "Не удалось запустить VPN. Проверьте профиль или выберите другой сервер."
-                publish(snapshot.copy(state = "error", message = message))
+                val stage = if (error.message == "data_path") "DATA_PATH" else "CORE_START"
+                publish(snapshot.copy(state = "error", message = message + "\nДиагностика: $stage / ${org.amnezia.vpn.util.Log.lastIssue}"))
                 pendingGeneration = null
                 leaveForeground()
                 stopSelfResult(lastStartId)

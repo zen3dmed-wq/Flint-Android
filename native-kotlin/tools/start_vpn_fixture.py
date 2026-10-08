@@ -12,6 +12,7 @@ import signal
 import socket
 import socketserver
 import struct
+import ssl
 import subprocess
 import threading
 import time
@@ -103,11 +104,24 @@ def main():
     # A failed rerun must not leave a successful readiness marker from an old run.
     (args.directory / 'ready').unlink(missing_ok=True)
     config = args.directory / 'fixture-xray.json'
+    # A local TLS 1.3 target allows a real Reality handshake without external sites.
+    certificate = args.directory / 'tls.crt'
+    private = args.directory / 'tls.key'
+    subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', str(private), '-out', str(certificate), '-days', '1', '-subj', '/CN=localhost', '-addext', 'subjectAltName=DNS:localhost'], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    key_output = subprocess.check_output([str(args.binary.resolve()), 'x25519'], text=True)
+    keys = dict(line.split(':', 1) for line in key_output.splitlines() if ':' in line)
+    reality_private = keys['PrivateKey'].strip()
+    reality_public = (keys.get('Password') or keys.get('PublicKey')).strip()
+    (args.directory / 'reality-public-key').write_text(reality_public, encoding='ascii')
     config.write_text(json.dumps({
         'log': {'loglevel': 'info'},
         'inbounds': [{'listen': '127.0.0.1', 'port': 18443, 'protocol': 'vless',
                       'settings': {'decryption': 'none', 'clients': [{'id': FIXTURE_ID}]},
-                      'streamSettings': {'network': 'tcp', 'security': 'none'}}],
+                      'streamSettings': {'network': 'tcp', 'security': 'none'}},
+                     {'listen': '127.0.0.1', 'port': 18444, 'protocol': 'vless',
+                      'settings': {'decryption': 'none', 'clients': [{'id': FIXTURE_ID}]},
+                      'streamSettings': {'network': 'tcp', 'security': 'reality', 'realitySettings': {
+                          'dest': '127.0.0.1:19443', 'serverNames': ['localhost'], 'privateKey': reality_private, 'shortIds': ['1234abcd']}}}],
         # Current Xray blocks private destinations by default for VLESS inbounds,
         # including a loopback redirect. Allow only the fixture HTTP endpoint.
         'outbounds': [{'tag': 'http', 'protocol': 'freedom', 'settings': {'redirect': '127.0.0.1:18080',
@@ -127,6 +141,14 @@ def main():
     thread.start()
     dns = socketserver.ThreadingUDPServer(('127.0.0.1', 15353), DnsHandler)
     threading.Thread(target=dns.serve_forever, daemon=True).start()
+    tls_server = http.server.ThreadingHTTPServer(('127.0.0.1', 19443), Handler)
+    tls_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    tls_context.minimum_version = ssl.TLSVersion.TLSv1_3
+    tls_context.set_alpn_protocols(['h2', 'http/1.1'])
+    tls_context.load_cert_chain(str(certificate), str(private))
+    tls_server.socket = tls_context.wrap_socket(tls_server.socket, server_side=True)
+    tls_server.request_lock = server.request_lock; tls_server.request_count = 0; tls_server.request_log = server.request_log
+    threading.Thread(target=tls_server.serve_forever, daemon=True).start()
     stopped = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stopped.set())
     signal.signal(signal.SIGINT, lambda *_: stopped.set())
@@ -160,6 +182,7 @@ def main():
             server.server_close()
             dns.shutdown()
             dns.server_close()
+            tls_server.shutdown(); tls_server.server_close()
 
 
 if __name__ == '__main__':

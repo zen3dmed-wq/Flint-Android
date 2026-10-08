@@ -88,7 +88,7 @@ class FlintAccount(private val context: Context) {
         require(data.string("accessToken").isNotBlank() && data.string("refreshToken").isNotBlank()) { "Некорректный ответ входа" }
         epoch++; tokens = JSONObject(data.toString()); vault.write(tokens)
         me = JSONObject(); subscriptions = emptyList(); selectedId = ""
-        prefs.edit().remove("me").remove("subscriptions").apply()
+        prefs.edit().remove("me").remove("subscriptions").remove("orderDraft").remove("supportDraft").apply()
     }
     suspend fun logout() {
         authLock.withLock {

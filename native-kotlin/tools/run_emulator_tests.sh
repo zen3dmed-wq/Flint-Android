@@ -22,7 +22,8 @@ test -f build/vpn-fixture/ready || exit 1
 gradle --no-daemon :app:connectedPhoneDebugAndroidTest \
   -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true \
   -Pandroid.testInstrumentationRunnerArguments.notClass=app.flint.prototype.NativeTvUiTest \
-  -Pandroid.testInstrumentationRunnerArguments.flintLocalVpnTest=true
+  -Pandroid.testInstrumentationRunnerArguments.flintLocalVpnTest=true \
+  -Pandroid.testInstrumentationRunnerArguments.flintRealityPublicKey="$(cat build/vpn-fixture/reality-public-key)"
 phone_result=$?
 cp -a app/build/outputs/androidTest-results evidence/phone/ || true
 cp -a app/build/reports/androidTests evidence/phone/ || true
