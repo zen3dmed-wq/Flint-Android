@@ -48,6 +48,7 @@ class FlintVpnService : VpnService() {
     private val clients = mutableSetOf<Messenger>()
     private val native = Xray.instance
     private var stateJob: Job? = null
+    private var monitorJob: Job? = null
     private var nativeStarted = false
     private var destroyed = false
     private var foreground = false
@@ -158,6 +159,7 @@ class FlintVpnService : VpnService() {
     private suspend fun connect(command: Command.Connect) {
         if (command.generation != generation.get() || destroyed) return
         stateJob?.cancel()
+        monitorJob?.cancel()
         stopNative()
         if (command.generation != generation.get() || destroyed) return
         publish(Snapshot(state = "connecting", generation = command.generation))
@@ -211,8 +213,20 @@ class FlintVpnService : VpnService() {
                 stopNative()
                 return
             }
+            publish(snapshot.copy(state = "connecting", message = "Проверяем интернет через VPN…"))
+            if (!VpnReachability.verify(this, config)) throw java.io.IOException("data_path")
+            if (command.generation != generation.get() || destroyed) { stopNative(); return }
             publish(snapshot.copy(state = "connected", message = ""))
             pendingGeneration = null
+            monitorJob = AutomaticMonitor.start(this, scope, config) { next ->
+                if (generation.get() == command.generation) {
+                    val dir = File(filesDir, VpnContract.CONFIG_DIRECTORY).apply { mkdirs() }
+                    val file = File(dir, java.util.UUID.randomUUID().toString() + ".json")
+                    file.writeText(next.toString())
+                    val request = generation.incrementAndGet(); pendingGeneration = request
+                    commands.trySend(Command.Connect(request, file.name)); watchNativeDeadline(request, 30_000)
+                }
+            }
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
             stopNative()
@@ -220,6 +234,7 @@ class FlintVpnService : VpnService() {
                 prefs.edit().putBoolean("desired", false).commit()
                 recoveryFile.delete()
                 val message = if (prepare(this) != null) "Разрешение VPN не предоставлено."
+                    else if (error.message == "data_path") "Туннель запущен, но интернет через сервер не отвечает. Выберите другую локацию или выполните автонастройку."
                     else "Не удалось запустить VPN. Проверьте профиль или выберите другой сервер."
                 publish(snapshot.copy(state = "error", message = message))
                 pendingGeneration = null
@@ -231,6 +246,7 @@ class FlintVpnService : VpnService() {
 
     private suspend fun disconnect(request: Long) {
         stateJob?.cancel()
+        monitorJob?.cancel()
         if (request == generation.get()) publish(snapshot.copy(state = "disconnecting", generation = request))
         stopNative()
         recoveryFile.delete()
@@ -270,7 +286,10 @@ class FlintVpnService : VpnService() {
 
     private fun saveRecovery(text: String) {
         val stream = recoveryFile.startWrite()
-        try { stream.write(text.toByteArray(Charsets.UTF_8)); recoveryFile.finishWrite(stream) }
+        try { stream.write(text.toByteArray(Charsets.UTF_8)); recoveryFile.finishWrite(stream)
+            val last = AtomicFile(File(filesDir, "last-vpn-config.json")); val out = last.startWrite()
+            try { out.write(text.toByteArray()); last.finishWrite(out) } catch (e: Exception) { last.failWrite(out); throw e }
+        }
         catch (error: Exception) { recoveryFile.failWrite(stream); throw error }
     }
 
@@ -287,6 +306,7 @@ class FlintVpnService : VpnService() {
         snapshot = value.copy(timestamp = System.currentTimeMillis())
         clients.toList().forEach(::sendSnapshot)
         if (foreground) getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification())
+        scope.launch(Dispatchers.IO) { app.flint.prototype.home.HomeWidget.refresh(this@FlintVpnService, value.state) }
     }
 
     private fun sendSnapshot(client: Messenger) {

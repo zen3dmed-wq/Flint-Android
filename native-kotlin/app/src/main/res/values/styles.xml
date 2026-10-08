@@ -9,4 +9,10 @@
         <item name="android:statusBarColor">#071724</item>
         <item name="android:navigationBarColor">#071724</item>
     </style>
+    <style name="FlintToggleTheme" parent="android:style/Theme.Translucent.NoTitleBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
 </resources>

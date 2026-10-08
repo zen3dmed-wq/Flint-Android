@@ -13,24 +13,39 @@ import android.text.InputType
 import android.widget.EditText
 import app.flint.prototype.data.ProfileStore
 import app.flint.prototype.data.QrImageDecoder
+import app.flint.prototype.data.ProfileCollection
+import app.flint.prototype.account.*
 import app.flint.prototype.imports.*
 import app.flint.prototype.ui.*
 import app.flint.prototype.vpn.FlintVpnService
+import app.flint.prototype.vpn.ProfileProbe
+import app.flint.prototype.vpn.ServerBalance
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import org.json.JSONObject
+import org.json.JSONArray
 import java.io.File
 import java.net.InetSocketAddress
 import java.net.InetAddress
 import java.net.Socket
 import java.util.UUID
 import kotlin.coroutines.resume
+import com.google.zxing.integration.android.IntentIntegrator
 
 /** The service owns the tunnel. Activity navigation never stops it. */
 class MainActivity : Activity(), FlintUiCallbacks {
     private lateinit var home: FlintHomeView
     private lateinit var profilesStore: ProfileStore
+    private lateinit var account: FlintAccount
+    private lateinit var accountScreens: AccountScreens
+    private val fingerprints = mutableMapOf<String, String>()
+    private val loads = mutableMapOf<String, Pair<Int?, Long>>()
+    private var manualProfiles = emptyList<ServerProfile>()
+    private var accountProfiles = emptyList<ServerProfile>()
+    private var activeId = ""
+    private var automaticAttempts = linkedSetOf<String>()
+    private var refreshJob: Job? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var profiles = emptyList<ServerProfile>()
     private var state = FlintUiState()
@@ -65,6 +80,7 @@ class MainActivity : Activity(), FlintUiCallbacks {
             }
             confirmedPhase = phase
             confirmedServerName = info.getString("serverName").orEmpty()
+            activeId = info.getString("serverId").orEmpty()
             confirmedRuDirect = info.getBoolean("ruDirect", true)
             if (awaitingService && phase != FlintPhase.DISCONNECTED) awaitingService = false
             val localPreparation = preparing || pendingFile != null || awaitingService
@@ -74,6 +90,9 @@ class MainActivity : Activity(), FlintUiCallbacks {
                     info.getBoolean("ruDirect", state.ruDirect) else state.ruDirect,
                 serverLabel = if (localPreparation) state.serverLabel else info.getString("serverName").orEmpty().ifBlank { selectedLabel() })
             render()
+            if (phase == FlintPhase.ERROR && state.selectedServerId == null && !preparing && automaticAttempts.isNotEmpty()) {
+                profiles.firstOrNull { it.id !in automaticAttempts }?.let { connectSelected(it.id) }
+            }
             true
         } else false
     })
@@ -104,6 +123,8 @@ class MainActivity : Activity(), FlintUiCallbacks {
         super.onCreate(savedInstanceState)
         window.setDecorFitsSystemWindows(false)
         profilesStore = ProfileStore(this)
+        account = FlintAccount(this)
+        accountScreens = AccountScreens(this, account, scope) { reload -> refreshAccountProfiles(reload) }
         state = state.copy(selectedServerId = prefs.getString("selected", null),
             ruDirect = savedInstanceState?.getBoolean("ruDirect", true) ?: true)
         pendingFile = savedInstanceState?.getString("pendingFile")?.takeIf { validPendingFile(it)?.isFile == true }
@@ -113,7 +134,9 @@ class MainActivity : Activity(), FlintUiCallbacks {
         setContentView(home)
         scope.launch {
             try {
-                profiles = withContext(Dispatchers.IO) { profilesStore.load() }
+                manualProfiles = withContext(Dispatchers.IO) { profilesStore.load() }
+                loadCachedAccountProfiles()
+                combineProfiles()
                 render()
                 if (profiles.isNotEmpty() && savedInstanceState?.getBoolean("restartPreparation", false) == true)
                     connectSelected()
@@ -124,11 +147,20 @@ class MainActivity : Activity(), FlintUiCallbacks {
             finally { loadingProfiles = false; profilesReady.complete(Unit); render() }
         }
         render()
+        refreshJob = scope.launch {
+            runCatching { account.publicConfig() }
+            if (account.loggedIn) runCatching { account.refresh(); refreshAccountProfiles(true) }
+            while (isActive) {
+                runCatching { refreshLoads() }
+                delay(30_000)
+            }
+        }
     }
 
     override fun onStart() { super.onStart(); resumed = true; bindVpn() }
     override fun onStop() { resumed = false; unbindVpn(); super.onStop() }
     override fun onDestroy() {
+        if (::accountScreens.isInitialized) accountScreens.close()
         scope.cancel()
         if (isFinishing) clearPendingFile()
         super.onDestroy()
@@ -167,8 +199,16 @@ class MainActivity : Activity(), FlintUiCallbacks {
         if (!::home.isInitialized || isDestroyed) return
         state = state.copy(busy = loadingProfiles || importing || preparing || pendingFile != null || awaitingService,
             hasProfile = profiles.isNotEmpty(), servers = profiles.map { p ->
-            FlintServerUi(p.id, p.name, ping[p.id]?.first, ping[p.id]?.second)
+            FlintServerUi(p.id, p.name, ping[p.id]?.first, ping[p.id]?.second,
+                loads[p.id]?.takeIf { ServerBalance.fresh(it.second, System.currentTimeMillis()) }?.first)
         })
+        if (::account.isInitialized) {
+            val sub = account.selected
+            state = state.copy(loggedIn = account.loggedIn,
+                subscriptionTitle = sub?.let(AccountScreens::subTitle).orEmpty(),
+                trafficText = sub?.let(AccountScreens::traffic).orEmpty(),
+                trafficFraction = sub?.let(AccountScreens::fraction), expiryText = sub?.let(AccountScreens::expiry).orEmpty())
+        }
         home.render(state)
     }
     private fun report(message: String, error: Boolean = false) {
@@ -203,10 +243,10 @@ class MainActivity : Activity(), FlintUiCallbacks {
             } catch (_: Exception) { report("Не удалось отправить команду отключения. Используйте уведомление Flint.") }
             render()
         } else if (loadingProfiles || importing) report("Дождитесь загрузки профилей")
-        else connectSelected()
+        else { automaticAttempts.clear(); connectSelected() }
     }
 
-    private fun connectSelected() {
+    private fun connectSelected(automaticCandidate: String? = null) {
         if (profiles.isEmpty()) { onImportText(); return }
         val request = ++generation
         operation?.cancel()
@@ -223,15 +263,23 @@ class MainActivity : Activity(), FlintUiCallbacks {
             var staged: File? = null
             var handedToPending = false
             try {
-                val profile = availableProfiles.find { it.id == selected } ?: chooseAutomatic(availableProfiles)
+                val chosen = availableProfiles.find { it.id == (selected ?: automaticCandidate) } ?: chooseAutomatic(availableProfiles)
+                val profile = ProfileProbe.withFingerprint(chosen, fingerprints[chosen.id])
+                if (selected == null) automaticAttempts.add(profile.id)
                 val filename = withContext(Dispatchers.IO) {
                     val catalog = assets.open("flint-routing-catalog.json").bufferedReader().use { it.readText() }
                     val wrapper = JSONObject().put("protocol", "xray").put("hostName", profile.host)
                         .put("dns1", "1.1.1.1").put("dns2", "1.0.0.1").put("mtu", "1500")
                         .put("description", profile.name).put("flintServerId", profile.id)
                         .put("flintRussianAppsDirect", ru)
+                        .put("flintAutomatic", selected == null)
+                        .put("flintCandidates", JSONArray(availableProfiles.map { candidate ->
+                            val prepared = ProfileProbe.withFingerprint(candidate, fingerprints[candidate.id])
+                            JSONObject().put("id", prepared.id).put("name", prepared.name).put("host", prepared.host).put("port", prepared.port)
+                                .put("outbound", prepared.outbound())
+                        }))
                         .put("xray_config_data", JSONObject().put("config", XrayConfigBuilder.build(
-                            profile, ruDirect = ru, routingCatalogJson = catalog)))
+                            profile, ruDirect = ru, routingCatalogJson = catalog, customDomains = customSites(), routingPolicyJson = routingPolicy())))
                     val dir = File(filesDir, "vpn-configs").apply { mkdirs() }
                     val file = File(dir, "${UUID.randomUUID()}.json")
                     staged = file
@@ -307,6 +355,7 @@ class MainActivity : Activity(), FlintUiCallbacks {
     override fun onSelectServer(id: String?) {
         if (id != null && profiles.none { it.id == id }) return
         prefs.edit().putString("selected", id).apply()
+        automaticAttempts.clear()
         state = state.copy(selectedServerId = id, serverLabel = profiles.find { it.id == id }?.name ?: "Автоматически")
         val reconnect = state.phase == FlintPhase.CONNECTED || state.phase == FlintPhase.CONNECTING || preparing || awaitingService || pendingFile != null
         render()
@@ -337,6 +386,11 @@ class MainActivity : Activity(), FlintUiCallbacks {
             .setNegativeButton("Отмена", null).setPositiveButton("Добавить") { _, _ -> importText(field.text.toString()) }.show()
     }
     override fun onImportQrImage() = pick("image/*", REQUEST_QR)
+    override fun onScanCamera() {
+        if (BuildConfig.IS_TV) { onTvPair(); return }
+        IntentIntegrator(this).setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
+            .setPrompt("Наведите камеру на QR-код подписки Flint").setBeepEnabled(false).setOrientationLocked(false).initiateScan()
+    }
     override fun onImportFile() = pick("*/*", REQUEST_FILE)
     private fun pick(mime: String, code: Int) {
         if (loadingProfiles || importing) { report("Дождитесь завершения импорта"); return }
@@ -350,6 +404,9 @@ class MainActivity : Activity(), FlintUiCallbacks {
     @Deprecated("Legacy Activity result callback is intentionally used with platform Activity")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        IntentIntegrator.parseActivityResult(requestCode, resultCode, data)?.let { result ->
+            result.contents?.let(::importText); return
+        }
         if (requestCode == REQUEST_VPN) {
             if (!permissionInFlight) return
             permissionInFlight = false
@@ -400,7 +457,8 @@ class MainActivity : Activity(), FlintUiCallbacks {
                 // A document result can arrive immediately after Activity recreation.
                 profilesReady.await()
                 val result = runInterruptible(Dispatchers.IO) { SubscriptionClient().import(readInput()) }
-                profiles = withContext(Dispatchers.IO) { profilesStore.merge(result.profiles) }
+                manualProfiles = withContext(Dispatchers.IO) { profilesStore.merge(result.profiles) }
+                combineProfiles()
                 if (state.selectedServerId != null && profiles.none { it.id == state.selectedServerId }) {
                     state = state.copy(selectedServerId = null)
                     prefs.edit().remove("selected").apply()
@@ -467,7 +525,14 @@ class MainActivity : Activity(), FlintUiCallbacks {
             }
         }
         checks.forEach { ping[it.first.id] = it.second }
-        return checks.filter { it.second.second }.minByOrNull { it.second.first ?: Long.MAX_VALUE }?.first
+        val ranked = checks.filter { it.second.second }.sortedBy { (it.second.first ?: 1000) + 12 * (loads[it.first.id]?.first ?: 0) }
+        for ((candidate, _) in ranked.take(5)) {
+            val check = ProfileProbe.check(this, candidate)
+            ping[candidate.id] = check.latency to check.available
+            check.fingerprint?.let { fingerprints[candidate.id] = it }
+            if (check.available) return candidate
+        }
+        return ranked.firstOrNull()?.first
             ?: candidates.firstOrNull { ping[it.id]?.second == true } ?: candidates.first()
     }
     private fun checkServers() {
@@ -481,6 +546,89 @@ class MainActivity : Activity(), FlintUiCallbacks {
             }
         }
     }
+    private fun combineProfiles() { profiles = (accountProfiles + manualProfiles).distinctBy { it.id } }
+    private fun accountCache(): File? {
+        if (!account.loggedIn || account.selectedId.isBlank()) return null
+        return File(filesDir, "account-" + ServerProfile.stableId(account.me.string("id") + ":" + account.selectedId) + ".json")
+    }
+    private suspend fun loadCachedAccountProfiles() {
+        accountProfiles = withContext(Dispatchers.IO) { accountCache()?.takeIf { it.isFile }?.let { runCatching { ProfileCollection.decode(it.readBytes()) }.getOrDefault(emptyList()) } ?: emptyList() }
+    }
+    private suspend fun refreshAccountProfiles(reload: Boolean) {
+        val oldIds = accountProfiles.map { it.id }
+        loadCachedAccountProfiles()
+        val sub = account.selected
+        if (reload && sub != null && sub.string("subscriptionUrl").isNotBlank()) {
+            val result = runInterruptible(Dispatchers.IO) { SubscriptionClient().import(sub.string("subscriptionUrl")) }
+            accountProfiles = result.profiles
+            withContext(Dispatchers.IO) { accountCache()?.let { target ->
+                val atomic = android.util.AtomicFile(target); val out = atomic.startWrite()
+                try { out.write(ProfileCollection.encode(accountProfiles)); atomic.finishWrite(out) } catch (e: Exception) { atomic.failWrite(out); throw e }
+            } }
+        }
+        combineProfiles()
+        if (state.selectedServerId != null && profiles.none { it.id == state.selectedServerId }) { state = state.copy(selectedServerId = null); prefs.edit().remove("selected").apply() }
+        render()
+        if (reload && oldIds != accountProfiles.map { it.id } && state.phase == FlintPhase.CONNECTED) { automaticAttempts.clear(); connectSelected() }
+        else if (reload) checkServers()
+    }
+    private suspend fun refreshLoads() {
+        val data = account.refreshLocations()
+        loads.clear(); profiles.forEach { p -> ServerBalance.load(data, p, System.currentTimeMillis())?.let { loads[p.id] = it } }; render()
+    }
+    override fun onSubscriptions() = accountScreens.subscriptions()
+    override fun onPurchase() = accountScreens.purchase()
+    override fun onDevices() = accountScreens.devices()
+    override fun onSupport() = accountScreens.support()
+    override fun onTvPair() = accountScreens.telegram()
+    override fun onProbe(initialize: Boolean) {
+        if (!initialize) { checkServers(); scope.launch { runCatching { refreshLoads() } }; return }
+        probeJob?.cancel()
+        probeJob = scope.launch {
+            report("Проверяем серверы и параметры подключения…")
+            withTimeoutOrNull(90_000) {
+                for (profile in profiles) {
+                    val check = ProfileProbe.check(this@MainActivity, profile, true)
+                    ping[profile.id] = check.latency to check.available
+                    check.fingerprint?.let { fingerprints[profile.id] = it }; render()
+                }
+            }
+            report("Автонастройка завершена")
+        }
+    }
+    override fun onSettings() {
+        val s = FlintStyle(this); val p = s.panel("Настройки Flint")
+        s.add(p.body, s.label("Flint Android ${BuildConfig.VERSION_NAME}", color = s.muted))
+        s.add(p.body, s.button("Пригласить друга") { p.dialog.dismiss(); accountScreens.friends() }, 48)
+        s.add(p.body, s.button("Обновление приложения") { p.dialog.dismiss(); showUpdates() }, 48)
+        s.add(p.body, s.button("Диагностика подключения") { s.notice("Подключение", "Flint ${BuildConfig.VERSION_NAME}\nAndroid ${Build.VERSION.RELEASE}\nРежим: ${if (state.selectedServerId == null) "автоматически" else "вручную"}\nСайты РФ: ${state.ruDirect}\n${state.phase}\n${state.message}") }, 48)
+        if (!BuildConfig.IS_TV) s.add(p.body, s.button("Добавить виджет на экран") { p.dialog.dismiss(); showWidgetSetup() }, 48)
+        s.add(p.body, s.button(if (account.loggedIn) account.title else "Войти во Flint") { p.dialog.dismiss(); if (account.loggedIn) accountScreens.identity() else accountScreens.login() }, 48)
+    }
+    private fun customSites(): List<String> = runCatching { JSONArray(prefs.getString("directSites", "[]")).let { a -> (0 until a.length()).map { a.getString(it) } } }.getOrDefault(emptyList())
+    private fun routingPolicy(): String? = if (prefs.getBoolean("automaticRouting", true)) account.config.optJSONObject("routing")?.optJSONObject("russianServices")?.toString()
+        else JSONObject().put("version", 1).put("geosite", JSONArray()).put("geoip", JSONArray()).put("domains", JSONArray()).put("ips", JSONArray()).toString()
+    override fun onRouting() {
+        val s = FlintStyle(this); val p = s.panel("Сайты РФ")
+        s.add(p.body, s.label("Российские сайты и приложения работают напрямую. Остальной трафик идёт через VPN.", color = s.muted))
+        val auto = Switch(this).apply { text = "Определять автоматически"; setTextColor(s.ink); isChecked = prefs.getBoolean("automaticRouting", true) }
+        s.add(p.body, auto, 48)
+        auto.setOnCheckedChangeListener { _, enabled -> prefs.edit().putBoolean("automaticRouting", enabled).apply(); if (state.phase == FlintPhase.CONNECTED) connectSelected() }
+        val field = s.field("Сайт или IP / подсеть"); s.add(p.body, field, 50)
+        s.add(p.body, s.button("Добавить") {
+            try {
+                val normalized = XrayConfigBuilder.normalizeSite(field.text.toString())
+                prefs.edit().putString("directSites", JSONArray((customSites() + normalized).distinct()).toString()).apply()
+                p.dialog.dismiss(); onRouting(); if (state.phase == FlintPhase.CONNECTED) connectSelected()
+            } catch (e: ImportException) { p.error(e.message.orEmpty()) }
+        }, 48)
+        customSites().forEach { site -> s.add(p.body, s.button("$site     ×") {
+            prefs.edit().putString("directSites", JSONArray(customSites().filter { it != site }).toString()).apply()
+            p.dialog.dismiss(); onRouting(); if (state.phase == FlintPhase.CONNECTED) connectSelected()
+        }, 46) }
+    }
+    private fun showUpdates() { app.flint.prototype.updates.UpdateScreen(this, account, scope).show() }
+    private fun showWidgetSetup() { app.flint.prototype.home.HomeWidget.setup(this) }
     companion object {
         private const val REQUEST_VPN = 11
         private const val REQUEST_QR = 12

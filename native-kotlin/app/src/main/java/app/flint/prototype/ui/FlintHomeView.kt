@@ -1,403 +1,186 @@
 package app.flint.prototype.ui
 
-import android.app.AlertDialog
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.RippleDrawable
-import android.graphics.drawable.StateListDrawable
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
 import android.view.WindowInsets
-import android.widget.Button
-import android.widget.FrameLayout
-import android.widget.ImageView
-import android.widget.LinearLayout
-import android.widget.ProgressBar
-import android.widget.ScrollView
-import android.widget.Switch
-import android.widget.TextView
+import android.widget.*
+import kotlin.math.min
 
-/** Native Android UI shared by the phone/TV flavours. No account or VPN logic lives here. */
-class FlintHomeView(
-    context: Context,
-    private val isTv: Boolean,
-    private val callbacks: FlintUiCallbacks,
-) : FrameLayout(context) {
-    private val ink = Color.rgb(244, 248, 250)
-    private val muted = Color.rgb(168, 193, 208)
-    private val card = Color.rgb(19, 44, 60)
-    private val border = Color.rgb(49, 77, 95)
-    private val mint = Color.rgb(74, 224, 171)
-    private val grey = Color.rgb(139, 153, 164)
-    private val yellow = Color.rgb(241, 199, 91)
-    private val red = Color.rgb(239, 98, 107)
+/** Geometry and navigation follow flint/PageHome.qml in the working Qt client. */
+class FlintHomeView(context: Context, private val isTv: Boolean, private val callbacks: FlintUiCallbacks) : FrameLayout(context) {
+    private val s = FlintStyle(context, isTv)
+    private val canvas = FrameLayout(context)
+    private val mascot = FlintMascotView(context)
+    private val header = s.row()
+    private val settings = s.button("⚙") { callbacks.onSettings() }
+    private val qr = s.button("QR-код") { showImportActions() }
+    private val clipboard = s.button("Из буфера") { callbacks.onImportClipboard() }
+    private val title = s.label("", 26f, true).apply { gravity = Gravity.CENTER; maxLines = 1 }
+    private val subtitle = s.label("", 12f, color = s.muted).apply { gravity = Gravity.CENTER; maxLines = 2 }
+    private val connect = s.button("ПОДКЛЮЧИТЬСЯ") { callbacks.onConnectToggle() }.apply { textSize = 18f }
+    private val guard = s.label("", 12f, true).apply { gravity = Gravity.CENTER; background = s.shape(0xE20A1A2A.toInt()) }
+    private val buy = s.button("Купить / продлить подписку") { callbacks.onPurchase() }
+    private val subscription = FrameLayout(context).apply { background = s.surface(); isClickable = true; isFocusable = true; isFocusableInTouchMode = isTv }
+    private val subscriptionTitle = s.label("", 14f, true).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
+    private val change = s.label("Сменить ›", 12f, color = s.mint)
+    private val traffic = FrameLayout(context).apply { background = s.shape(0xFF77818E.toInt(), Color.TRANSPARENT, 8); clipToOutline = true }
+    private val filled = View(context).apply { background = s.shape(0xFF008CFF.toInt(), Color.TRANSPARENT, 8) }
+    private val trafficText = s.label("", 12f).apply { gravity = Gravity.CENTER }
+    private val expiry = s.label("", 11f, color = s.muted).apply { gravity = Gravity.CENTER; maxLines = 1 }
+    private val server = tile("◎", "Автоматически", "По доступности, задержке и загрузке") { showServers() }
+    private val russian = tile("", "Сайты РФ", "Правила →") { callbacks.onRouting() }
+    private val devices = tile("♧", "Устройства", "Войти в аккаунт") { callbacks.onDevices() }
+    private val support = tile("", "Поддержка", "Flint готов помочь") { callbacks.onSupport() }
+    private val routeToggle = Switch(context).apply {
+        showText = false; isFocusable = true; isFocusableInTouchMode = isTv
+        thumbTintList = ColorStateList.valueOf(Color.WHITE)
+        trackTintList = ColorStateList(arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()), intArrayOf(s.mint, 0xFF647384.toInt()))
+        setOnCheckedChangeListener { _, checked -> if (!syncing) callbacks.onRuDirectChanged(checked) }
+    }
     private var state = FlintUiState()
     private var syncing = false
-    private var serverDialog: AlertDialog? = null
-
-    private val body = column()
-    private val mascot = FlintMascotView(context)
-    private val title = label(24f, true).apply {
-        gravity = Gravity.CENTER
-        maxLines = 1
-        ellipsize = TextUtils.TruncateAt.END
-    }
-    private val subtitle = label(12f).apply {
-        gravity = Gravity.CENTER
-        setTextColor(muted)
-        maxLines = 2
-        ellipsize = TextUtils.TruncateAt.END
-    }
-    private val connect = button("Подключиться") { callbacks.onConnectToggle() }
-    private val guard = label(12f).apply { gravity = Gravity.CENTER }
-    private val server = button("Сервер\nАвтоматически") { showServers() }.apply {
-        gravity = Gravity.CENTER_VERTICAL or Gravity.START
-        maxLines = 2
-        ellipsize = TextUtils.TruncateAt.END
-        setPadding(dp(14), 0, dp(14), 0)
-    }
-    private val routeToggle = Switch(context).apply {
-        text = "Сайты РФ"
-        textSize = 14f
-        setTextColor(ink)
-        setPadding(dp(10), dp(4), dp(10), dp(4))
-        switchPadding = dp(4)
-        thumbTintList = ColorStateList(
-            arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
-            intArrayOf(mint, grey),
-        )
-        trackTintList = ColorStateList(
-            arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
-            intArrayOf(Color.rgb(35, 112, 92), Color.rgb(62, 83, 97)),
-        )
-        background = surface()
-        isFocusable = true
-        isFocusableInTouchMode = isTv
-        setOnCheckedChangeListener { _, value ->
-            if (!syncing) callbacks.onRuDirectChanged(value)
-        }
-    }
-    private val traffic = column().apply {
-        background = rounded(card, border)
-        setPadding(dp(12), dp(6), dp(12), dp(6))
-    }
-    private val trafficLabel = label(13f).apply { maxLines = 1 }
-    private val trafficBar = ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
-        max = 1000
-        progressTintList = ColorStateList.valueOf(Color.rgb(0, 153, 255))
-        progressBackgroundTintList = ColorStateList.valueOf(Color.rgb(77, 100, 118))
-        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
-    }
-    private val addServer = button("Добавить сервер") { showImportActions() }
-    private val clipboard = button("Из буфера") { callbacks.onImportClipboard() }
-
+    private var safeTop = 0
+    private var safeBottom = 0
+    private var safeLeft = 0
+    private var safeRight = 0
+    private var popup: FlintStyle.Panel? = null
     init {
-        setBackgroundColor(Color.rgb(7, 23, 36))
-        val artId = resources.getIdentifier("flint_background", "drawable", context.packageName)
-        if (artId != 0) {
-            addView(ImageView(context).apply {
-                setImageResource(artId)
-                scaleType = ImageView.ScaleType.CENTER_CROP
-                alpha = 0.38f
-                importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
-            }, LayoutParams(-1, -1))
+        setBackgroundColor(s.dark)
+        addView(ImageView(context).apply {
+            setImageResource(resources.getIdentifier("flint_background", "drawable", context.packageName))
+            scaleType = ImageView.ScaleType.CENTER_CROP; importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+        }, LayoutParams(-1, -1))
+        addView(canvas, LayoutParams(-1, -1))
+        header.addView(ImageView(context).apply {
+            setImageResource(resources.getIdentifier("flint_logo", "drawable", context.packageName)); scaleType = ImageView.ScaleType.FIT_CENTER
+        }, LinearLayout.LayoutParams(s.dp(40), s.dp(40)).apply { marginEnd = s.dp(10) })
+        header.addView(s.column().apply {
+            addView(s.label("FLINT", 22f, true).apply { letterSpacing = .06f })
+            addView(s.label("Больше свободы в интернете", 11f, color = s.muted))
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        header.addView(settings, LinearLayout.LayoutParams(s.dp(44), s.dp(44)))
+        subscription.addView(subscriptionTitle); subscription.addView(change); subscription.addView(traffic); subscription.addView(expiry)
+        traffic.addView(filled); traffic.addView(trafficText, LayoutParams(-1, -1))
+        subscription.setOnClickListener { callbacks.onSubscriptions() }
+        russian.addView(routeToggle)
+        support.addView(ImageView(context).apply { setImageResource(resources.getIdentifier("flint_logo", "drawable", context.packageName)) }, LayoutParams(s.dp(24), s.dp(24)).apply { leftMargin = s.dp(12); topMargin = s.dp(10) })
+        listOf(header, mascot, qr, clipboard, title, subtitle, connect, guard, buy, subscription, server, russian, devices, support).forEach { canvas.addView(it) }
+        subtitle.setOnClickListener { if (state.message.isNotBlank()) s.notice("Подключение", state.message) }
+        setOnApplyWindowInsetsListener { _, i ->
+            val safe = i.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+            safeTop = safe.top; safeBottom = safe.bottom; safeLeft = safe.left; safeRight = safe.right
+            requestLayout(); i
         }
-        val pad = dp(if (isTv) 28 else 16)
-        body.setPadding(pad, dp(8), pad, dp(8))
-        addView(body, LayoutParams(-1, -1))
-        setOnApplyWindowInsetsListener { _, insets ->
-            val safe = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
-            body.setPadding(pad + safe.left, dp(8) + safe.top, pad + safe.right, dp(8) + safe.bottom)
-            insets
-        }
-
-        val heading = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        val logoId = resources.getIdentifier("flint_logo", "drawable", context.packageName)
-        if (logoId != 0) {
-            heading.addView(ImageView(context).apply {
-                setImageResource(logoId)
-                importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
-            }, LinearLayout.LayoutParams(dp(36), dp(36)).apply { marginEnd = dp(10) })
-        }
-        heading.addView(column().apply {
-            addView(label(if (isTv) 28f else 24f, true).apply { text = "FLINT" })
-            addView(label(11f).apply { text = "Больше свободы в интернете"; setTextColor(muted) })
-        })
-        body.addView(heading, LinearLayout.LayoutParams(-1, dp(54)))
-
-        val imports = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        imports.addView(addServer, LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(8) })
-        imports.addView(clipboard, LinearLayout.LayoutParams(0, dp(44), 1f))
-        val status = column().apply {
-            gravity = Gravity.CENTER
-            addView(title, LinearLayout.LayoutParams(-1, -2))
-            addView(subtitle, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(3) })
-        }
-        subtitle.setOnClickListener {
-            if (state.message.isNotBlank()) showNotice("Flint", state.message)
-        }
-        traffic.addView(trafficLabel, LinearLayout.LayoutParams(-1, -2))
-        traffic.addView(trafficBar, LinearLayout.LayoutParams(-1, dp(6)).apply { topMargin = dp(3) })
-
-        if (isTv) {
-            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            val hero = column().apply {
-                gravity = Gravity.CENTER
-                addView(mascot, LinearLayout.LayoutParams(-1, 0, 1f))
-                addView(status, LinearLayout.LayoutParams(-1, dp(68)))
-            }
-            row.addView(hero, LinearLayout.LayoutParams(0, -1, 1f).apply { marginEnd = dp(28) })
-            val actions = column().apply {
-                gravity = Gravity.CENTER_VERTICAL
-                addView(imports, spaced(44))
-                addView(connect, spaced(52))
-                addView(guard, spaced(20))
-                addView(traffic, spaced(48))
-                addView(server, spaced(60))
-                addView(routeToggle, spaced(56))
-            }
-            row.addView(actions, LinearLayout.LayoutParams(0, -1, 1.1f))
-            body.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
-        } else {
-            body.addView(imports, spaced(44, 4))
-            body.addView(mascot, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(6) })
-            body.addView(status, spaced(64, 2))
-            body.addView(connect, spaced(52, 6))
-            body.addView(guard, spaced(20, 4))
-            body.addView(traffic, spaced(48, 6))
-            val shortcuts = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            shortcuts.addView(server, LinearLayout.LayoutParams(0, -1, 1f).apply { marginEnd = dp(8) })
-            shortcuts.addView(routeToggle, LinearLayout.LayoutParams(0, -1, 1f))
-            body.addView(shortcuts, spaced(64))
-        }
-        body.addView(label(10f).apply {
-            text = "Flint Kotlin · тестовая версия"
-            gravity = Gravity.CENTER
-            setTextColor(muted)
-        }, spaced(18, 6))
-        render(FlintUiState())
-        if (isTv) post { addServer.requestFocus() }
+        render(state)
+        if (isTv) post { qr.requestFocus() }
     }
-
-    /** Must be called from the main thread. Reuses views to retain TV focus. */
+    private fun tile(icon: String, title: String, hint: String, action: () -> Unit) = FrameLayout(context).apply {
+        background = s.surface(0xDE0A1C2D.toInt(), 18); isClickable = true; isFocusable = true; isFocusableInTouchMode = isTv
+        setOnClickListener { action() }; contentDescription = title
+        addView(s.label(icon, 23f, color = s.muted), LayoutParams(s.dp(28), s.dp(28)).apply { leftMargin = s.dp(12); topMargin = s.dp(9) })
+        addView(s.label(title, 14f, true).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END }, LayoutParams(-1, s.dp(24)).apply { leftMargin = s.dp(if (title == "Сайты РФ") 12 else 45); rightMargin = s.dp(8); topMargin = s.dp(9) })
+        addView(s.label(hint, 11f, color = s.mint).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END }, LayoutParams(-1, s.dp(19)).apply { leftMargin = s.dp(12); rightMargin = s.dp(8); gravity = Gravity.BOTTOM; bottomMargin = s.dp(6) })
+    }
+    override fun onMeasure(w: Int, h: Int) {
+        val width = MeasureSpec.getSize(w); val height = MeasureSpec.getSize(h)
+        val wide = width > height * 1.2f
+        val usableW = min(width - safeLeft - safeRight - s.dp(28), s.dp(if (wide) 1120 else 480))
+        val left = (width - usableW) / 2; val top = safeTop + s.dp(8)
+        val availableH = height - top - safeBottom - s.dp(8)
+        val dense = availableH / resources.displayMetrics.density < 700 || wide
+        val gap = s.dp(if (dense) 6 else 10); val headerH = s.dp(if (dense) 44 else 48)
+        fun place(v: View, x: Int, y: Int, ww: Int, hh: Int) {
+            val old = v.layoutParams as? LayoutParams
+            if (old?.width != ww.coerceAtLeast(1) || old.height != hh.coerceAtLeast(1) || old.leftMargin != x || old.topMargin != y)
+                v.layoutParams = LayoutParams(ww.coerceAtLeast(1), hh.coerceAtLeast(1)).apply { leftMargin = x; topMargin = y }
+        }
+        place(header, left, top, usableW, headerH)
+        val colW = if (wide) (usableW - s.dp(16)) / 2 else usableW
+        val bodyTop = top + headerH + gap; val bodyH = availableH - headerH - gap
+        val tileH = s.dp(if (dense) 56 else 80)
+        val subH = if (state.subscriptionTitle.isBlank() && state.trafficText.isBlank()) 0 else s.dp(if (dense) 76 else 84)
+        val rightX = if (wide) left + colW + s.dp(16) else left
+        var tilesTop = bodyTop + bodyH - 2 * tileH - gap
+        val subTop = if (wide) bodyTop else tilesTop - subH - gap
+        if (wide) tilesTop = subTop + subH + gap
+        val pairW = if (wide) colW else (colW - gap) / 2
+        place(subscription, rightX, subTop, colW, subH)
+        if (wide) listOf(server, russian, devices, support).forEachIndexed { i, v -> place(v, rightX, tilesTop + i * (tileH + gap), colW, tileH) }
+        else {
+            place(server, left, tilesTop, pairW, tileH); place(russian, left + pairW + gap, tilesTop, pairW, tileH)
+            place(devices, left, tilesTop + tileH + gap, pairW, tileH); place(support, left + pairW + gap, tilesTop + tileH + gap, pairW, tileH)
+        }
+        routeToggle.layoutParams = LayoutParams(s.dp(44), s.dp(36)).apply { leftMargin = pairW - s.dp(56); topMargin = s.dp(8) }
+        (russian.getChildAt(1) as TextView).textSize = if (!wide && pairW < s.dp(175)) 13f else 14f
+        val p = s.dp(12)
+        subscriptionTitle.layoutParams = LayoutParams(colW - p * 2 - s.dp(76), s.dp(20)).apply { leftMargin = p; topMargin = s.dp(8) }
+        change.layoutParams = LayoutParams(s.dp(76), s.dp(20)).apply { leftMargin = colW - p - s.dp(76); topMargin = s.dp(8) }
+        traffic.layoutParams = LayoutParams(colW - 2 * p, s.dp(20)).apply { leftMargin = p; topMargin = s.dp(31) }
+        expiry.layoutParams = LayoutParams(colW - 2 * p, s.dp(18)).apply { leftMargin = p; topMargin = s.dp(55) }
+        filled.layoutParams = LayoutParams(((colW - 2 * p) * (state.trafficFraction ?: 0f).coerceIn(0f, 1f)).toInt(), -1)
+        val connectH = s.dp(if (dense) 48 else 56); val guardH = s.dp(if (dense) 28 else 36)
+        val buyH = s.dp(40); val statusH = s.dp(if (dense) 32 else 61)
+        val end = if (wide) bodyTop + bodyH else subTop - gap
+        val buyY = end - buyH; val guardY = buyY - gap - guardH; val connectY = guardY - gap - connectH; val statusY = connectY - gap - statusH
+        place(mascot, left, bodyTop, colW, (statusY - bodyTop - gap).coerceAtLeast(s.dp(72)))
+        val importW = min(s.dp(110), (colW * .28).toInt())
+        place(qr, left, bodyTop, importW, s.dp(44)); place(clipboard, left + colW - importW, bodyTop, importW, s.dp(44))
+        place(title, left, statusY, colW, s.dp(if (dense) 30 else 35)); title.textSize = if (dense) 21f else 26f
+        place(subtitle, left, statusY + s.dp(35), colW, s.dp(26)); subtitle.visibility = if (dense) GONE else VISIBLE
+        place(connect, left, connectY, colW, connectH); place(guard, left, guardY, colW, guardH); place(buy, left, buyY, colW, buyH)
+        super.onMeasure(w, h)
+    }
     fun render(next: FlintUiState) {
         state = next
-        val tint = when (next.phase) {
-            FlintPhase.DISCONNECTED -> grey
-            FlintPhase.CONNECTING -> yellow
-            FlintPhase.CONNECTED -> mint
-            FlintPhase.ERROR -> red
-        }
-        title.text = when (next.phase) {
-            FlintPhase.DISCONNECTED -> "Вы не защищены"
-            FlintPhase.CONNECTING -> "Подключаемся…"
-            FlintPhase.CONNECTED -> "Вы защищены"
-            FlintPhase.ERROR -> "Не удалось подключиться"
-        }
-        title.textSize = if (next.phase == FlintPhase.ERROR && !isTv) 20f else 24f
-        title.setTextColor(ink)
-        subtitle.text = next.message.ifBlank {
-            when {
-                next.phase == FlintPhase.CONNECTED -> next.serverLabel
-                next.phase == FlintPhase.CONNECTING -> "Ожидаем подтверждения VPN-службы"
-                !next.hasProfile -> "Добавьте ссылку подписки или сервер"
-                else -> "Выберите сервер и подключитесь"
-            }
-        }
-        subtitle.contentDescription = subtitle.text
-        connect.text = when (next.phase) {
-            FlintPhase.CONNECTED -> "Отключить VPN"
-            FlintPhase.CONNECTING -> "Отменить подключение"
-            else -> "Подключиться"
-        }
-        connect.background = surface(tint, Color.rgb(7, 29, 39))
-        connect.setTextColor(Color.rgb(7, 29, 39))
-        connect.isEnabled = next.hasProfile || next.phase == FlintPhase.CONNECTED || next.phase == FlintPhase.CONNECTING
-        connect.alpha = if (connect.isEnabled) 1f else 0.60f
-        connect.contentDescription = "${connect.text}. ${title.text}"
-        mascot.setPhase(next.phase, tint)
-        guard.text = when (next.phase) {
-            FlintPhase.CONNECTED -> "Flint Guard  ·  VPN включён"
-            FlintPhase.CONNECTING -> "Flint Guard  ·  подключение"
-            FlintPhase.ERROR -> "Flint Guard  ·  ошибка подключения"
-            else -> "Flint Guard  ·  VPN выключен"
-        }
-        guard.setTextColor(tint)
-        server.text = "Сервер\n${next.serverLabel}"
-        server.contentDescription = "Выбрать сервер. Сейчас: ${next.serverLabel}"
-        server.isEnabled = next.servers.isNotEmpty()
-        server.alpha = if (server.isEnabled) 1f else 0.6f
-        syncing = true
-        routeToggle.isChecked = next.ruDirect
-        syncing = false
+        val color = when (next.phase) { FlintPhase.DISCONNECTED -> 0xFF82909E.toInt(); FlintPhase.CONNECTING -> 0xFFF1C75B.toInt(); FlintPhase.CONNECTED -> s.mint; FlintPhase.ERROR -> 0xFFEF626B.toInt() }
+        title.text = when (next.phase) { FlintPhase.CONNECTING -> "Подключаемся…"; FlintPhase.CONNECTED -> "Вы защищены"; else -> "Вы не защищены" }
+        title.setTextColor(if (next.phase == FlintPhase.CONNECTED) s.mint else s.ink)
+        subtitle.text = next.message.ifBlank { if (next.phase == FlintPhase.CONNECTED) "Ваше соединение защищено" else "Подключитесь, чтобы защитить свои данные" }
+        connect.text = when (next.phase) { FlintPhase.CONNECTED -> "⏻  ОТКЛЮЧИТЬ"; FlintPhase.CONNECTING -> "ОТМЕНИТЬ"; else -> "⏻  ПОДКЛЮЧИТЬСЯ" }
+        connect.contentDescription = when (next.phase) { FlintPhase.CONNECTED -> "Отключить VPN"; FlintPhase.CONNECTING -> "Отменить подключение"; else -> "Подключиться" }
+        connect.background = s.surface(color, 28); connect.setTextColor(0xFF061D27.toInt()); mascot.setPhase(next.phase, color)
+        guard.text = "♢  Flint Guard  •  " + when (next.phase) { FlintPhase.CONNECTED -> "Включён"; FlintPhase.CONNECTING -> "Подключение"; FlintPhase.ERROR -> "Ошибка подключения"; else -> "Отключён" }
+        (server.getChildAt(1) as TextView).text = next.serverLabel
+        (server.getChildAt(2) as TextView).text = if (next.selectedServerId == null) "По доступности и загрузке" else "Сменить сервер →"
+        (devices.getChildAt(2) as TextView).text = if (next.loggedIn) "Устройства и доступ" else "Войти в аккаунт"
+        subscription.visibility = if (next.subscriptionTitle.isBlank() && next.trafficText.isBlank()) GONE else VISIBLE
+        subscriptionTitle.text = next.subscriptionTitle.ifBlank { "Подписка Flint" }; trafficText.text = next.trafficText; expiry.text = next.expiryText
+        syncing = true; routeToggle.isChecked = next.ruDirect; syncing = false
         routeToggle.contentDescription = "Сайты РФ: ${if (next.ruDirect) "напрямую" else "через VPN"}"
-        traffic.visibility = if (next.trafficText.isBlank()) GONE else VISIBLE
-        trafficLabel.text = next.trafficText
-        traffic.contentDescription = next.trafficText
-        val fraction = next.trafficFraction?.takeIf { it.isFinite() }
-        trafficBar.visibility = if (fraction == null) GONE else VISIBLE
-        trafficBar.progress = ((fraction ?: 0f).coerceIn(0f, 1f) * 1000).toInt()
-        addServer.isEnabled = !next.busy
-        clipboard.isEnabled = !next.busy
+        qr.isEnabled = !next.busy; clipboard.isEnabled = !next.busy; requestLayout()
     }
-
     private fun showImportActions() {
-        showActionDialog("Добавить сервер", listOf(
-            "QR-код на картинке" to { callbacks.onImportQrImage() },
-            "Ввести ссылку" to { callbacks.onImportText() },
-            "Открыть файл" to { callbacks.onImportFile() },
-        ))
+        popup?.dialog?.dismiss()
+        popup = s.panel("Добавить сервер").also { p ->
+            if (isTv) s.add(p.body, s.button("Добавить с помощью телефона") { p.dialog.dismiss(); callbacks.onTvPair() }, 50)
+            else s.add(p.body, s.button("Сканировать QR-код") { p.dialog.dismiss(); callbacks.onScanCamera() }, 50)
+            listOf("QR-код на картинке" to { callbacks.onImportQrImage() }, "Ввести ссылку" to { callbacks.onImportText() }, "Открыть файл" to { callbacks.onImportFile() }).forEach { (name, action) ->
+                s.add(p.body, s.button(name) { p.dialog.dismiss(); action() }, 50)
+            }
+        }
     }
-
     private fun showServers() {
-        serverDialog?.dismiss()
-        val list = column().apply { setPadding(dp(18), dp(4), dp(18), dp(12)) }
-        list.addView(label(12f).apply {
-            text = "TCP-проверка показывает ответ порта. Подключение VPN проверяется отдельно."
-            setTextColor(muted)
-        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
-        val auto = button(if (state.selectedServerId == null) "✓  Автоматически" else "Автоматически") {
-            serverDialog?.dismiss()
-            callbacks.onSelectServer(null)
-        }
-        list.addView(auto, spaced(52))
-        state.servers.forEach { item ->
-            val selected = state.selectedServerId == item.id
-            val details = mutableListOf<String>()
-            when (item.available) {
-                false -> details.add("Нет ответа TCP")
-                true -> details.add(item.latencyMs?.let { "TCP $it мс" } ?: "TCP отвечает")
-                null -> details.add(item.latencyMs?.let { "TCP $it мс" } ?: "TCP не проверен")
+        popup?.dialog?.dismiss()
+        popup = s.panel("Локация").also { p ->
+            fun entry(name: String, id: String?, hint: String, unavailable: Boolean = false) {
+                val b = s.button("$name\n$hint") { p.dialog.dismiss(); callbacks.onSelectServer(id) }
+                b.gravity = Gravity.CENTER_VERTICAL or Gravity.START; b.setPadding(s.dp(16), s.dp(8), s.dp(16), s.dp(8))
+                if (unavailable) b.background = s.surface(0xFF35404A.toInt())
+                else if (id == state.selectedServerId) { b.background = s.surface(0xFF57E4B0.toInt()); b.setTextColor(0xFF052A20.toInt()) }
+                s.add(p.body, b, 78, 10)
+                if (isTv && id == null) b.post { b.requestFocus() }
             }
-            item.loadPercent?.takeIf { it in 0..100 }?.let { details.add("Загрузка $it%") }
-            val entry = button("${if (selected) "✓  " else ""}${item.name}\n${details.joinToString("  ·  ")}") {
-                serverDialog?.dismiss()
-                callbacks.onSelectServer(item.id)
-            }.apply {
-                gravity = Gravity.CENTER_VERTICAL or Gravity.START
-                setPadding(dp(16), dp(6), dp(16), dp(6))
-                maxLines = 3
-                if (item.available == false) {
-                    background = surface(Color.rgb(50, 62, 71))
-                    setTextColor(Color.rgb(183, 193, 201))
-                }
-                // A failed probe is not proof that the VPN cannot connect: manual retry stays available.
-                contentDescription = "${item.name}. ${details.joinToString(". ")}${if (selected) ". Выбран" else ""}"
-            }
-            list.addView(entry, spaced(72))
-        }
-        serverDialog = AlertDialog.Builder(context)
-            .setTitle("Серверы")
-            .setView(ScrollView(context).apply { addView(list) })
-            .setNegativeButton("Закрыть", null)
-            .create().also { dialog ->
-                styleDialog(dialog)
-                dialog.setOnDismissListener { serverDialog = null }
-                dialog.show()
-                finishDialogStyle(dialog)
-                if (isTv) auto.requestFocus()
-            }
-    }
-
-    private fun showActionDialog(title: String, actions: List<Pair<String, () -> Unit>>) {
-        val list = column().apply { setPadding(dp(18), 0, dp(18), dp(12)) }
-        val dialog = AlertDialog.Builder(context).setTitle(title).setView(list)
-            .setNegativeButton("Отмена", null).create()
-        val buttons = actions.map { (text, action) ->
-            button(text) { dialog.dismiss(); action() }.also { list.addView(it, spaced(52)) }
-        }
-        styleDialog(dialog)
-        dialog.show()
-        finishDialogStyle(dialog)
-        if (isTv) buttons.firstOrNull()?.requestFocus()
-    }
-
-    private fun showNotice(title: String, message: String) {
-        val dialog = AlertDialog.Builder(context).setTitle(title).setMessage(message)
-            .setPositiveButton("Закрыть", null).create()
-        styleDialog(dialog)
-        dialog.show()
-        finishDialogStyle(dialog)
-    }
-
-    private fun styleDialog(dialog: AlertDialog) {
-        dialog.window?.setBackgroundDrawable(rounded(Color.rgb(8, 28, 42), border, 22))
-    }
-
-    private fun finishDialogStyle(dialog: AlertDialog) {
-        dialog.window?.setBackgroundDrawable(rounded(Color.rgb(8, 28, 42), border, 22))
-        fun tint(view: View) {
-            if (view is TextView && view !is Button) view.setTextColor(ink)
-            if (view is ViewGroup) for (i in 0 until view.childCount) tint(view.getChildAt(i))
-        }
-        dialog.window?.decorView?.let(::tint)
-        listOf(AlertDialog.BUTTON_NEGATIVE, AlertDialog.BUTTON_POSITIVE).forEach { id ->
-            dialog.getButton(id)?.let { button ->
-                button.setTextColor(mint)
-                button.background = surface()
-                button.isAllCaps = false
-            }
+            entry("Автоматически", null, "По доступности, задержке и загрузке")
+            state.servers.forEach { item -> entry(item.name, item.id,
+                (if (item.available == false) "Недоступен" else item.latencyMs?.let { "$it мс" } ?: "Не проверен") +
+                    (item.loadPercent?.let { " · Загрузка $it%" } ?: " · Загрузка: нет данных"), item.available == false) }
+            s.add(p.body, s.button("Проверить") { callbacks.onProbe(false) }, 46)
+            s.add(p.body, s.button("Автонастройка") { p.dialog.dismiss(); callbacks.onProbe(true) }, 46)
         }
     }
-
-    private fun column() = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-    private fun label(size: Float, bold: Boolean = false) = TextView(context).apply {
-        textSize = size
-        setTextColor(ink)
-        includeFontPadding = false
-        if (bold) setTypeface(typeface, Typeface.BOLD)
-    }
-
-    private fun button(text: String, action: () -> Unit) = Button(context).apply {
-        id = View.generateViewId()
-        this.text = text
-        textSize = if (isTv) 15f else 14f
-        setTextColor(ink)
-        isAllCaps = false
-        setTypeface(typeface, Typeface.BOLD)
-        minWidth = 0
-        minimumWidth = 0
-        minHeight = 0
-        minimumHeight = 0
-        setPadding(dp(10), 0, dp(10), 0)
-        background = surface()
-        stateListAnimator = null
-        isFocusable = true
-        // Hybrid TV launchers can leave the window in touch mode. TV controls
-        // still need an initial focus target before the first remote key.
-        isFocusableInTouchMode = isTv
-        setOnClickListener { action() }
-    }
-
-    private fun rounded(fill: Int, stroke: Int, radius: Int = 16, width: Int = 1) = GradientDrawable().apply {
-        shape = GradientDrawable.RECTANGLE
-        cornerRadius = dp(radius).toFloat()
-        setColor(fill)
-        setStroke(dp(width), stroke)
-    }
-
-    private fun surface(fill: Int = card, focusStroke: Int = mint): android.graphics.drawable.Drawable {
-        val states = StateListDrawable()
-        if (isTv) states.addState(intArrayOf(android.R.attr.state_focused), rounded(fill, focusStroke, width = 3))
-        states.addState(intArrayOf(), rounded(fill, border))
-        return RippleDrawable(ColorStateList.valueOf(Color.argb(45, 255, 255, 255)), states, null)
-    }
-
-    private fun spaced(height: Int, top: Int = 8) = LinearLayout.LayoutParams(-1, dp(height)).apply {
-        topMargin = dp(top)
-    }
-    private fun dp(value: Int) = (value * resources.displayMetrics.density + 0.5f).toInt()
-
-    override fun onDetachedFromWindow() {
-        serverDialog?.dismiss()
-        super.onDetachedFromWindow()
-    }
+    override fun onDetachedFromWindow() { popup?.dialog?.dismiss(); super.onDetachedFromWindow() }
 }

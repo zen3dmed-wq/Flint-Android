@@ -51,7 +51,7 @@ class FlintAccount(private val context: Context) {
         val id = if (androidId.isNotBlank()) MessageDigest.getInstance("SHA-256")
             .digest(("flint-device:" + androidId).toByteArray()).joinToString("") { "%02x".format(it) }
         else prefs.getString("device", null) ?: UUID.randomUUID().toString().also { prefs.edit().putString("device", it).commit() }
-        return JSONObject().put("id", id).put("platform", if (BuildConfig.IS_TV) "android-tv" else "android")
+        return JSONObject().put("deviceId", id).put("platform", if (BuildConfig.IS_TV) "android-tv" else "android")
             .put("model", "${Build.MANUFACTURER} ${Build.MODEL}").put("osVersion", Build.VERSION.RELEASE)
             .put("appVersion", BuildConfig.VERSION_NAME)
     }
@@ -104,7 +104,11 @@ class FlintAccount(private val context: Context) {
         require(path.startsWith('/') && !path.contains("://") && !path.contains(".."))
         val before = epoch
         val used = if (authenticated) tokens.string("accessToken") else ""
-        try { return raw(method, path, body, used.takeIf { authenticated }, idempotencyKey) }
+        try {
+            val result = raw(method, path, body, used.takeIf { authenticated }, idempotencyKey)
+            if (authenticated && epoch != before) throw ApiError(401, "account_changed", "Аккаунт изменён. Повторите действие.")
+            return result
+        }
         catch (error: ApiError) {
             if (!authenticated || error.status != 401) throw error
         }
@@ -134,7 +138,11 @@ class FlintAccount(private val context: Context) {
                 c.outputStream.use { it.write(body.toString().toByteArray()) }
             }
             val status = c.responseCode
-            val bytes = (if (status in 200..299) c.inputStream else c.errorStream)?.use { it.readNBytes(2_000_001) } ?: byteArrayOf()
+            val bytes = (if (status in 200..299) c.inputStream else c.errorStream)?.use { input ->
+                val out = java.io.ByteArrayOutputStream(); val buffer = ByteArray(8192)
+                while (out.size() <= 2_000_000) { val n = input.read(buffer); if (n < 0) break; out.write(buffer, 0, n) }
+                out.toByteArray()
+            } ?: byteArrayOf()
             if (bytes.size > 2_000_000) throw ApiError(status, "too_large", "Слишком большой ответ сервера.")
             val data = runCatching { JSONObject(bytes.toString(Charsets.UTF_8)) }.getOrDefault(JSONObject())
             if (status !in 200..299) {

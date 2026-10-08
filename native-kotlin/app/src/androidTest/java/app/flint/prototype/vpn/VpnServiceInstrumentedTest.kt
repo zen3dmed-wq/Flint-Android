@@ -281,6 +281,7 @@ class VpnServiceInstrumentedTest {
             native = JSONObject(XrayConfigBuilder.build(profile, ruDirect = true, routingCatalogJson = catalog))
         }
         return JSONObject().put("protocol", "xray").put("hostName", "10.0.2.2")
+            .put("flintTestProbeUrl", "http://93.184.215.14:18080/android/verify")
             .put("dns1", "1.1.1.1").put("dns2", "1.0.0.1").put("mtu", "1500")
             .put("description", "Local test fixture").put("flintServerId", "fixture-local")
             .put("flintRussianAppsDirect", ruDirect)

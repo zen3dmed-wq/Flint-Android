@@ -1,0 +1,79 @@
+package app.flint.prototype.home
+
+import android.app.Activity
+import android.app.PendingIntent
+import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProvider
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ShortcutInfo
+import android.content.pm.ShortcutManager
+import android.graphics.*
+import android.graphics.drawable.Icon
+import android.os.Build
+import android.provider.Settings
+import android.widget.RemoteViews
+import app.flint.prototype.BuildConfig
+import app.flint.prototype.R
+import app.flint.prototype.ui.FlintStyle
+import java.io.File
+
+class HomeWidget : AppWidgetProvider() {
+    override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) { refresh(context, stored(context)) }
+    companion object {
+        fun stored(context: Context) = runCatching { File(context.filesDir, "widget-state").readText() }.getOrDefault("disconnected")
+        fun icon(context: Context, state: String, adaptive: Boolean = false): Bitmap {
+            val color = Color.parseColor(when (state) { "connected" -> "#4AE6A3"; "connecting", "disconnecting" -> "#F1C75B"; "error" -> "#EF626B"; else -> "#82909E" })
+            val bitmap = Bitmap.createBitmap(192, 192, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap); val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply { this.color = color }
+            if (adaptive) canvas.drawColor(color) else canvas.drawRoundRect(RectF(0f, 0f, 192f, 192f), 42f, 42f, paint)
+            val source = BitmapFactory.decodeResource(context.resources, R.drawable.flint_emblem)
+            val inset = if (adaptive) 40f else 12f
+            canvas.save(); canvas.clipPath(Path().apply { addCircle(96f, 96f, 96f-inset, Path.Direction.CW) })
+            canvas.drawBitmap(source, Rect((source.width*.075).toInt(), (source.height*.075).toInt(), (source.width*.925).toInt(), (source.height*.925).toInt()), RectF(inset, inset, 192-inset, 192-inset), paint)
+            canvas.restore(); source.recycle(); return bitmap
+        }
+        fun shortcut(context: Context, state: String) = ShortcutInfo.Builder(context, "flint-vpn-toggle-v2")
+            .setShortLabel("VPN").setLongLabel("Включить / выключить Flint VPN")
+            .setIcon(Icon.createWithAdaptiveBitmap(icon(context, state, true)))
+            .setIntent(Intent(context, ToggleActivity::class.java).setAction("app.flint.TOGGLE"))
+            .build()
+        fun refresh(context: Context, state: String) {
+            if (BuildConfig.IS_TV) return
+            runCatching {
+                File(context.filesDir, "widget-state").writeText(state)
+                val views = RemoteViews(context.packageName, R.layout.flint_widget)
+                views.setImageViewBitmap(R.id.flint_widget_toggle, icon(context, state))
+                val toggle = PendingIntent.getActivity(context, 40, Intent(context, ToggleActivity::class.java).setAction("app.flint.TOGGLE"), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+                views.setOnClickPendingIntent(R.id.flint_widget_toggle, toggle)
+                views.setContentDescription(R.id.flint_widget_toggle, if (state == "connected") "Flint. Отключить VPN" else "Flint. Подключить VPN")
+                val manager = AppWidgetManager.getInstance(context); val component = ComponentName(context, HomeWidget::class.java)
+                manager.updateAppWidget(manager.getAppWidgetIds(component), views)
+                if (Build.VERSION.SDK_INT >= 35) manager.setWidgetPreview(component, android.appwidget.AppWidgetProviderInfo.WIDGET_CATEGORY_HOME_SCREEN, views)
+                context.getSystemService(ShortcutManager::class.java)?.let { shortcuts ->
+                    shortcuts.updateShortcuts(listOf(shortcut(context, state)))
+                    if (shortcuts.dynamicShortcuts.isEmpty()) shortcuts.addDynamicShortcuts(listOf(shortcut(context, state)))
+                }
+            }
+        }
+        fun setup(activity: Activity) {
+            val s = FlintStyle(activity); val p = s.panel("Кнопка Flint")
+            s.add(p.body, s.label("Включайте и выключайте VPN одним нажатием с рабочего стола.", color = s.muted))
+            val help = "Удерживайте пустое место рабочего стола → Виджеты → Flint Kotlin. В ColorOS проверьте раздел обычных виджетов Android. Если запрос не появляется, добавьте иконку VPN и проверьте разрешение добавлять значки."
+            s.add(p.body, s.button("Добавить виджет 1×1") {
+                val m = AppWidgetManager.getInstance(activity)
+                val accepted = runCatching { m.isRequestPinAppWidgetSupported && m.requestPinAppWidget(ComponentName(activity, HomeWidget::class.java), null, null) }.getOrDefault(false)
+                p.message.text = if (accepted) "Подтвердите добавление в окне рабочего стола. Если окно не появилось: $help" else help
+            }, 50)
+            s.add(p.body, s.button("Добавить иконку VPN") {
+                val m = activity.getSystemService(ShortcutManager::class.java)
+                val accepted = runCatching { m.isRequestPinShortcutSupported && m.requestPinShortcut(shortcut(activity, stored(activity)), null) }.getOrDefault(false)
+                p.message.text = if (accepted) "Подтвердите добавление иконки. Её цвет отражает состояние VPN." else "Удерживайте значок Flint → VPN и перетащите кнопку на экран."
+            }, 50)
+            s.add(p.body, s.button("Как добавить вручную") { p.message.text = help }, 50)
+            s.add(p.body, s.button("Настройки рабочего стола") { runCatching { activity.startActivity(Intent(Settings.ACTION_HOME_SETTINGS)) }.onFailure { p.message.text = help } }, 50)
+            refresh(activity, stored(activity))
+        }
+    }
+}

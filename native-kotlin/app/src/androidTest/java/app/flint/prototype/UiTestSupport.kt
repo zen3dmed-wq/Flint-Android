@@ -28,7 +28,7 @@ internal object UiTestSupport {
     }
 
     fun findText(root: View, text: String): TextView? {
-        if (root is TextView && root.text.toString() == text) return root
+        if (root.contentDescription?.toString() == text || root is TextView && root.text.toString() == text) return root
         if (root is ViewGroup) for (index in 0 until root.childCount) {
             findText(root.getChildAt(index), text)?.let { return it }
         }

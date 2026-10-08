@@ -13,7 +13,7 @@ class NativePhoneUiTest {
     @Test fun importFileActionIsReachableAndDoesNotStartVpn() {
         UiTestSupport.launch(tv = false).use { scenario ->
             scenario.onActivity { activity ->
-                val add = UiTestSupport.findText(activity.flintView, "Добавить сервер") as Button
+                val add = UiTestSupport.findText(activity.flintView, "QR-код") as Button
                 UiTestSupport.assertOnScreen(add)
                 val connect = UiTestSupport.findText(activity.flintView, "Подключиться") as Button
                 UiTestSupport.assertOnScreen(connect)
@@ -61,7 +61,7 @@ class NativePhoneUiTest {
                 activity.showState(activity.uiState.copy(phase = FlintPhase.ERROR,
                     message = "Разрешение на VPN не выдано. Можно повторить подключение."))
                 assertNull(UiTestSupport.findText(activity.flintView, "Вы защищены"))
-                assertNotNull(UiTestSupport.findText(activity.flintView, "Не удалось подключиться"))
+                assertNotNull(UiTestSupport.findText(activity.flintView, "Вы не защищены"))
                 val retry = UiTestSupport.findText(activity.flintView, "Подключиться") as Button
                 assertTrue(retry.isEnabled)
                 retry.performClick()

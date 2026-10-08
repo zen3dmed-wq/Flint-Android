@@ -19,6 +19,9 @@ data class FlintUiState(
     val ruDirect: Boolean = true,
     val trafficText: String = "",
     val trafficFraction: Float? = null,
+    val subscriptionTitle: String = "",
+    val expiryText: String = "",
+    val loggedIn: Boolean = false,
     val message: String = "",
     val hasProfile: Boolean = false,
     val busy: Boolean = false,
@@ -33,4 +36,13 @@ interface FlintUiCallbacks {
     fun onImportText()
     fun onImportFile()
     fun onRuDirectChanged(enabled: Boolean)
+    fun onSettings() {}
+    fun onSubscriptions() {}
+    fun onPurchase() {}
+    fun onDevices() {}
+    fun onSupport() {}
+    fun onRouting() {}
+    fun onProbe(initialize: Boolean) {}
+    fun onScanCamera() {}
+    fun onTvPair() {}
 }

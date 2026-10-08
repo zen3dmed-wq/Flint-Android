@@ -21,7 +21,7 @@ class NativeTvUiTest {
                 val metrics = activity.resources.displayMetrics
                 assertTrue("TV test requires landscape width >= 960dp", metrics.widthPixels / metrics.density >= 960)
                 assertTrue("TV test requires height >= 540dp", metrics.heightPixels / metrics.density >= 540)
-                val add = UiTestSupport.findText(activity.flintView, "Добавить сервер") as Button
+                val add = UiTestSupport.findText(activity.flintView, "QR-код") as Button
                 UiTestSupport.assertOnScreen(add)
                 assertNotNull("The first remote key must establish a focused control", activity.currentFocus)
                 assertTrue("TV actions must accept focus after a remote key", add.requestFocus())
@@ -34,14 +34,14 @@ class NativeTvUiTest {
             assertEquals(listOf("clipboard"), UiHarnessActivity.events.toList())
 
             scenario.onActivity { activity ->
-                val server = UiTestSupport.findText(activity.flintView, "Сервер\nАвтоматически") as Button
+                val server = UiTestSupport.findText(activity.flintView, "Автоматически")!!
                 UiTestSupport.assertOnScreen(server)
                 assertTrue(server.requestFocus())
             }
             UiTestSupport.press(KeyEvent.KEYCODE_DPAD_CENTER)
-            val picker = UiTestSupport.awaitWindowContaining("TCP 23 мс", "Нет ответа TCP")
-            assertFalse("The measurement must identify the TCP probe", picker.findAccessibilityNodeInfosByText("TCP 23 мс").isEmpty())
-            assertFalse("A failed port probe must not claim a failed VPN handshake", picker.findAccessibilityNodeInfosByText("Нет ответа TCP").isEmpty())
+            val picker = UiTestSupport.awaitWindowContaining("23 мс", "Недоступен")
+            assertFalse(picker.findAccessibilityNodeInfosByText("23 мс").isEmpty())
+            assertFalse(picker.findAccessibilityNodeInfosByText("Недоступен").isEmpty())
             UiTestSupport.awaitFocusedText("Автоматически")
             UiTestSupport.screenshot("tv-server-picker-fixture", true, FlintPhase.CONNECTED)
             UiTestSupport.press(KeyEvent.KEYCODE_DPAD_DOWN)

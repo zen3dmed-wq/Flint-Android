@@ -12,6 +12,7 @@ object XrayConfigBuilder {
         ruDirect: Boolean = true,
         routingCatalogJson: String? = null,
         customDomains: List<String> = emptyList(),
+        routingPolicyJson: String? = null,
     ): String {
         require(socksPort in 1024..65535) { "Некорректный локальный порт" }
         val config = profile.originalConfigJson?.let(::JSONObject) ?: JSONObject()
@@ -36,7 +37,7 @@ object XrayConfigBuilder {
             val catalog = try { JSONObject(routingCatalogJson ?: throw ImportException("Не найден каталог правил Сайтов РФ")) }
                 catch (error: ImportException) { throw error }
                 catch (_: Exception) { throw ImportException("Повреждён каталог правил Сайтов РФ") }
-            applyRussianRouting(config, catalog, customDomains)
+            applyRussianRouting(config, catalog, customDomains, routingPolicyJson)
         }
         val result = config.toString()
         if (result.toByteArray(Charsets.UTF_8).size > SubscriptionParser.MAX_BYTES)
@@ -74,8 +75,12 @@ object XrayConfigBuilder {
         }
     }
 
-    private fun applyRussianRouting(config: JSONObject, catalog: JSONObject, customDomains: List<String>) {
-        val domains = linkedSetOf("domain:zakupki.gov.ru")
+    private fun applyRussianRouting(config: JSONObject, catalog: JSONObject, customDomains: List<String>, policyJson: String?) {
+        val defaults = JSONObject().put("version", 1).put("geosite", JSONArray(listOf("category-ru", "tld-ru")))
+            .put("geoip", JSONArray(listOf("ru", "private"))).put("domains", JSONArray(listOf("domain:zakupki.gov.ru"))).put("ips", JSONArray())
+        val proposed = policyJson?.let { runCatching { JSONObject(it) }.getOrNull() }
+        val policy = proposed?.takeIf { validPolicy(it, catalog) } ?: defaults
+        val domains = linkedSetOf<String>()
         val ips = linkedSetOf<String>()
         fun expand(kind: String, group: String, output: MutableSet<String>) {
             val entries = catalog.optJSONObject(kind)?.optJSONArray(group)
@@ -86,11 +91,15 @@ object XrayConfigBuilder {
                 output.add(entry)
             }
         }
-        expand("geosite", "category-ru", domains)
-        expand("geosite", "tld-ru", domains)
-        expand("geoip", "ru", ips)
-        expand("geoip", "private", ips)
-        customDomains.forEach { domains.add("domain:${normalizeDomain(it)}") }
+        for ((kind, output) in listOf("geosite" to domains, "geoip" to ips)) {
+            val groups = policy.getJSONArray(kind)
+            for (i in 0 until groups.length()) expand(kind, groups.getString(i), output)
+        }
+        for ((key, output) in listOf("domains" to domains, "ips" to ips)) {
+            val values = policy.getJSONArray(key)
+            for (i in 0 until values.length()) output.add(values.getString(i))
+        }
+        customDomains.forEach { val normalized = normalizeSite(it); if (isIp(normalized)) ips.add(normalized) else domains.add("domain:$normalized") }
 
         val outbounds = config.getJSONArray("outbounds")
         val existingTags = (0 until outbounds.length()).map { outbounds.getJSONObject(it).optString("tag") }.toSet()
@@ -113,5 +122,34 @@ object XrayConfigBuilder {
         if (ascii.length !in 1..253 || !ascii.matches(Regex("[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?")) || ascii.contains(".."))
             throw ImportException("Некорректное имя сайта")
         return ascii
+    }
+    private fun validPolicy(policy: JSONObject, catalog: JSONObject): Boolean = runCatching {
+        require(policy.getInt("version") == 1)
+        for (kind in listOf("geosite", "geoip")) {
+            val groups = policy.getJSONArray(kind); require(groups.length() <= 32)
+            for (i in 0 until groups.length()) require(catalog.getJSONObject(kind).has(groups.getString(i)))
+        }
+        for (kind in listOf("domains", "ips")) {
+            val values = policy.getJSONArray(kind); require(values.length() <= 2048)
+            for (i in 0 until values.length()) {
+                val value = values.getString(i)
+                if (kind == "domains") { require(value.startsWith("domain:") || value.startsWith("full:")); normalizeDomain(value.substringAfter(':')) }
+                else require(isIp(normalizeSite(value)))
+            }
+        }
+        true
+    }.getOrDefault(false)
+    private fun isIp(text: String) = text.substringBefore('/').let { ':' in it || it.matches(Regex("[0-9.]+")) }
+    fun normalizeSite(input: String): String {
+        var value = input.trim().lowercase()
+        if (value.startsWith("https://") || value.startsWith("http://")) value = runCatching { java.net.URI(value).host }.getOrNull() ?: throw ImportException("Некорректный адрес сайта")
+        if (!isIp(value)) return normalizeDomain(value)
+        val host = value.substringBefore('/').trim('[', ']')
+        try {
+            require(host.all { it in "0123456789abcdef:." })
+            val address = java.net.InetAddress.getByName(host)
+            if ('/' in value) require(value.substringAfter('/').toInt() in 0..(address.address.size * 8))
+            return host + if ('/' in value) "/${value.substringAfter('/').toInt()}" else ""
+        } catch (_: Exception) { throw ImportException("Некорректный IP-адрес или подсеть") }
     }
 }
