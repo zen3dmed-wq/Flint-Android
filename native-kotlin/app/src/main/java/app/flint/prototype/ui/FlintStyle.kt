@@ -11,6 +11,7 @@ import android.graphics.drawable.StateListDrawable
 import android.view.Gravity
 import android.view.View
 import android.view.Window
+import android.view.ViewGroup
 import android.widget.*
 import app.flint.prototype.BuildConfig
 
@@ -66,29 +67,30 @@ class FlintStyle(val context: Context, val tv: Boolean = BuildConfig.IS_TV) {
     fun add(parent: LinearLayout, view: View, height: Int = -2, gap: Int = 10) {
         parent.addView(view, LinearLayout.LayoutParams(-1, if (height < 0) height else dp(height)).apply { topMargin = dp(gap) })
     }
-    fun panel(title: String, wide: Boolean = false, maxHeight: Int = 640,
-              maxWidth: Int = if (wide) 690 else 460, topAligned: Boolean = false,
+    fun panel(title: String, wide: Boolean = false,
+              maxWidth: Int = if (wide) 690 else 460,
               showClose: Boolean = true, logo: Boolean = false): Panel {
         val dialog = Dialog(context); dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
-        val outer = column().apply { setPadding(dp(18), dp(18), dp(18), dp(18)); background = shape(dark, line, 23) }
         val head = row()
         if (title.isEmpty() && !logo && !showClose) head.visibility = View.GONE
         if (logo) head.addView(ImageView(context).apply { setImageResource(app.flint.prototype.R.drawable.flint_logo) },
             LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(10) })
         head.addView(label(title, 22f, true), LinearLayout.LayoutParams(0, -2, 1f))
         if (showClose) head.addView(button("×") { dialog.dismiss() }, LinearLayout.LayoutParams(dp(44), dp(44)))
-        outer.addView(head)
         val content = column()
-        outer.addView(ScrollView(context).apply { addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(8) })
+        val scroll = ScrollView(context).apply { addView(content); isFillViewport = false }
         val message = label("", 12f, color = muted)
-        outer.addView(message, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
-        val footer = column(); outer.addView(footer, LinearLayout.LayoutParams(-1, -2))
+        val footer = column()
+        val outer = AdaptivePanel(context, head, scroll, message, footer, dp(8)).apply {
+            tag = "flint-panel"
+            setPadding(dp(18), dp(18), dp(18), dp(18)); background = shape(dark, line, 23)
+        }
         dialog.setContentView(outer); dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
         dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         dialog.show()
         val metrics = context.resources.displayMetrics
-        dialog.window?.setLayout(minOf(metrics.widthPixels - dp(28), dp(maxWidth)), minOf(metrics.heightPixels - dp(60), dp(maxHeight)))
-        if (topAligned && !tv) dialog.window?.let { w -> w.setGravity(Gravity.TOP or Gravity.CENTER_HORIZONTAL); w.attributes = w.attributes.apply { y = dp(12) } }
+        dialog.window?.setLayout(minOf(metrics.widthPixels - dp(28), dp(maxWidth)), ViewGroup.LayoutParams.WRAP_CONTENT)
+        dialog.window?.setGravity(Gravity.CENTER)
         if (tv && showClose) head.getChildAt(head.childCount - 1).requestFocus()
         return Panel(dialog, content, message, footer)
     }
@@ -96,5 +98,42 @@ class FlintStyle(val context: Context, val tv: Boolean = BuildConfig.IS_TV) {
     data class Panel(val dialog: Dialog, val body: LinearLayout, val message: TextView, val footer: LinearLayout) {
         var busy = false
         fun error(text: String) { message.text = text }
+    }
+}
+
+/** Measure fixed controls first, then let content use the remaining window.
+ * Short forms wrap naturally; only overflowing content scrolls. Window's
+ * AT_MOST constraint already excludes system bars and the visible keyboard. */
+private class AdaptivePanel(context: Context, private val head: View,
+    private val scroll: ScrollView, private val message: TextView,
+    private val footer: View, private val gap: Int) : ViewGroup(context) {
+    init { listOf(head, scroll, message, footer).forEach { addView(it) } }
+    private var headGap = 0
+    private var messageGap = 0
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val width = MeasureSpec.getSize(widthMeasureSpec)
+        val windowLimit = if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.UNSPECIFIED)
+            resources.displayMetrics.heightPixels else MeasureSpec.getSize(heightMeasureSpec)
+        val maxHeight = (windowLimit - gap * 2).coerceAtLeast(0)
+        val innerWidth = (width - paddingLeft - paddingRight).coerceAtLeast(0)
+        val w = MeasureSpec.makeMeasureSpec(innerWidth, MeasureSpec.EXACTLY)
+        val natural = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
+        head.measure(w, natural); footer.measure(w, natural)
+        message.visibility = if (message.text.isNullOrEmpty()) GONE else VISIBLE
+        message.measure(w, natural)
+        headGap = if (head.visibility != GONE) gap else 0
+        messageGap = if (message.visibility != GONE) gap else 0
+        val fixed = paddingTop + paddingBottom + headGap + messageGap +
+            (if (head.visibility == GONE) 0 else head.measuredHeight) + footer.measuredHeight +
+            (if (message.visibility == GONE) 0 else message.measuredHeight)
+        scroll.measure(w, MeasureSpec.makeMeasureSpec((maxHeight - fixed).coerceAtLeast(0), MeasureSpec.AT_MOST))
+        setMeasuredDimension(width, minOf(maxHeight, fixed + scroll.measuredHeight))
+    }
+    override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+        var y = paddingTop
+        fun place(view: View) { if (view.visibility != GONE) {
+            view.layout(paddingLeft, y, width - paddingRight, y + view.measuredHeight); y += view.measuredHeight
+        } }
+        place(head); y += headGap; place(scroll); y += messageGap; place(message); place(footer)
     }
 }

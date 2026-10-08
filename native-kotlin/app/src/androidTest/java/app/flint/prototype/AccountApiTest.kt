@@ -11,6 +11,45 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AccountApiTest {
+    @Test fun locationsUseBearerRefreshAndExposeRealPercentages() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val tokens = mutableListOf<String?>()
+        val now = System.currentTimeMillis()
+        val api = FlintAccount(context) { _, path, _, token, _ -> when (path) {
+            "/auth/login" -> ApiReply(200, JSONObject("""{"accessToken":"old","refreshToken":"refresh"}"""))
+            "/auth/refresh" -> ApiReply(200, JSONObject("""{"accessToken":"new","refreshToken":"refresh-new"}"""))
+            "/me" -> ApiReply(200, JSONObject("""{"id":"load-fixture"}"""))
+            "/subscriptions" -> ApiReply(200, JSONObject("""{"items":[]}"""))
+            "/locations" -> {
+                tokens.add(token)
+                if (token == "old") throw ApiError(401,"expired","expired")
+                assertEquals("new", token)
+                ApiReply(200, JSONObject().put("loadUpdatedAt",java.time.Instant.ofEpochMilli(now).toString())
+                    .put("items", org.json.JSONArray("""[{"id":"node","addresses":["vpn.example:443"],"load":37}]""")))
+            }
+            "/auth/logout" -> ApiReply(204, JSONObject())
+            else -> error("Unexpected endpoint $path")
+        } }
+        try {
+            api.login("test@example.invalid","fixture",false)
+            val data = api.refreshLocations()
+            val profile = app.flint.prototype.imports.ServerProfile("a","Server","vpn.example",443,"vless","{}")
+            assertEquals(37, app.flint.prototype.vpn.ServerBalance.load(data,profile,now)?.first)
+            assertEquals(listOf("old","new"), tokens)
+            api.refreshLocations(); assertEquals(2,tokens.size)
+            api.logout(); assertEquals(0,api.refreshLocations().length())
+        } finally {
+            context.getSharedPreferences("flint-account",0).edit().clear().commit()
+            context.getSharedPreferences("flint-token-vault",0).edit().clear().commit()
+        }
+    }
+
+    @Test fun locationBridgeWithoutLoginReturnsNoInventedData() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        context.getSharedPreferences("flint-token-vault",0).edit().clear().commit()
+        assertEquals(0, kotlinx.coroutines.withTimeout(8000) { LocationClient.fetch(context) }.length())
+    }
+
     @Test fun tokenRefreshKeepsTheSameOrderKeyAndStableDeviceIdentity() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         var refreshes = 0

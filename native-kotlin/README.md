@@ -1,8 +1,8 @@
-# Flint 8.11.0 — native Android / Android TV
+# Flint 8.11.1 — native Android / Android TV
 
-Release build of the native Kotlin client. The user confirmed that 0.2 carries
+Release build of the native Kotlin client. The user confirmed that 8.11.0 carries
 VPN traffic on their phone. This release restores Qt 8.10.25 product screen
-structure and fixes home-screen switching; it keeps the same application ID and
+structure, sizes and centers dialogs to fit content, and opens support directly; it keeps the same application ID and
 signer as 0.1/0.2, so those installations update in place without losing data.
 
 ## Installation
@@ -19,8 +19,12 @@ rollback without deleting its account/settings. Only one VPN can run at a time.
 - Qt order and separate flows for settings, profile, login methods, referrals,
   purchase, subscriptions, devices, support and routing. Device management has its
   own subscription selection and never changes the active VPN subscription.
-- Flint Assist logo/title/operator button, two inline shortcut buttons, close;
-  support form, idempotent send/retry and replies displayed in the same panel.
+- Support opens directly to the message form, with idempotent send/retry and inline replies.
+- All product dialogs wrap content and center within the available window. Only
+  overflowing content scrolls; header/footer remain visible when the keyboard opens.
+- Location telemetry uses authenticated /locations with token refresh. The VPN
+  process requests measurements from the account process over a bounded private
+  Binder channel; tokens are never copied to native profiles or the VPN process.
 - Same 20 starter direct sites as Qt, one-time migration preserving user entries;
   separate traffic/automatic switches, editable sites and searchable expanded rules.
 - Widget sends a foreground-service PendingIntent: no main Activity is launched.

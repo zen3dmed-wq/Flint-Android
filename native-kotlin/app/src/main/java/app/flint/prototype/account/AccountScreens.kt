@@ -32,9 +32,8 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
     private val panels = mutableListOf<FlintStyle.Panel>()
     private val polls = mutableMapOf<FlintStyle.Panel, Job>()
     private fun panel(title: String, wide: Boolean = false) = s.panel(title, wide,
-        maxHeight = when (title) { "Пригласить друга" -> 480; "Купить / продлить подписку", "Поддержка" -> 760; "Мои подписки" -> 660; else -> 680 },
         maxWidth = if (wide) 690 else if (title in setOf("Купить / продлить подписку", "Поддержка", "Мои подписки", "Пригласить друга")) 560 else 520,
-        topAligned = title !in setOf("Аккаунт Flint", "Вход во Flint"), logo = title in setOf("Аккаунт Flint", "Вход во Flint")).also { p ->
+        logo = title in setOf("Аккаунт Flint", "Вход во Flint")).also { p ->
         panels.add(p); p.dialog.setOnDismissListener { polls.remove(p)?.cancel(); panels.remove(p) }
     }
     fun close() { polls.values.toList().forEach { it.cancel() }; polls.clear(); panels.toList().forEach { it.dialog.dismiss() }; panels.clear() }
@@ -326,8 +325,9 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
             val terms = data.optJSONObject("terms")
             if (terms != null) s.add(p.body, s.label("Бонус ${terms.optDouble("bonusPercent")}% при покупке от ${terms.optInt("minPurchaseDays")} дней. Максимум ${terms.optInt("maxBonusDays")} бонусных дней.", 12f, color = s.muted))
             val invitation = referralUrl ?: "Приглашаю во Flint! Зарегистрируйтесь в приложении по почте, затем откройте Настройки → Пригласить друга и введите код: $code"
-            s.add(p.body, s.button(if (referralUrl != null) "Скопировать ссылку" else "Скопировать приглашение") { copy(invitation); p.message.text = "Скопировано" }, 48)
-            s.add(p.body, s.button("Поделиться") { activity.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, invitation), "Пригласить друга")) }, 48)
+            s.buttons(p.body,
+                s.button(if (referralUrl != null) "Копировать ссылку" else "Копировать") { copy(invitation); p.message.text = "Скопировано" },
+                s.button("Поделиться") { activity.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, invitation), "Пригласить друга")) })
             if (data.isNull("referrer") || data.optJSONObject("referrer")?.length() == 0) {
                 val field = s.field("Код пригласившего друга"); s.add(p.body, field, 50)
                 s.add(p.body, s.button("Применить код") { task(p) {

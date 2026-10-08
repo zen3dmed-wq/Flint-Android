@@ -36,7 +36,7 @@ class RoutingScreen(private val activity: Activity, private val prefs: SharedPre
                     private val edited: () -> Unit) {
     private val s = FlintStyle(activity)
     fun show() {
-        val p = s.panel("Раздельное проксирование", maxHeight = 680, maxWidth = 500, topAligned = true, showClose = false)
+        val p = s.panel("Раздельное проксирование", maxWidth = 500, showClose = false)
         val summary = s.button("") { showAutomaticRules() }.apply {
             setTextColor(s.mint); textSize = 12f; gravity = android.view.Gravity.CENTER_VERTICAL
             background = null; setPadding(0, 0, 0, 0)
@@ -83,7 +83,7 @@ class RoutingScreen(private val activity: Activity, private val prefs: SharedPre
         s.add(p.body, sites); draw(); s.closeButton(p)
     }
     private fun showAutomaticRules() {
-        val p = s.panel("Автоматические правила", maxHeight = 680, maxWidth = 500, topAligned = true)
+        val p = s.panel("Автоматические правила", maxWidth = 500)
         val search = s.field("Поиск сайта или подсети"); s.add(p.body, search, 48)
         val counter = s.label("Загрузка правил…", 12f, color = s.muted); s.add(p.body, counter)
         val list = s.column(); s.add(p.body, list)

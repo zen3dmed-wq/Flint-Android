@@ -185,7 +185,7 @@ class FlintHomeView(context: Context, private val isTv: Boolean, private val cal
     private fun showServers() {
         serverRows.clear()
         popup?.dialog?.dismiss()
-        popup = s.panel("Выбор сервера", maxHeight = 600, showClose = false).also { p ->
+        popup = s.panel("Выбор сервера", showClose = false).also { p ->
             fun entry(name: String, id: String?, hint: String, unavailable: Boolean = false) {
                 val b = s.button("$name\n$hint") { p.dialog.dismiss(); callbacks.onSelectServer(id) }
                 b.gravity = Gravity.CENTER_VERTICAL or Gravity.START; b.setPadding(s.dp(16), s.dp(8), s.dp(16), s.dp(8))

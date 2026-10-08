@@ -92,7 +92,7 @@ internal object UiTestSupport {
         while (SystemClock.uptimeMillis() < deadline) {
             val root = instrumentation.uiAutomation.rootInActiveWindow
             val match = root?.findAccessibilityNodeInfosByText(text)?.firstOrNull {
-                it.text?.toString() == text && it.isClickable
+                (it.text?.toString() == text || it.contentDescription?.toString() == text) && it.isClickable
             }
             if (match != null) {
                 assertTrue("$text should be clickable", match.performAction(AccessibilityNodeInfo.ACTION_CLICK))

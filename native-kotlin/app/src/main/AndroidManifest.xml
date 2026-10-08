@@ -34,6 +34,7 @@
                 <category android:name="${launcherCategory}" />
             </intent-filter>
         </activity>
+        <service android:name=".account.LocationService" android:exported="false" />
         <service android:name=".vpn.FlintVpnService" android:permission="android.permission.BIND_VPN_SERVICE"
             android:exported="false" android:process=":vpn" android:foregroundServiceType="systemExempted">
             <intent-filter><action android:name="android.net.VpnService" /></intent-filter>

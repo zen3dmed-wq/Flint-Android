@@ -32,6 +32,8 @@ class FlintAccount(private val context: Context,
     init { require(testTransport == null || BuildConfig.DEBUG) }
     private val prefs = context.getSharedPreferences("flint-account", Context.MODE_PRIVATE)
     private val authLock = Mutex()
+    private val locationsLock = Mutex()
+    private var locationsFetchedAt = 0L
     private val vault = TokenVault(context)
     private var tokens = vault.read()
     private var epoch = 0L
@@ -72,9 +74,15 @@ class FlintAccount(private val context: Context,
             (subscriptions.firstOrNull { it.string("status").equals("active", true) } ?: subscriptions.firstOrNull())?.string("id").orEmpty()
         cache("me", me); cache("subscriptions", subs)
     }
-    suspend fun refreshLocations(): JSONObject {
-        locations = request("GET", "/locations", authenticated = false).data
-        return locations
+    suspend fun refreshLocations(): JSONObject = locationsLock.withLock {
+        if (!loggedIn) { locations = JSONObject(); return@withLock locations }
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (locations.length() > 0 && now - locationsFetchedAt in 0..15_000) return@withLock locations
+        val revision = epoch
+        val result = request("GET", "/locations").data
+        if (revision != epoch) return@withLock JSONObject()
+        locations = result; locationsFetchedAt = now
+        locations
     }
     suspend fun login(email: String, password: String, register: Boolean, referral: String = "") {
         val body = JSONObject().put("email", email.trim()).put("password", password).put("device", device())
@@ -90,6 +98,7 @@ class FlintAccount(private val context: Context,
         require(data.string("accessToken").isNotBlank() && data.string("refreshToken").isNotBlank()) { "Некорректный ответ входа" }
         epoch++; tokens = JSONObject(data.toString()); vault.write(tokens)
         me = JSONObject(); subscriptions = emptyList(); selectedId = ""
+        locations = JSONObject(); locationsFetchedAt = 0
         prefs.edit().remove("me").remove("subscriptions").remove("orderDraft").remove("supportDraft").remove("supportInput").apply()
     }
     suspend fun logout() {
@@ -97,6 +106,7 @@ class FlintAccount(private val context: Context,
             try { raw("POST", "/auth/logout", JSONObject().put("refreshToken", tokens.string("refreshToken")), tokens.string("accessToken"), null) }
             finally {
                 epoch++; tokens = JSONObject(); vault.write(tokens); me = JSONObject(); subscriptions = emptyList()
+                locations = JSONObject(); locationsFetchedAt = 0
                 prefs.edit().remove("me").remove("subscriptions").remove("selected").remove("orderDraft").remove("supportDraft").remove("supportInput").apply()
             }
         }
@@ -168,6 +178,10 @@ class FlintAccount(private val context: Context,
     private fun cached(key: String) = runCatching { JSONObject(prefs.getString(key, "{}").orEmpty()) }.getOrDefault(JSONObject())
     private fun cache(key: String, value: JSONObject) { prefs.edit().putString(key, value.toString()).apply() }
     companion object {
+        @Volatile private var sharedInstance: FlintAccount? = null
+        fun shared(context: Context): FlintAccount = sharedInstance ?: synchronized(this) {
+            sharedInstance ?: FlintAccount(context.applicationContext).also { sharedInstance = it }
+        }
         const val BASE = "https://flintmain.ru/api/v1"
         fun friendly(status: Int, code: String): String = when {
             code in setOf("email_taken", "email_already_linked") -> "Эта почта уже связана с аккаунтом. Войдите через неё или обратитесь в поддержку."

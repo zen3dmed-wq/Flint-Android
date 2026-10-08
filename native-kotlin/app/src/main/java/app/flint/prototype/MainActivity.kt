@@ -131,7 +131,7 @@ class MainActivity : Activity(), FlintUiCallbacks {
         window.setDecorFitsSystemWindows(false)
         profilesStore = ProfileStore(this)
         runCatching { JSONObject(prefs.getString("fingerprints", "{}").orEmpty()).let { json -> json.keys().forEach { fingerprints[it] = json.getString(it) } } }
-        account = FlintAccount(this)
+        account = FlintAccount.shared(this)
         accountScreens = AccountScreens(this, account, scope) { reload -> refreshAccountProfiles(reload) }
         state = state.copy(selectedServerId = prefs.getString("selected", null),
             ruDirect = savedInstanceState?.getBoolean("ruDirect", true) ?: true)
@@ -155,9 +155,11 @@ class MainActivity : Activity(), FlintUiCallbacks {
             finally { loadingProfiles = false; profilesReady.complete(Unit); render() }
         }
         render()
-        refreshJob = scope.launch {
+        scope.launch {
             runCatching { account.publicConfig() }
             if (account.loggedIn) runCatching { account.refresh(); refreshAccountProfiles(true) }
+        }
+        refreshJob = scope.launch {
             while (isActive) {
                 runCatching { refreshLoads() }
                 delay(30_000)
@@ -578,7 +580,14 @@ class MainActivity : Activity(), FlintUiCallbacks {
             }
         }
     }
-    private fun combineProfiles() { profiles = (accountProfiles + manualProfiles).distinctBy { it.id } }
+    private fun combineProfiles() {
+        profiles = (accountProfiles + manualProfiles).distinctBy { it.id }
+        mapLoads()
+    }
+    private fun mapLoads() {
+        loads.clear()
+        profiles.forEach { p -> ServerBalance.load(account.locations, p, System.currentTimeMillis())?.let { loads[p.id] = it } }
+    }
     private fun accountCache(): File? {
         if (!account.loggedIn || account.selectedId.isBlank()) return null
         return File(filesDir, "account-" + ServerProfile.stableId(account.me.string("id") + ":" + account.selectedId) + ".json")
@@ -624,13 +633,13 @@ class MainActivity : Activity(), FlintUiCallbacks {
         else if (reload) checkServers()
     }
     private suspend fun refreshLoads() {
-        val data = account.refreshLocations()
-        loads.clear(); profiles.forEach { p -> ServerBalance.load(data, p, System.currentTimeMillis())?.let { loads[p.id] = it } }; render()
+        account.refreshLocations()
+        mapLoads(); render()
     }
     override fun onSubscriptions() = accountScreens.subscriptions()
     override fun onPurchase() = accountScreens.purchase()
     override fun onDevices() = accountScreens.devices()
-    override fun onSupport() { AssistScreen(this) { accountScreens.support() }.show() }
+    override fun onSupport() = accountScreens.support()
     override fun onTvPair() = accountScreens.telegram()
     override fun onProbe(initialize: Boolean) {
         if (!initialize) { checkServers(); scope.launch { runCatching { refreshLoads() } }; return }
@@ -648,21 +657,14 @@ class MainActivity : Activity(), FlintUiCallbacks {
         }
     }
     override fun onSettings() {
-        val s = FlintStyle(this); val p = s.panel("", maxHeight = 470, maxWidth = 440, showClose = false)
-        s.add(p.body, s.button("Пригласить друга") { p.dialog.dismiss(); accountScreens.friends() }, 48)
-        s.add(p.body, s.button("Обновление приложения") { p.dialog.dismiss(); showUpdates() }, 48)
-        s.add(p.body, s.label("Настройки Flint", 21f, true))
-        s.add(p.body, s.label("Flint Android ${BuildConfig.VERSION_NAME}", color = s.muted))
-        s.add(p.body, s.button("Диагностика подключения") {
-            p.dialog.dismiss()
-            val text = "Flint ${BuildConfig.VERSION_NAME}\nAndroid ${Build.VERSION.RELEASE}\nРежим: ${if (state.selectedServerId == null) "автоматически" else "вручную"}\nСайты РФ: ${state.ruDirect}\n${state.phase}\n${state.message}"
-            val d = s.notice("Диагностика подключения", text)
-            s.add(d.footer, s.button("Скопировать") { getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Flint", text)); d.message.text = "Скопировано" }, 48)
-            s.closeButton(d)
-        }, 48)
-        if (!BuildConfig.IS_TV) s.add(p.body, s.button("Добавить виджет на экран") { p.dialog.dismiss(); showWidgetSetup() }, 48)
-        s.add(p.body, s.button(if (account.loggedIn) account.title else "Войти во Flint") { p.dialog.dismiss(); if (account.loggedIn) accountScreens.identity() else accountScreens.login() }, 48)
-        s.closeButton(p)
+        SettingsScreen(this).show(if (account.loggedIn) account.title else "Войти во Flint",
+            { accountScreens.friends() }, ::showUpdates, {
+                val s = FlintStyle(this)
+                val text = "Flint ${BuildConfig.VERSION_NAME}\nAndroid ${Build.VERSION.RELEASE}\nРежим: ${if (state.selectedServerId == null) "автоматически" else "вручную"}\nСайты РФ: ${state.ruDirect}\n${state.phase}\n${state.message}"
+                val d = s.notice("Диагностика подключения", text)
+                s.add(d.footer, s.button("Скопировать") { getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Flint", text)); d.message.text = "Скопировано" }, 48)
+                s.closeButton(d)
+            }, ::showWidgetSetup, { if (account.loggedIn) accountScreens.identity() else accountScreens.login() })
     }
     private fun customSites(): List<String> = DirectSites.read(prefs)
     private fun routingPolicy(): String? = if (prefs.getBoolean("automaticRouting", true)) account.config.optJSONObject("routing")?.optJSONObject("russianServices")?.toString()

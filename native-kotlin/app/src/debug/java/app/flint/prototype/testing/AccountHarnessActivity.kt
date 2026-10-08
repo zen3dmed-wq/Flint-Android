@@ -45,6 +45,7 @@ class AccountHarnessActivity : Activity() {
             override fun onImportText() {}
             override fun onImportFile() {}
             override fun onRuDirectChanged(enabled: Boolean) {}
+            override fun onSupport() { screens.support() }
         })
         setContentView(home); home.render(UiHarnessActivity.fixture())
         screens = AccountScreens(this, api, scope) {}
@@ -56,7 +57,8 @@ class AccountHarnessActivity : Activity() {
                 "devices" -> screens.devices()
                 "support" -> screens.support()
                 "identity" -> screens.identity()
-                "assist" -> AssistScreen(this@AccountHarnessActivity) { screens.support() }.show()
+                "home" -> Unit
+                "settings" -> SettingsScreen(this@AccountHarnessActivity).show(api.title, {}, {}, {}, {}, {})
                 "routing" -> {
                     val prefs = getSharedPreferences("routing-ui-fixture", MODE_PRIVATE)
                     prefs.edit().clear().commit()

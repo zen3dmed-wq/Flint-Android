@@ -17,7 +17,7 @@ class AccountUiTest {
             "friends" to arrayOf("Пригласить друга", "FLINT-TEST"),
             "devices" to arrayOf("Устройства", "Добавить устройство по QR", "Сеансы входа в аккаунт")
             ,"support" to arrayOf("Поддержка", "Отправить в поддержку", "Обновить ответы", "Обращение ticket-tes")
-            ,"assist" to arrayOf("Flint Assist", "Написать оператору", "Госзакупки", "Закрыть")
+            ,"settings" to arrayOf("Настройки Flint", "Добавить виджет на экран", "Закрыть")
             ,"identity" to arrayOf("Аккаунт Flint", "Подписка активна", "Способы входа · почта и Telegram")
             ,"routing" to arrayOf("Раздельное проксирование", "Добавить сайт", "zakupki.gov.ru")
         )) {
@@ -25,6 +25,38 @@ class AccountUiTest {
                 UiTestSupport.awaitWindowContaining(*labels)
                 UiTestSupport.screenshot("account-$screen-fixture", false, FlintPhase.DISCONNECTED)
             }
+        }
+    }
+    @Test fun settingsAndInvitationFitAndStayCentered() {
+        for (screen in listOf("settings", "friends")) {
+            ActivityScenario.launch<AccountHarnessActivity>(Intent(UiTestSupport.instrumentation.targetContext, AccountHarnessActivity::class.java).putExtra("screen", screen)).use { scenario ->
+                UiTestSupport.awaitWindowContaining(if (screen == "settings") "Настройки Flint" else "Применить код")
+                UiTestSupport.instrumentation.waitForIdleSync()
+                scenario.onActivity { activity ->
+                    fun panel(view: android.view.View): android.view.View? {
+                        if (view.tag == "flint-panel") return view
+                        if (view is android.view.ViewGroup) for (i in 0 until view.childCount) panel(view.getChildAt(i))?.let { return it }
+                        return null
+                    }
+                    val p = android.view.inspector.WindowInspector.getGlobalWindowViews().mapNotNull { panel(it) }.last()
+                    val scroll = (p as android.view.ViewGroup).getChildAt(1) as android.widget.ScrollView
+                    org.junit.Assert.assertFalse("$screen fits on this screen and must not scroll", scroll.canScrollVertically(1))
+                    val bounds = android.graphics.Rect(); p.getGlobalVisibleRect(bounds)
+                    org.junit.Assert.assertEquals(p.height, bounds.height())
+                    val visible = android.graphics.Rect(); activity.window.decorView.getWindowVisibleDisplayFrame(visible)
+                    org.junit.Assert.assertTrue("$screen centered: $bounds inside $visible", kotlin.math.abs(bounds.centerY() - visible.centerY()) < 24 * activity.resources.displayMetrics.density)
+                }
+            }
+        }
+    }
+    @Test fun mainSupportOpensMessageFieldDirectly() {
+        ActivityScenario.launch<AccountHarnessActivity>(Intent(UiTestSupport.instrumentation.targetContext, AccountHarnessActivity::class.java).putExtra("screen", "home")).use {
+            val deadline = android.os.SystemClock.uptimeMillis() + 5000
+            while ("GET /config" !in AccountHarnessActivity.requests && android.os.SystemClock.uptimeMillis() < deadline) android.os.SystemClock.sleep(50)
+            UiTestSupport.clickAccessibilityText("Поддержка")
+            val root = UiTestSupport.awaitWindowContaining("Опишите проблему", "Отправить в поддержку")
+            org.junit.Assert.assertTrue(root.findAccessibilityNodeInfosByText("Госзакупки").isEmpty())
+            org.junit.Assert.assertTrue(root.findAccessibilityNodeInfosByText("Написать оператору").isEmpty())
         }
     }
     @Test fun supportSendsExactTextAndDisplaysRepliesInline() {
