@@ -76,9 +76,15 @@ class FlintVpnService : VpnService() {
         createChannel()
         scope.launch {
             for (command in commands) {
-                when (command) {
-                    is Command.Connect -> connect(command)
-                    is Command.Stop -> disconnect(command.generation)
+                try {
+                    when (command) {
+                        is Command.Connect -> connect(command)
+                        is Command.Stop -> disconnect(command.generation)
+                    }
+                } finally {
+                    // Superseded queued requests may never reach readConfig().
+                    // Their private handoff files must not accumulate on disk.
+                    if (command is Command.Connect) discardTransient(command.fileName)
                 }
             }
         }
@@ -256,6 +262,15 @@ class FlintVpnService : VpnService() {
         val stream = recoveryFile.startWrite()
         try { stream.write(text.toByteArray(Charsets.UTF_8)); recoveryFile.finishWrite(stream) }
         catch (error: Exception) { recoveryFile.failWrite(stream); throw error }
+    }
+
+    private fun discardTransient(name: String?) {
+        if (name == null || !name.matches(Regex("[A-Za-z0-9_-]{1,100}\\.json"))) return
+        runCatching {
+            val directory = File(filesDir, VpnContract.CONFIG_DIRECTORY).canonicalFile
+            val file = File(directory, name).canonicalFile
+            if (file.parentFile == directory) file.delete()
+        }
     }
 
     private fun publish(value: Snapshot) {

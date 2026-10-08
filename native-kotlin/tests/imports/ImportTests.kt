@@ -100,6 +100,17 @@ fun main(args: Array<String>) {
             check(SubscriptionParser.parse(base64).profiles.size == 2)
         }
     }
+    checks["raw Unicode names keep spaces after QR and subscription import"] = {
+        val first = "$BASE#Армения — QR тест"
+        val second = "vless://$ID@vpn2.example.test:8443#Вторая Армения — сервер 2"
+        check(SubscriptionParser.parse(first).profiles.single().name == "Армения — QR тест")
+        for (bundle in listOf("$first\n$second", "$first\t$second", encoded("$first\n$second"))) {
+            val profiles = SubscriptionParser.parse(bundle).profiles
+            check(profiles.size == 2)
+            check(profiles[0].name == "Армения — QR тест")
+            check(profiles[1].name == "Вторая Армения — сервер 2")
+        }
+    }
     checks["Reality credentials, SNI and percent encoded parameters are preserved"] = {
         val profile = SubscriptionParser.parse("$REALITY&spiderX=%2Fhello%2Bworld#Test%20%2B%20VPN").profiles.single()
         val outbound = profile.outbound()

@@ -21,7 +21,9 @@ object SubscriptionParser {
         decodeBase64OrNull(text)?.takeIf { it != text }?.let { candidates.add(it.trim()) }
         for (candidate in candidates) {
             if (candidate.startsWith("{") || candidate.startsWith("[")) return parseJson(candidate)
-            val entries = candidate.split(Regex("[\\r\\n\\t ]+"))
+            // The fragment is a display name and may contain raw Unicode and spaces.
+            // Split a line only at another URI, never at words in a server name.
+            val entries = candidate.split(Regex("[\\r\\n]+|[\\t ]+(?=[a-zA-Z][a-zA-Z0-9+.-]*://)"))
                 .map(String::trim).filter { it.isNotEmpty() && !it.startsWith("#") }.distinct()
             if (entries.none { it.substringBefore("://").lowercase(Locale.ROOT) in schemes }) continue
             val profiles = mutableListOf<ServerProfile>()

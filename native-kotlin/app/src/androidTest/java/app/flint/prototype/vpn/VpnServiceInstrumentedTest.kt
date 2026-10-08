@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.graphics.Bitmap
 import android.net.VpnService
 import android.os.Bundle
 import android.os.Handler
@@ -12,9 +13,12 @@ import android.os.Looper
 import android.os.Message
 import android.os.Messenger
 import android.os.ParcelFileDescriptor
+import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
 import app.flint.prototype.imports.ServerProfile
 import app.flint.prototype.imports.XrayConfigBuilder
 import java.io.File
@@ -101,6 +105,7 @@ class VpnServiceInstrumentedTest {
         // 198.18.0.1 can match private direct rules, so do not use the HTTP marker
         // while this catalog is active; restore ordinary VPN routing below.
         foregroundActivity()
+        verifyReopenedMainScreen()
         val russian = fixtureConfig(ruDirect = true).put("flintServerId", "fixture-russian-routing")
         val expanded = JSONObject(russian.getJSONObject("xray_config_data").getString("config"))
         val expandedRules = expanded.getJSONObject("routing").getJSONArray("rules")
@@ -132,6 +137,59 @@ class VpnServiceInstrumentedTest {
         instrumentation.waitForIdleSync()
     }
 
+    private fun verifyReopenedMainScreen() {
+        val deadline = SystemClock.uptimeMillis() + 5000
+        var verified = false
+        while (SystemClock.uptimeMillis() < deadline) {
+            var mainResumed = false
+            instrumentation.runOnMainSync {
+                mainResumed = ActivityLifecycleMonitorRegistry.getInstance()
+                    .getActivitiesInStage(Stage.RESUMED)
+                    .any { it.javaClass.name == "app.flint.prototype.MainActivity" }
+            }
+            val root = instrumentation.uiAutomation.rootInActiveWindow
+            if (mainResumed && root?.packageName?.toString() == context.packageName) {
+                val disconnect = root.findAccessibilityNodeInfosByText("Отключить VPN")
+                    .any { it.text?.toString() == "Отключить VPN" && it.isVisibleToUser && it.isEnabled && it.isClickable }
+                val protected = root.findAccessibilityNodeInfosByText("Вы защищены")
+                    .any { it.text?.toString() == "Вы защищены" && it.isVisibleToUser }
+                if (disconnect && protected) {
+                    verified = true
+                    break
+                }
+            }
+            SystemClock.sleep(100)
+        }
+        assertTrue("Real MainActivity must restore connected service state within five seconds after HOME/reopen", verified)
+        // Confirm the same real connection still carries packets at capture time.
+        assertEquals("FLINT_VPN_TUNNEL_OK", throughTunnel())
+        instrumentation.waitForIdleSync()
+        val image = instrumentation.uiAutomation.takeScreenshot()
+        assertNotNull("Screenshot of reopened MainActivity must be available", image)
+        val directory = File(requireNotNull(context.getExternalFilesDir(null)), "ui-evidence")
+        assertTrue(directory.isDirectory || directory.mkdirs())
+        File(directory, "vpn-main-connected-real.png").outputStream().use { output ->
+            assertTrue(image!!.compress(Bitmap.CompressFormat.PNG, 100, output))
+        }
+        File(directory, "vpn-main-connected-real.json").writeText(JSONObject()
+            .put("syntheticUiState", false)
+            .put("vpnStarted", true)
+            .put("localFixtureTun", true)
+            .put("vpnPathVerified", "Android TUN -> SOCKS -> VLESS -> loopback HTTP fixture")
+            .put("activity", "app.flint.prototype.MainActivity")
+            .put("foregroundActivityVerified", true)
+            .put("returnedAfterHome", true)
+            .put("accessibilityTexts", JSONArray(listOf("Отключить VPN", "Вы защищены")))
+            .put("phase", "CONNECTED")
+            .put("serverId", "fixture-local")
+            .put("ruDirect", false)
+            .put("widthPx", image!!.width)
+            .put("heightPx", image.height)
+            .put("capturedAtEpochMs", System.currentTimeMillis())
+            .toString(2))
+        image.recycle()
+    }
+
     private fun connect(config: JSONObject) {
         val directory = File(context.filesDir, VpnContract.CONFIG_DIRECTORY).apply { mkdirs() }
         val file = File(directory, UUID.randomUUID().toString() + ".json")
@@ -149,7 +207,7 @@ class VpnServiceInstrumentedTest {
     private fun throughTunnel(): String {
         var failure: Exception? = null
         repeat(5) {
-            val connection = URL("http://198.18.0.1:18080/").openConnection() as HttpURLConnection
+            val connection = URL("http://198.18.0.1:18080/android/tun-marker").openConnection() as HttpURLConnection
             connection.connectTimeout = 2500
             connection.readTimeout = 2500
             connection.useCaches = false

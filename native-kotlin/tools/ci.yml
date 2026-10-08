@@ -69,17 +69,7 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
-          script: |
-            mkdir -p native-kotlin/build native-kotlin/evidence/phone
-            python3 native-kotlin/tools/start_vpn_fixture.py --binary native-kotlin/engine/libs/xray-fixture --directory native-kotlin/build/vpn-fixture > native-kotlin/build/vpn-fixture-launch.log 2>&1 &
-            for n in $(seq 1 40); do test -f native-kotlin/build/vpn-fixture/ready && break; sleep 1; done; test -f native-kotlin/build/vpn-fixture/ready
-            gradle -p native-kotlin --no-daemon :app:connectedPhoneDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=app.flint.prototype.NativeTvUiTest -Pandroid.testInstrumentationRunnerArguments.flintLocalVpnTest=true
-            cp -a native-kotlin/app/build/outputs/androidTest-results native-kotlin/evidence/phone/
-            cp -a native-kotlin/app/build/reports/androidTests native-kotlin/evidence/phone/
-            adb pull /sdcard/Android/data/app.flint.vpn.kotlin/files/ui-evidence native-kotlin/evidence/phone/ || true
-            adb shell wm size 1280x720
-            adb shell wm density 160
-            gradle -p native-kotlin --no-daemon :app:connectedPhoneDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.flint.prototype.NativeTvUiTest
+          script: bash native-kotlin/tools/run_emulator_tests.sh
       - name: Collect emulator evidence
         if: always()
         run: |
