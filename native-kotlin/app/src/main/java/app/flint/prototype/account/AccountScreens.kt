@@ -231,11 +231,12 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
                 }, 48) }
             }
             s.add(p.body, choice, 46)
-            s.add(p.body, s.button("Перейти к оплате") {
+            val pay = s.button("Перейти к оплате") {
                 if (planId.isBlank()) { p.error("Выберите доступный тариф."); return@button }
                 val draft = JSONObject().put("key", UUID.randomUUID().toString()).put("body", JSONObject().put("planId", planId).put("provider", provider))
                 api.saveDraft("orderDraft", draft); order(p, draft)
-            }, 48)
+            }
+            pay.background = s.surface(s.mint); pay.setTextColor(0xFF052A20.toInt()); s.add(p.body, pay, 48)
         }
     }
     private fun order(p: FlintStyle.Panel, draft: JSONObject) {

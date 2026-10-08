@@ -115,6 +115,11 @@ class FlintHomeView(context: Context, private val isTv: Boolean, private val cal
         place(subscription, rightX, subTop, colW, subH)
         place(server, rightX, tilesTop, pairW, tileH); place(russian, rightX + pairW + gap, tilesTop, pairW, tileH)
         place(devices, rightX, tilesTop + tileH + gap, pairW, tileH); place(support, rightX + pairW + gap, tilesTop + tileH + gap, pairW, tileH)
+        listOf(server, devices, support).forEach { tile ->
+            val size = s.dp(if (dense) 22 else 28)
+            place(tile.getChildAt(0), s.dp(12), s.dp(7), size, size)
+            if (tile === support) place(tile.getChildAt(3), s.dp(12), s.dp(7), size, size)
+        }
         place(routeToggle, pairW - s.dp(56), s.dp(8), s.dp(44), s.dp(36))
         (russian.getChildAt(1) as TextView).textSize = if (!wide && pairW < s.dp(175)) 13f else 14f
         val p = s.dp(12)
