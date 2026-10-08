@@ -36,10 +36,13 @@ class RoutingScreen(private val activity: Activity, private val prefs: SharedPre
                     private val edited: () -> Unit) {
     private val s = FlintStyle(activity)
     fun show() {
-        val p = s.panel("Раздельное проксирование", maxHeight = 680, maxWidth = 500, topAligned = true)
-        val summary = s.label("", 12f, color = s.mint); s.add(p.body, summary)
-        s.add(p.body, s.label("Автоматически: российские сервисы из базы правил и локальная сеть — напрямую, остальные сайты — через VPN. Правила обновляются из конфигурации.", 13f, color = s.muted))
-        s.add(p.body, s.label("Яндекс Карты и Навигатор работают напрямую через сеть устройства. VPN остаётся включён для остальных приложений согласно вашим правилам.", 13f, color = s.muted))
+        val p = s.panel("Раздельное проксирование", maxHeight = 680, maxWidth = 500, topAligned = true, showClose = false)
+        val summary = s.button("") { showAutomaticRules() }.apply {
+            setTextColor(s.mint); textSize = 12f; gravity = android.view.Gravity.CENTER_VERTICAL
+            background = null; setPadding(0, 0, 0, 0)
+            contentDescription = "Посмотреть автоматические правила"
+        }; s.add(p.body, summary, 44, 0)
+        s.add(p.body, s.label("Автоматически: российские сервисы, Яндекс Карты, Навигатор и локальная сеть — напрямую, остальные сайты — через VPN. Правила обновляются из конфигурации.", 13f, color = s.muted), gap = 0)
         fun toggle(label: String, value: Boolean): Switch = Switch(activity).apply { text = label; textSize = 14f; setTextColor(s.ink); isChecked = value; minHeight = s.dp(48) }
         val direct = toggle("Разделять трафик", enabled()); s.add(p.body, direct, 48)
         val automatic = toggle("Определять маршрут автоматически", prefs.getBoolean("automaticRouting", true)); s.add(p.body, automatic, 56)
@@ -50,8 +53,8 @@ class RoutingScreen(private val activity: Activity, private val prefs: SharedPre
                 else if (automatic.isChecked) "Ваши сайты ниже дополняют автоматические правила."
                 else "Вручную: только сайты ниже идут напрямую, остальные — через VPN."
             summary.text = if (!automatic.isChecked) "Вручную: напрямую идут только добавленные сайты"
-                else if (policy() == null) "Встроенные правила: geosite:category-ru, geosite:tld-ru, geoip:ru, geoip:private"
-                else "Автоматические правила из конфигурации Flint"
+                else if (policy() == null) "Встроенные правила: geosite:category-ru · Подробнее ›"
+                else "Правила из конфигурации Flint · Подробнее ›"
         }
         fun saved() { p.message.text = "Сохранено. Изменения применяются к подключению."; edited() }
         direct.setOnCheckedChangeListener { _, value -> setEnabled(value); updateMode() }
@@ -77,7 +80,6 @@ class RoutingScreen(private val activity: Activity, private val prefs: SharedPre
                 DirectSites.save(prefs, current + site); field.text.clear(); draw(); saved()
             } catch (e: Exception) { p.error(e.message ?: "Укажите домен, IP-адрес или подсеть") }
         }, 48)
-        s.add(p.body, s.button("Посмотреть автоматические правила") { showAutomaticRules() }, 48)
         s.add(p.body, sites); draw(); s.closeButton(p)
     }
     private fun showAutomaticRules() {

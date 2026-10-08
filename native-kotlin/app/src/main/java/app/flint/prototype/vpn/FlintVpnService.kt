@@ -184,6 +184,8 @@ class FlintVpnService : VpnService() {
         if (command.generation != generation.get() || destroyed) return
         stateJob?.cancel()
         monitorJob?.cancel()
+        // Android can still list the previous TUN briefly after it is closed.
+        val previousNetworks = VpnReachability.vpnNetworks(this).toSet()
         stopNative()
         if (command.generation != generation.get() || destroyed) return
         publish(Snapshot(state = "connecting", generation = command.generation))
@@ -241,7 +243,7 @@ class FlintVpnService : VpnService() {
                 return
             }
             publish(snapshot.copy(state = "connecting", message = "Проверяем интернет через VPN…"))
-            if (!VpnReachability.verify(this, config)) throw java.io.IOException("data_path")
+            if (!VpnReachability.verify(this, config, previousNetworks)) throw java.io.IOException("data_path")
             if (command.generation != generation.get() || destroyed) { stopNative(); return }
             publish(snapshot.copy(state = "connected", message = ""))
             config.remove("flintTried")
