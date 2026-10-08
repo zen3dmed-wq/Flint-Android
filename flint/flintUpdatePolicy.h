@@ -5,8 +5,8 @@
 #include <QVersionNumber>
 
 namespace FlintUpdatePolicy {
-inline const QString version = QStringLiteral("8.10.26");
-inline constexpr qint64 versionCode = 2196;
+inline const QString version = QStringLiteral("8.10.27");
+inline constexpr qint64 versionCode = 2197;
 inline constexpr qint64 maxBytes = 500LL * 1024 * 1024;
 inline QVersionNumber parseVersion(const QString &value) {
     if (!QRegularExpression("^[0-9]{1,9}(\\.[0-9]{1,9}){1,3}$").match(value).hasMatch()) return {};
@@ -38,4 +38,3 @@ inline QString validate(const QJsonObject &latest, const QUrl &base, bool apple 
     return {};
 }
 }
-

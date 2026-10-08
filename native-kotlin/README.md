@@ -1,7 +1,7 @@
-# Flint 8.11.2 — native Android / Android TV
+# Flint 8.11.3 — native Android / Android TV
 
 Native Kotlin client, now using the original production application ID
-`app.flint.vpn` as requested. Version 8.11.2 / code 3002. Release signing must
+`app.flint.vpn` as requested. Version 8.11.3 / code 3003. Release signing must
 match the deployed Qt certificate; inspect the delivered APK checks for evidence.
 
 ## Installation and migration

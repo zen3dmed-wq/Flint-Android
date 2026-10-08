@@ -263,7 +263,12 @@ class SupportScreens(private val activity: Activity, private val api: FlintAccou
                     p.error("Достигнут лимит 300 сообщений. Закройте этот чат и создайте новый."); return@launch
                 }
                 val body = JSONObject().put("text", text)
-                if (id.isEmpty()) body.put("category", category).put("subject", text.lineSequence().first().take(100))
+                if (id.isEmpty() && pending == null) {
+                    val subject = categories.find { it.string("id") == category }?.string("title")
+                        .orEmpty().replace(Regex("[\\r\\n]+"), " ").trim().take(100)
+                    if (subject.isBlank()) { p.error("Выберите тему обращения"); return@launch }
+                    body.put("category", category).put("subject", subject)
+                }
                 val draft = pending ?: JSONObject().put("kind", if (id.isEmpty()) "create" else "message").put("ticketId", id)
                     .put("key", UUID.randomUUID().toString()).put("body", body)
                 api.saveDraft("supportDraft", draft)

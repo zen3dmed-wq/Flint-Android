@@ -23,7 +23,7 @@ class SupportFixture(private val failFirstCreate: Boolean = false, private val o
         }
         if (path == "/support/tickets" && method == "POST") {
             requireNotNull(body); check(body.string("category") == "custom-general")
-            check(body.string("subject").length in 1..100 && '\n' !in body.string("subject"))
+            check(body.string("subject") == "Общий вопрос")
             check(body.string("text").length in 1..4000); check(!body.has("platform")); check(!key.isNullOrBlank())
             bodies.add(JSONObject(body.toString())); keys.add(key)
             if (rateLimited) throw ApiError(429,"rate_limited","Лимит новых обращений: повторите через 60 секунд",60)

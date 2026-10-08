@@ -84,7 +84,8 @@ ColumnLayout {
             if (!ticket.id) {
                 if (category.currentIndex < 0 || !categories.length) { error = "Дождитесь загрузки категорий"; return }
                 body.category = categories[category.currentIndex].id
-                body.subject = text.split(/[\r\n]/)[0].slice(0,100)
+                body.subject = String(categories[category.currentIndex].title || "").replace(/[\r\n]+/g, " ").trim().slice(0,100)
+                if (!body.subject) { error = "Выберите тему обращения"; return }
                 kind = "create"; path = "/support/tickets"
             }
             draft = {key: FlintController.newRequestKey(), body: body, ticketId: ticket.id || "", kind: kind, path: path}
