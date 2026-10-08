@@ -269,6 +269,53 @@ class VpnServiceInstrumentedTest {
         awaitColor("disconnected"); assertMainHidden()
     }
 
+    @Test fun quickSettingsTileTogglesRealVpnWithoutOpeningMain() {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("flintLocalVpnTest") == "true")
+        foregroundActivity()
+        shell("appops set ${context.packageName} ACTIVATE_VPN allow")
+        val binding = bind(); binding.await()
+        connect(fixtureConfig()); binding.await { it.getString(VpnContract.STATE) == "connected" }
+        shell("input keyevent KEYCODE_HOME")
+        val component = "${context.packageName}/app.flint.prototype.home.FlintTileService"
+        val previousTiles = shell("settings get secure sysui_qs_tiles").trim()
+        fun awaitTile(state: String) {
+            app.flint.prototype.UiTestSupport.awaitWindowContaining("Flint VPN", state)
+            instrumentation.runOnMainSync {
+                assertFalse("Quick Settings must not open MainActivity",
+                    ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)
+                        .any { it.javaClass.name == "app.flint.prototype.MainActivity" })
+            }
+        }
+        try {
+            shell("cmd statusbar add-tile $component")
+            shell("settings put secure sysui_qs_tiles 'custom($component)'")
+            shell("cmd statusbar expand-settings")
+            awaitTile("Подключён")
+            shell("cmd statusbar click-tile $component")
+            binding.await { it.getString(VpnContract.STATE) == "disconnected" }
+            awaitTile("Выключен")
+            shell("cmd statusbar collapse"); shell("cmd statusbar expand-settings")
+            awaitTile("Выключен")
+            shell("cmd statusbar click-tile $component")
+            binding.await { it.getString(VpnContract.STATE) == "connected" }
+            awaitTile("Подключён")
+            assertEquals("FLINT_VPN_TUNNEL_OK", throughTunnel())
+            instrumentation.uiAutomation.waitForIdle(500, 5000)
+            val directory = File(requireNotNull(context.getExternalFilesDir(null)), "ui-evidence").apply { mkdirs() }
+            val image = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+            File(directory,"quick-settings-connected-real.png").outputStream().use { image.compress(Bitmap.CompressFormat.PNG,100,it) }
+            image.recycle()
+            File(directory,"quick-settings-real.json").writeText(JSONObject().put("syntheticUiState",false)
+                .put("systemTileAdded",true).put("offAndOn",true).put("liveStateAfterReopen",true)
+                .put("mainRemainsHidden",true).put("realAndroidTunTraffic",true).toString(2))
+        } finally {
+            shell("cmd statusbar collapse")
+            shell("cmd statusbar remove-tile $component")
+            if (previousTiles.isEmpty() || previousTiles == "null") shell("settings delete secure sysui_qs_tiles")
+            else shell("settings put secure sysui_qs_tiles '$previousTiles'")
+        }
+    }
+
     private fun foregroundActivity() {
         context.startActivity(Intent().setClassName(context.packageName, "app.flint.prototype.MainActivity").apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -360,9 +407,8 @@ class VpnServiceInstrumentedTest {
         throw AssertionError("Native VPN failed to carry fixture traffic", failure)
     }
 
-    private fun shell(command: String) {
-        ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(command)).use { it.readBytes() }
-    }
+    private fun shell(command: String): String =
+        ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(command)).use { it.readBytes().toString(Charsets.UTF_8) }
 
     private inner class Binding : ServiceConnection {
         val bound = CountDownLatch(1)

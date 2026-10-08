@@ -25,6 +25,10 @@
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/flint_widget_info" />
         </receiver>
         <activity android:name=".home.ToggleActivity" android:exported="false" android:excludeFromRecents="true" android:taskAffinity="" android:theme="@style/FlintToggleTheme" />
+        <service android:name=".home.FlintTileService" android:label="Flint VPN" android:icon="@drawable/ic_vpn_status"
+            android:exported="true" android:enabled="${widgetEnabled}" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
         <provider android:name=".updates.FlintUpdateProvider" android:authorities="${applicationId}.updates" android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/update_paths" />
         </provider>

@@ -1,7 +1,7 @@
-# Flint 8.11.3 — native Android / Android TV
+# Flint 8.11.4 — native Android / Android TV
 
 Native Kotlin client, now using the original production application ID
-`app.flint.vpn` as requested. Version 8.11.3 / code 3003. Release signing must
+`app.flint.vpn` as requested. Version 8.11.4 / code 3004. Release signing must
 match the deployed Qt certificate; inspect the delivered APK checks for evidence.
 
 ## Installation and migration
@@ -78,3 +78,17 @@ Release APKs are unsigned in CI and signed locally with the existing Flint key.
 No user keys/tokens/subscription URLs or signing keys are included in this source.
 Pinned upstream provenance/license are in engine/. Original PT Root UI font is
 licensed under SIL OFL 1.1 (engine/LICENSE-font.txt and the identical APK asset).
+
+## Quick Settings button
+
+Phone Settings → «Добавить кнопку в шторку». Android 13+ can show the system
+add-tile prompt; Android 11/12 and OEM launchers also support manual placement
+through the shade editor. The tile is disabled in the TV manifest. It subscribes
+to the real VPN service while visible and sends the existing service toggle,
+without starting MainActivity after the initial profile/VPN permission setup.
+Android chooses the active/inactive tint; the tile uses Flint's white husky icon.
+The emulator test adds the actual SystemUI tile and verifies stop/start, state
+after reopening the shade, real TUN traffic and hidden MainActivity.
+
+New support conversations use the selected category title as subject; message
+text remains separate, including line breaks. Saved idempotent retries stay unchanged.
