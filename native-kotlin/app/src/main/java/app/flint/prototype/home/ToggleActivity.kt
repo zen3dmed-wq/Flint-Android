@@ -15,6 +15,7 @@ class ToggleActivity : Activity() {
     private var bound = false
     private var remote: Messenger? = null
     private var handled = false
+    private var permissionPending = false
     private val handler = Handler(Looper.getMainLooper())
     private val receiver = Messenger(Handler(Looper.getMainLooper()) { message ->
         if (message.what == VpnContract.STATUS && !handled) {
@@ -23,7 +24,7 @@ class ToggleActivity : Activity() {
                 "connected", "connecting", "disconnecting" -> { remote?.send(Message.obtain(null, VpnContract.DISCONNECT)); finish() }
                 else -> {
                     val permission = VpnService.prepare(this)
-                    if (permission == null) startLast() else startActivityForResult(permission, 1)
+                    if (permission == null) startLast() else { permissionPending = true; startActivityForResult(permission, 1) }
                 }
             }
         }
@@ -31,6 +32,7 @@ class ToggleActivity : Activity() {
     })
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+            if (handled || isFinishing || isDestroyed) return
             if (binder == null) { openMain(); return }
             remote = Messenger(binder); remote?.send(Message.obtain(null, VpnContract.REQUEST_STATUS).apply { replyTo = receiver })
         }
@@ -38,6 +40,8 @@ class ToggleActivity : Activity() {
     }
     override fun onCreate(saved: Bundle?) {
         super.onCreate(saved)
+        permissionPending = saved?.getBoolean("permissionPending") == true
+        handled = permissionPending
         bound = bindService(Intent(this, FlintVpnService::class.java), connection, BIND_AUTO_CREATE)
         handler.postDelayed({ if (!handled) openMain() }, 3000)
     }
@@ -51,9 +55,11 @@ class ToggleActivity : Activity() {
         } catch (_: Exception) { openMain(); return }
         finish()
     }
-    private fun openMain() { startActivity(Intent(this, MainActivity::class.java)); finish() }
+    private fun openMain() { handled = true; startActivity(Intent(this, MainActivity::class.java)); finish() }
+    override fun onSaveInstanceState(out: Bundle) { out.putBoolean("permissionPending", permissionPending); super.onSaveInstanceState(out) }
     @Deprecated("Platform activity") override fun onActivityResult(code: Int, result: Int, data: Intent?) {
         super.onActivityResult(code, result, data)
+        permissionPending = false
         if (code == 1 && result == RESULT_OK) startLast() else finish()
     }
     override fun onDestroy() { handler.removeCallbacksAndMessages(null); if (bound) unbindService(connection); super.onDestroy() }

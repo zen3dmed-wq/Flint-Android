@@ -115,14 +115,15 @@ class FlintHomeView(context: Context, private val isTv: Boolean, private val cal
         place(subscription, rightX, subTop, colW, subH)
         place(server, rightX, tilesTop, pairW, tileH); place(russian, rightX + pairW + gap, tilesTop, pairW, tileH)
         place(devices, rightX, tilesTop + tileH + gap, pairW, tileH); place(support, rightX + pairW + gap, tilesTop + tileH + gap, pairW, tileH)
-        routeToggle.layoutParams = LayoutParams(s.dp(44), s.dp(36)).apply { leftMargin = pairW - s.dp(56); topMargin = s.dp(8) }
+        place(routeToggle, pairW - s.dp(56), s.dp(8), s.dp(44), s.dp(36))
         (russian.getChildAt(1) as TextView).textSize = if (!wide && pairW < s.dp(175)) 13f else 14f
         val p = s.dp(12)
-        subscriptionTitle.layoutParams = LayoutParams(colW - p * 2 - s.dp(76), s.dp(20)).apply { leftMargin = p; topMargin = s.dp(8) }
-        change.layoutParams = LayoutParams(s.dp(76), s.dp(20)).apply { leftMargin = colW - p - s.dp(76); topMargin = s.dp(8) }
-        traffic.layoutParams = LayoutParams(colW - 2 * p, s.dp(20)).apply { leftMargin = p; topMargin = s.dp(31) }
-        expiry.layoutParams = LayoutParams(colW - 2 * p, s.dp(18)).apply { leftMargin = p; topMargin = s.dp(55) }
-        filled.layoutParams = LayoutParams(((colW - 2 * p) * (state.trafficFraction ?: 0f).coerceIn(0f, 1f)).toInt(), -1)
+        place(subscriptionTitle, p, s.dp(8), colW - p * 2 - s.dp(76), s.dp(20))
+        place(change, colW - p - s.dp(76), s.dp(8), s.dp(76), s.dp(20))
+        place(traffic, p, s.dp(31), colW - 2 * p, s.dp(20))
+        place(expiry, p, s.dp(55), colW - 2 * p, s.dp(18))
+        val fillWidth = ((colW - 2 * p) * (state.trafficFraction ?: 0f).coerceIn(0f, 1f)).toInt()
+        if (filled.layoutParams.width != fillWidth) filled.layoutParams = LayoutParams(fillWidth, -1)
         val connectH = s.dp(if (dense) 48 else 56); val guardH = s.dp(if (dense) 28 else 36)
         val buyH = s.dp(44); val statusH = s.dp(if (dense) 32 else 61)
         val end = if (wide) bodyTop + bodyH else subTop - gap

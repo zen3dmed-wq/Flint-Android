@@ -192,31 +192,45 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
             s.add(p.body, s.label("Выберите тариф", 20f, true, s.mint))
             s.add(p.body, s.label("Покупка для: ${api.title}", 12f, color = s.muted))
             var planId = ""; var provider = methods.first().string("id")
-            val planButtons = mutableListOf<Pair<String, Button>>()
+            val planButtons = mutableListOf<Pair<String, LinearLayout>>()
             plans.chunked(2).forEach { pair ->
                 val row = s.row()
                 pair.forEachIndexed { index, plan ->
                     val price = plan.optJSONObject("price") ?: JSONObject()
                     val available = plan.string("availableUntil").isBlank() || epoch(plan.string("availableUntil")) > System.currentTimeMillis()
-                    val button = s.button("${plan.string("name")}\n${price.optDouble("amount", 0.0)} ${price.string("currency")}\n${plan.optInt("durationDays")} дней\n${benefit(plan, plans)}") {
-                        planId = plan.string("id"); planButtons.forEach { (id, b) -> b.background = s.surface(if (id == planId) 0xFF174A3F.toInt() else s.card) }
+                    val card = s.column().apply {
+                        background = s.surface(); setPadding(s.dp(12), s.dp(12), s.dp(12), s.dp(12))
+                        isFocusable = true; isFocusableInTouchMode = BuildConfig.IS_TV; isClickable = true; isEnabled = available
+                        alpha = if (available) 1f else .55f
                     }
-                    button.isEnabled = available; button.textSize = 14f
-                    row.addView(button, LinearLayout.LayoutParams(0, s.dp(134), 1f).apply { if (index == 0 && pair.size > 1) marginEnd = s.dp(10) })
-                    planButtons.add(plan.string("id") to button)
+                    s.add(card, s.label(plan.string("name"), 14f, true), gap = 0)
+                    s.add(card, s.label("${price.string("amount")} ${price.string("currency")}", 20f, true), gap = 5)
+                    s.add(card, s.label(benefit(plan, plans), 11f, color = s.mint), gap = 5)
+                    val detail = planDetails(plan)
+                    if (detail.isNotBlank()) s.add(card, s.label(detail, 11f, color = s.muted), gap = 5)
+                    card.setOnClickListener {
+                        planId = plan.string("id")
+                        planButtons.forEach { (id, b) ->
+                            val selected = id == planId
+                            b.background = s.surface(if (selected) 0xFF57E4B0.toInt() else s.card)
+                            for (i in 0 until b.childCount) (b.getChildAt(i) as? TextView)?.setTextColor(if (selected) 0xFF052A20.toInt() else if (i == 2) s.mint else if (i > 2) s.muted else s.ink)
+                        }
+                    }
+                    row.addView(card, LinearLayout.LayoutParams(0, -1, 1f).apply { if (index == 0 && pair.size > 1) marginEnd = s.dp(10) })
+                    planButtons.add(plan.string("id") to card)
                 }
-                s.add(p.body, row)
+                row.minimumHeight = s.dp(124); s.add(p.body, row)
             }
             planButtons.firstOrNull { it.second.isEnabled }?.second?.performClick()
             s.add(p.body, s.label("Способ оплаты", 12f, color = s.muted))
-            methods.forEach { method ->
-                val b = RadioButton(activity).apply { text = method.string("title"); setTextColor(s.ink); buttonTintList = android.content.res.ColorStateList.valueOf(s.mint); isChecked = method.string("id") == provider }
-                b.setOnClickListener {
-                    provider = method.string("id")
-                    for (i in 0 until p.body.childCount) (p.body.getChildAt(i) as? RadioButton)?.isChecked = p.body.getChildAt(i) === b
-                }
-                s.add(p.body, b, 44)
+            val choice = s.button(methods.first().string("title") + "  ⌄") {}
+            choice.setOnClickListener {
+                val select = panel("Способ оплаты")
+                methods.forEach { method -> s.add(select.body, s.button(method.string("title")) {
+                    provider = method.string("id"); choice.text = method.string("title") + "  ⌄"; select.dialog.dismiss()
+                }, 48) }
             }
+            s.add(p.body, choice, 46)
             s.add(p.body, s.button("Перейти к оплате") {
                 if (planId.isBlank()) { p.error("Выберите доступный тариф."); return@button }
                 val draft = JSONObject().put("key", UUID.randomUUID().toString()).put("body", JSONObject().put("planId", planId).put("provider", provider))
@@ -286,7 +300,9 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
         task(p) {
             val data = api.request("GET", "/referrals").data
             val code = data.string("code")
-            val referralUrl = listOf(data.string("inviteUrl"), data.string("referralUrl"), data.string("link")).firstOrNull {
+            val template = api.config.optJSONObject("flintIntegration")?.string("referralUrlTemplate").orEmpty()
+            val website = if ("{code}" in template) template.replace("{code}", Uri.encode(code)) else ""
+            val referralUrl = listOf(website, data.string("inviteUrl"), data.string("referralUrl"), data.string("link")).firstOrNull {
                 val u = Uri.parse(it); u.scheme == "https" && u.host !in setOf("t.me", "telegram.me")
             }
             s.add(p.body, s.label("Ваш код: $code", 22f, true, s.mint))
@@ -321,7 +337,10 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
                         s.add(p.body, s.label(device.string("name").ifBlank { device.string("model") }, 16f, true))
                         if (!device.optBoolean("revoked")) s.add(p.body, s.button("Отключить доступ") {
                             confirm("Отключить устройство?", "Это действие отзовёт его VPN-доступ.") { task(p) {
-                                api.request("DELETE", "/subscriptions/${Uri.encode(sid)}/devices/${Uri.encode(device.string("id"))}"); p.dialog.dismiss(); devices()
+                                val result = api.request("DELETE", "/subscriptions/${Uri.encode(sid)}/devices/${Uri.encode(device.string("id"))}")
+                                if (result.status != 204) throw ApiError(result.status, "not_confirmed", "Сервер ещё не подтвердил отключение. Обновите список.")
+                                if (device.optBoolean("isCurrent")) activity.startService(Intent(activity, app.flint.prototype.vpn.FlintVpnService::class.java).setAction(app.flint.prototype.vpn.VpnContract.ACTION_DISCONNECT))
+                                p.dialog.dismiss(); devices()
                             } }
                         }, 44)
                     } else s.add(p.body, s.label("Управление VPN-устройствами доступно владельцу подписки.", color = s.muted))
@@ -350,7 +369,9 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
             else s.add(p.body, s.button("Завершить сеанс") { confirm("Завершить вход?", "На устройстве потребуется снова войти в аккаунт. Это не отзыв общего ключа VPN.") { task(p) {
                 val fresh = objects(api.request("GET", "/me/sessions").data, "items").find { it.string("id") == row.string("id") }
                 check(fresh != null && !fresh.optBoolean("isCurrent"))
-                api.request("DELETE", "/me/sessions/${Uri.encode(row.string("id"))}"); p.dialog.dismiss()
+                val result = api.request("DELETE", "/me/sessions/${Uri.encode(row.string("id"))}")
+                if (result.status != 204) throw ApiError(result.status, "not_confirmed", "Сервер ещё не подтвердил завершение входа.")
+                p.dialog.dismiss()
             } } }, 46)
         }
     }
@@ -373,7 +394,7 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
                 s.add(p.body, field, 120)
                 s.add(p.body, s.button("Отправить") { task(p) {
                     var draft = api.draft("supportDraft")
-                    if (draft == null) { require(field.text.isNotBlank()); draft = JSONObject().put("key", UUID.randomUUID().toString()).put("body", JSONObject().put("message", field.text.toString())); api.saveDraft("supportDraft", draft) }
+                    if (draft == null) { require(field.text.isNotBlank()); draft = JSONObject().put("key", UUID.randomUUID().toString()).put("body", JSONObject().put("text", field.text.toString()).put("platform", if (BuildConfig.IS_TV) "android-tv" else "android")); api.saveDraft("supportDraft", draft) }
                     api.request("POST", "/support/tickets", draft.getJSONObject("body"), idempotencyKey = draft.string("key"))
                     api.saveDraft("supportDraft", null); p.dialog.dismiss(); support()
                 } }, 48)
@@ -432,6 +453,15 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
             if (it.string("updatedAt").isNotBlank() && it.optDouble("limitBytes", 0.0) > 0) (it.optDouble("usedBytes", 0.0) / it.optDouble("limitBytes")).toFloat().coerceIn(0f, 1f) else 0f
         } ?: 0f
         fun expiry(sub: JSONObject) = (if (sub.string("status") == "expired") "Истекла: " else "Активна до: ") + date(sub.string("expiresAt"))
+        fun planDetails(plan: JSONObject): String {
+            val parts = mutableListOf<String>()
+            if (plan.optBoolean("isPersonal")) parts.add("Для вас")
+            plan.optJSONObject("traffic")?.let { traffic ->
+                if (traffic.has("limitBytes")) parts.add(if (traffic.isNull("limitBytes")) "Безлимит" else String.format(Locale.forLanguageTag("ru-RU"), "%.0f GB", traffic.optDouble("limitBytes") / 1_000_000_000))
+            }
+            if (plan.string("availableUntil").isNotBlank()) parts.add("До " + date(plan.string("availableUntil")))
+            return parts.joinToString(" · ")
+        }
         fun benefit(plan: JSONObject, all: List<JSONObject>): String {
             val days = plan.optInt("durationDays"); val price = plan.optJSONObject("price") ?: return ""
             val amount = price.optDouble("amount", 0.0); val currency = price.string("currency")
@@ -443,7 +473,10 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
                     if (perDay > 0) percent = kotlin.math.floor(100 * (1 - amount / days / perDay)).toInt()
                 }
             }
-            return (if (percent in 1..100) "Выгода $percent% · " else "") + if (days > 0) "${(amount * 30 / days).toInt()} $currency / 30 дней" else ""
+            val money = plan.optJSONObject("savings")
+            val saving = if (percent in 1..100) "Выгода $percent% · "
+                else if (plan.isNull("savingsPercent") && money?.string("currency") == currency && money.optDouble("amount", 0.0) > 0) "Выгода ${money.string("amount")} $currency · " else ""
+            return saving + if (days > 0) "${(amount * 30 / days).toInt()} $currency / 30 дней" else ""
         }
     }
 }

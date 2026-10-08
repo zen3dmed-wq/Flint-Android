@@ -15,7 +15,7 @@
         <package android:name="ru.yandex.yandexmaps" />
         <package android:name="ru.yandex.yandexnavi" />
     </queries>
-    <application android:label="Flint Kotlin (тест)" android:icon="@drawable/flint_logo"
+    <application android:label="Flint Kotlin (тест)" android:icon="@mipmap/flint_icon"
         android:banner="@drawable/tv_banner" android:theme="@style/FlintTheme"
         android:allowBackup="false" android:supportsRtl="true" android:usesCleartextTraffic="true"
         android:extractNativeLibs="true">

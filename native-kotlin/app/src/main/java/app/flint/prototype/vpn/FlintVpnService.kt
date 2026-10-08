@@ -226,6 +226,7 @@ class FlintVpnService : VpnService() {
             if (!VpnReachability.verify(this, config)) throw java.io.IOException("data_path")
             if (command.generation != generation.get() || destroyed) { stopNative(); return }
             publish(snapshot.copy(state = "connected", message = ""))
+            config.remove("flintTried")
             pendingGeneration = null
             monitorJob = AutomaticMonitor.start(this, scope, config) { next ->
                 if (generation.get() == command.generation) {

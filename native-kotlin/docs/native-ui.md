@@ -1,35 +1,22 @@
-# Flint Kotlin prototype UI
+# Native UI port
 
-`FlintHomeView(context, BuildConfig.IS_TV, callbacks)` is a platform Android View.
-Call `render(FlintUiState(...))` on the main thread using the VPN service's actual
-state. The UI never changes to connected on a click or on a timer.
+Geometry, palette, labels and flows follow the latest Qt flint/ screens.
+FlintHomeView renders supplied service/account state and never synthesizes a
+successful connection. Phone is a compact single page; landscape/TV is two columns.
+TV alone gets explicit focus borders. Native view instances survive render calls
+to preserve D-pad focus. Original Qt artwork is composited on a worker at source
+resolution, with a 300 ms fade between expressions/states.
 
-The phone layout uses one compact page. TV uses two columns; only TV includes an
-explicit focus outline. All actions are regular focusable Android controls and
-support D-pad OK. Rendering updates existing views, preserving keyboard focus.
+Account, subscriptions, purchase, invitation, devices, support and routing remain
+separate dark panels. Settings do not duplicate purchase/subscription/support tabs.
+Device QR is above account sessions. Plan cards show prices and savings together.
+The main subscription selection remains visible after activity reentry.
 
-The server picker stays available while connected and reports only supplied probe
-results. Values are labelled “TCP … мс” / “Нет ответа TCP”; they describe a port
-probe rather than a successful VPN handshake. The picker explains this distinction.
-Null availability means “TCP не проверен”, not zero ping or unavailable.
-An unavailable entry is grey but remains selectable for a manual retry. Load is
-shown only when the supplied percentage is between 0 and 100.
+Port pings are not proof of a VPN handshake. Autotuning tests HTTPS through Xray.
+The service verifies a response carried by its Android VPN network before showing
+green. Load needs unambiguous endpoint matching and fresh measurement timestamps;
+missing load is not converted to zero. Manual selection is never auto-balanced.
 
-Import actions are clipboard, QR from image, direct text entry, and a file. Each
-action delegates to MainActivity; no unimplemented account or purchase buttons
-are displayed. The footer identifies the prototype clearly.
-
-Optional resources in `drawable-nodpi`: `flint_background`, `flint_logo`,
-`flint_mascot`, `flint_mascot_sad`. The mascot preserves the original composition,
-changes only the face region and exterior ring, and processes artwork off the UI
-thread. It does not add pre-rendered copies to the APK. State colours are grey,
-yellow, green and red for disconnected, connecting, connected and error.
-
-The compact traffic row is hidden until real traffic information is supplied. A
-progress bar is displayed only when a finite fraction is known. Error detail is
-available by tapping the status description, so long diagnostics are not lost to
-the two-line compact label.
-
-Device validation still required: smallest supported phone layout, large system
-font, TV overscan, D-pad traversal, system document picker, TalkBack, and service
-state recovery after returning to this screen.
+Debug UI/API fixtures generate screenshots and check actual control callbacks;
+they are excluded from release APKs. Physical phone/font-scale/TV and launcher
+checks remain necessary before describing the port as visually/functionally 1:1.

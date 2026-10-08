@@ -8,6 +8,8 @@ import android.net.Uri
 import android.net.VpnService
 import android.net.DnsResolver
 import android.net.InetAddresses
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.*
 import android.text.InputType
 import android.widget.EditText
@@ -489,7 +491,7 @@ class MainActivity : Activity(), FlintUiCallbacks {
                 val cancellation = CancellationSignal()
                 continuation.invokeOnCancellation { cancellation.cancel() }
                 try {
-                    DnsResolver.getInstance().query(null, host, DnsResolver.FLAG_EMPTY, mainExecutor, cancellation,
+                    DnsResolver.getInstance().query(physicalNetwork(), host, DnsResolver.FLAG_EMPTY, mainExecutor, cancellation,
                         object : DnsResolver.Callback<List<InetAddress>> {
                             override fun onAnswer(answer: List<InetAddress>, rcode: Int) {
                                 if (continuation.isActive) continuation.resume(if (rcode == 0) answer else emptyList())
@@ -514,7 +516,8 @@ class MainActivity : Activity(), FlintUiCallbacks {
                     currentCoroutineContext().ensureActive()
                     try {
                         val start = SystemClock.elapsedRealtime()
-                        Socket().use { it.connect(InetSocketAddress(address, profile.port), 1000) }
+                        val network = physicalNetwork() ?: return@withContext Pair(null, false)
+                        network.socketFactory.createSocket().use { it.connect(InetSocketAddress(address, profile.port), 1000) }
                         return@withContext Pair(SystemClock.elapsedRealtime() - start, true)
                     } catch (_: java.io.IOException) { }
                 }
@@ -524,6 +527,16 @@ class MainActivity : Activity(), FlintUiCallbacks {
         catch (_: Exception) { Pair(null, false) }
     }
 
+    private fun physicalNetwork() = getSystemService(ConnectivityManager::class.java).let { cm ->
+        cm.allNetworks.firstOrNull { cm.getNetworkCapabilities(it)?.let { caps ->
+            !caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        } == true }
+    }
+    private fun rememberFingerprint(id: String, value: String?) {
+        if (value.isNullOrBlank()) return
+        fingerprints[id] = value
+        prefs.edit().putString("fingerprints", JSONObject(fingerprints.toMap()).toString()).apply()
+    }
     private suspend fun chooseAutomatic(candidates: List<ServerProfile>): ServerProfile {
         // TCP responsiveness is only a selection hint, not proof of a successful VPN handshake.
         val checks = mutableListOf<Pair<ServerProfile, Pair<Long?, Boolean>>>()
@@ -537,9 +550,19 @@ class MainActivity : Activity(), FlintUiCallbacks {
         for ((candidate, _) in ranked.take(5)) {
             val check = ProfileProbe.check(this, ProfileProbe.withFingerprint(candidate, fingerprints[candidate.id]))
             ping[candidate.id] = check.latency to check.available
-            check.fingerprint?.let { fingerprints[candidate.id] = it }
+            rememberFingerprint(candidate.id, check.fingerprint)
             if (check.available) return candidate
         }
+        val recovered = withTimeoutOrNull(45_000) {
+            for ((candidate, _) in ranked.take(3)) {
+                val check = ProfileProbe.check(this@MainActivity, candidate, true)
+                ping[candidate.id] = check.latency to check.available
+                rememberFingerprint(candidate.id, check.fingerprint)
+                if (check.available) return@withTimeoutOrNull candidate
+            }
+            null
+        }
+        if (recovered != null) return recovered
         return ranked.firstOrNull()?.first
             ?: candidates.firstOrNull { ping[it.id]?.second == true } ?: candidates.first()
     }
@@ -596,6 +619,7 @@ class MainActivity : Activity(), FlintUiCallbacks {
         if (state.selectedServerId != null && profiles.none { it.id == state.selectedServerId }) { state = state.copy(selectedServerId = null); prefs.edit().remove("selected").apply() }
         render()
         if (reload && oldIds != accountProfiles.map { it.id } && state.phase == FlintPhase.CONNECTED) { automaticAttempts.clear(); connectSelected() }
+        else if (reload && accountProfiles.any { it.id !in oldIds && it.id !in fingerprints } && state.phase != FlintPhase.CONNECTING) onProbe(true)
         else if (reload) checkServers()
     }
     private suspend fun refreshLoads() {
