@@ -275,23 +275,37 @@ class VpnServiceInstrumentedTest {
         shell("appops set ${context.packageName} ACTIVATE_VPN allow")
         val binding = bind(); binding.await()
         val probePackage = instrumentation.context.packageName
-        assertNotEquals(context.applicationInfo.uid, instrumentation.context.applicationInfo.uid)
+        val probeUid = instrumentation.context.applicationInfo.uid
+        val flintUid = context.applicationInfo.uid
+        assertNotEquals(flintUid, probeUid)
+        fun systemVpnUids(): List<IntRange> {
+            // Android 15 dumps NetworkCapabilities, not its private VpnConfig.
+            // Require actual VPN UID ranges and verify membership in both directions.
+            val line = shell("dumpsys vpn_management").lineSequence().firstOrNull {
+                it.trimStart().startsWith("NetworkCapabilities:") && "VPN" in it && "Uids:" in it
+            } ?: throw AssertionError("System VPN UID ranges are missing")
+            val raw = Regex("Uids: <\\{([^}]*)}>").find(line)?.groupValues?.get(1)
+                ?: throw AssertionError("Unexpected system VPN UID range format")
+            return raw.split(',').map { value ->
+                val bounds = value.trim().split('-').map { it.toInt() }
+                assertTrue(bounds.size in 1..2)
+                bounds.first()..bounds.last()
+            }.also { assertTrue(it.isNotEmpty()) }
+        }
         val policy = JSONObject().put("automatic", false).put("overrides", JSONObject().put(probePackage, true))
         val config = fixtureConfig().put("flintRuDirect", true)
             .put(app.flint.prototype.routing.DirectApps.CONFIG_KEY, policy)
             .put("flintServerId", "fixture-app-bypass")
         connect(config)
         binding.await { it.getString(VpnContract.STATE) == "connected" && it.getString(VpnContract.SERVER_ID) == "fixture-app-bypass" }
-        val system = shell("dumpsys vpn_management")
-        val excluded = Regex("disallowedApps=\\[([^]]*)]").findAll(system).flatMap { it.groupValues[1].split(',').map(String::trim) }.toSet()
-        assertTrue("Android system VPN config must exclude the selected installed app", probePackage in excluded)
-        assertFalse("Flint itself must stay in the VPN so reachability checks are real", context.packageName in excluded)
+        val routed = systemVpnUids()
+        assertFalse("Android system VPN routes must exclude the selected installed app", routed.any { probeUid in it })
+        assertTrue("Flint itself must stay in the VPN so reachability checks are real", routed.any { flintUid in it })
         assertEquals("FLINT_VPN_TUNNEL_OK", throughTunnel())
         connect(config.put("flintRuDirect", false).put("flintServerId", "fixture-app-bypass-off"))
         binding.await { it.getString(VpnContract.STATE) == "connected" && it.getString(VpnContract.SERVER_ID) == "fixture-app-bypass-off" }
-        val after = Regex("disallowedApps=\\[([^]]*)]").findAll(shell("dumpsys vpn_management"))
-            .flatMap { it.groupValues[1].split(',').map(String::trim) }.toSet()
-        assertFalse("Turning off Sites RF must restore the selected app to the VPN", probePackage in after)
+        val after = systemVpnUids()
+        assertTrue("Turning off Sites RF must restore the selected app to the VPN", after.any { probeUid in it })
         assertEquals("FLINT_VPN_TUNNEL_OK", throughTunnel())
         val directory = File(requireNotNull(context.getExternalFilesDir(null)), "ui-evidence").apply { mkdirs() }
         File(directory, "direct-apps-real.json").writeText(JSONObject().put("syntheticUiState", false)
