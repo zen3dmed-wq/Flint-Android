@@ -75,6 +75,9 @@ class UiHarnessActivity : Activity() {
         fun fixture() = FlintUiState(
             phase = FlintPhase.DISCONNECTED,
             hasProfile = true,
+            loggedIn = true,
+            subscriptionTitle = "12 Месяцев",
+            expiryText = "Активна до: 17 сентября 2027 14:04",
             trafficText = "199,6 GB / 1000,0 GB",
             trafficFraction = 0.1996f,
             servers = listOf(

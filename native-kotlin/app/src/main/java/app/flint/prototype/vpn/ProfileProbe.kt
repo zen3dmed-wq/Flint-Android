@@ -50,7 +50,8 @@ object ProfileProbe {
                 if (Thread.currentThread().isInterrupted) throw InterruptedException()
                 val port = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
                 val config = JSONObject(XrayConfigBuilder.build(profile, port, false))
-                val outbound = config.getJSONArray("outbounds").getJSONObject(0)
+                val outbounds = config.getJSONArray("outbounds")
+                val outbound = (0 until outbounds.length()).map { outbounds.getJSONObject(it) }.first { it.optString("protocol") == profile.protocol }
                 outbound.optJSONObject("streamSettings")?.optJSONObject(tlsKey)?.let { if (fp.isNotBlank()) it.put("fingerprint", fp) }
                 config.put("log", JSONObject().put("loglevel", "none"))
                 val file = File.createTempFile("probe-", ".json", directory)
@@ -82,7 +83,7 @@ object ProfileProbe {
         val stream = outbound.optJSONObject("streamSettings") ?: return profile
         val key = if (stream.optString("security") == "reality") "realitySettings" else "tlsSettings"
         stream.optJSONObject(key)?.put("fingerprint", fingerprint)
-        val original = profile.originalConfigJson?.let { JSONObject(it).apply { getJSONArray("outbounds").put(0, outbound) }.toString() }
+        val original = profile.originalConfigJson?.let { JSONObject(it).apply { val list = getJSONArray("outbounds"); val index = (0 until list.length()).first { list.getJSONObject(it).optString("protocol") == profile.protocol }; list.put(index, outbound) }.toString() }
         return ServerProfile(profile.id, profile.name, profile.host, profile.port, profile.protocol, outbound.toString(), original)
     }
 }

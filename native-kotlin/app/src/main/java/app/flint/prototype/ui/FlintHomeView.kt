@@ -16,7 +16,7 @@ class FlintHomeView(context: Context, private val isTv: Boolean, private val cal
     private val canvas = FrameLayout(context)
     private val mascot = FlintMascotView(context)
     private val header = s.row()
-    private val settings = s.button("⚙") { callbacks.onSettings() }
+    private val settings = s.button("") { callbacks.onSettings() }.apply { contentDescription = "Настройки Flint"; setCompoundDrawables(FlintIcon("settings", s.muted, s.dp(22)), null, null, null) }
     private val qr = s.button("QR-код") { showImportActions() }
     private val clipboard = s.button("Из буфера") { callbacks.onImportClipboard() }
     private val title = s.label("", 26f, true).apply { gravity = Gravity.CENTER; maxLines = 1 }
@@ -32,9 +32,9 @@ class FlintHomeView(context: Context, private val isTv: Boolean, private val cal
     private val filled = View(context).apply { background = s.shape(0xFF008CFF.toInt(), Color.TRANSPARENT, 8) }
     private val trafficText = s.label("", 12f).apply { gravity = Gravity.CENTER }
     private val expiry = s.label("", 11f, color = s.muted).apply { gravity = Gravity.CENTER; maxLines = 1 }
-    private val server = tile("◎", "Автоматически", "По доступности, задержке и загрузке") { showServers() }
+    private val server = tile("location", "Автоматически", "По доступности, задержке и загрузке") { showServers() }
     private val russian = tile("", "Сайты РФ", "Правила →") { callbacks.onRouting() }
-    private val devices = tile("♧", "Устройства", "Войти в аккаунт") { callbacks.onDevices() }
+    private val devices = tile("devices", "Устройства", "Войти в аккаунт") { callbacks.onDevices() }
     private val support = tile("", "Поддержка", "Flint готов помочь") { callbacks.onSupport() }
     private val routeToggle = Switch(context).apply {
         showText = false; isFocusable = true; isFocusableInTouchMode = isTv
@@ -49,6 +49,7 @@ class FlintHomeView(context: Context, private val isTv: Boolean, private val cal
     private var safeLeft = 0
     private var safeRight = 0
     private var popup: FlintStyle.Panel? = null
+    private val serverRows = mutableMapOf<String, Button>()
     init {
         setBackgroundColor(s.dark)
         addView(ImageView(context).apply {
@@ -82,7 +83,7 @@ class FlintHomeView(context: Context, private val isTv: Boolean, private val cal
     private fun tile(icon: String, title: String, hint: String, action: () -> Unit) = FrameLayout(context).apply {
         background = s.surface(0xDE0A1C2D.toInt(), 18); isClickable = true; isFocusable = true; isFocusableInTouchMode = isTv
         setOnClickListener { action() }; contentDescription = title
-        addView(s.label(icon, 23f, color = s.muted), LayoutParams(s.dp(28), s.dp(28)).apply { leftMargin = s.dp(12); topMargin = s.dp(9) })
+        addView(ImageView(context).apply { if (icon.isNotBlank()) setImageDrawable(FlintIcon(icon, s.muted, s.dp(26))) }, LayoutParams(s.dp(28), s.dp(28)).apply { leftMargin = s.dp(12); topMargin = s.dp(9) })
         addView(s.label(title, 14f, true).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END }, LayoutParams(-1, s.dp(24)).apply { leftMargin = s.dp(if (title == "Сайты РФ") 12 else 45); rightMargin = s.dp(8); topMargin = s.dp(9) })
         addView(s.label(hint, 11f, color = s.mint).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END }, LayoutParams(-1, s.dp(19)).apply { leftMargin = s.dp(12); rightMargin = s.dp(8); gravity = Gravity.BOTTOM; bottomMargin = s.dp(6) })
     }
@@ -123,7 +124,7 @@ class FlintHomeView(context: Context, private val isTv: Boolean, private val cal
         expiry.layoutParams = LayoutParams(colW - 2 * p, s.dp(18)).apply { leftMargin = p; topMargin = s.dp(55) }
         filled.layoutParams = LayoutParams(((colW - 2 * p) * (state.trafficFraction ?: 0f).coerceIn(0f, 1f)).toInt(), -1)
         val connectH = s.dp(if (dense) 48 else 56); val guardH = s.dp(if (dense) 28 else 36)
-        val buyH = s.dp(40); val statusH = s.dp(if (dense) 32 else 61)
+        val buyH = s.dp(44); val statusH = s.dp(if (dense) 32 else 61)
         val end = if (wide) bodyTop + bodyH else subTop - gap
         val buyY = end - buyH; val guardY = buyY - gap - guardH; val connectY = guardY - gap - connectH; val statusY = connectY - gap - statusH
         place(mascot, left, bodyTop, colW, (statusY - bodyTop - gap).coerceAtLeast(s.dp(72)))
@@ -140,10 +141,14 @@ class FlintHomeView(context: Context, private val isTv: Boolean, private val cal
         title.text = when (next.phase) { FlintPhase.CONNECTING -> "Подключаемся…"; FlintPhase.CONNECTED -> "Вы защищены"; else -> "Вы не защищены" }
         title.setTextColor(if (next.phase == FlintPhase.CONNECTED) s.mint else s.ink)
         subtitle.text = next.message.ifBlank { if (next.phase == FlintPhase.CONNECTED) "Ваше соединение защищено" else "Подключитесь, чтобы защитить свои данные" }
-        connect.text = when (next.phase) { FlintPhase.CONNECTED -> "⏻  ОТКЛЮЧИТЬ"; FlintPhase.CONNECTING -> "ОТМЕНИТЬ"; else -> "⏻  ПОДКЛЮЧИТЬСЯ" }
+        connect.text = when (next.phase) { FlintPhase.CONNECTED -> "ОТКЛЮЧИТЬ"; FlintPhase.CONNECTING -> "ОТМЕНИТЬ"; else -> "ПОДКЛЮЧИТЬСЯ" }
+        connect.setCompoundDrawables(FlintIcon("power", 0xFF061D27.toInt(), s.dp(26)), null, null, null)
+        connect.setPadding(s.dp(28), 0, s.dp(28), 0)
         connect.contentDescription = when (next.phase) { FlintPhase.CONNECTED -> "Отключить VPN"; FlintPhase.CONNECTING -> "Отменить подключение"; else -> "Подключиться" }
         connect.background = s.surface(color, 28); connect.setTextColor(0xFF061D27.toInt()); mascot.setPhase(next.phase, color)
-        guard.text = "♢  Flint Guard  •  " + when (next.phase) { FlintPhase.CONNECTED -> "Включён"; FlintPhase.CONNECTING -> "Подключение"; FlintPhase.ERROR -> "Ошибка подключения"; else -> "Отключён" }
+        guard.setCompoundDrawables(FlintIcon("shield", s.muted, s.dp(21)), null, null, null)
+        guard.setPadding(s.dp(20), 0, s.dp(20), 0)
+        guard.text = "Flint Guard  •  " + when (next.phase) { FlintPhase.CONNECTED -> "Включён"; FlintPhase.CONNECTING -> "Подключение"; FlintPhase.ERROR -> "Ошибка подключения"; else -> "Отключён" }
         (server.getChildAt(1) as TextView).text = next.serverLabel
         (server.getChildAt(2) as TextView).text = if (next.selectedServerId == null) "По доступности и загрузке" else "Сменить сервер →"
         (devices.getChildAt(2) as TextView).text = if (next.loggedIn) "Устройства и доступ" else "Войти в аккаунт"
@@ -151,6 +156,10 @@ class FlintHomeView(context: Context, private val isTv: Boolean, private val cal
         subscriptionTitle.text = next.subscriptionTitle.ifBlank { "Подписка Flint" }; trafficText.text = next.trafficText; expiry.text = next.expiryText
         syncing = true; routeToggle.isChecked = next.ruDirect; syncing = false
         routeToggle.contentDescription = "Сайты РФ: ${if (next.ruDirect) "напрямую" else "через VPN"}"
+        serverRows.forEach { (id, button) -> next.servers.find { it.id == id }?.let { item ->
+            button.text = "${item.name}\n${serverHint(item)}"
+            if (item.available == false) button.background = s.surface(0xFF35404A.toInt())
+        } }
         qr.isEnabled = !next.busy; clipboard.isEnabled = !next.busy; requestLayout()
     }
     private fun showImportActions() {
@@ -163,7 +172,10 @@ class FlintHomeView(context: Context, private val isTv: Boolean, private val cal
             }
         }
     }
+    private fun serverHint(item: FlintServerUi) = (if (item.available == false) "Недоступен" else item.latencyMs?.let { "$it мс" } ?: "Не проверен") +
+        (item.loadPercent?.let { " · Загрузка $it%" } ?: " · Загрузка: нет данных")
     private fun showServers() {
+        serverRows.clear()
         popup?.dialog?.dismiss()
         popup = s.panel("Локация").also { p ->
             fun entry(name: String, id: String?, hint: String, unavailable: Boolean = false) {
@@ -172,6 +184,7 @@ class FlintHomeView(context: Context, private val isTv: Boolean, private val cal
                 if (unavailable) b.background = s.surface(0xFF35404A.toInt())
                 else if (id == state.selectedServerId) { b.background = s.surface(0xFF57E4B0.toInt()); b.setTextColor(0xFF052A20.toInt()) }
                 s.add(p.body, b, 78, 10)
+                if (id != null) serverRows[id] = b
                 if (isTv && id == null) b.post { b.requestFocus() }
             }
             entry("Автоматически", null, "По доступности, задержке и загрузке")

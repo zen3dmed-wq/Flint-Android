@@ -21,6 +21,9 @@ internal class FlintMascotView(context: Context) : View(context) {
     private val destination = RectF()
     private var phase: FlintPhase? = null
     private var artwork: Bitmap? = null
+    private var previous: Bitmap? = null
+    private var blend = 1f
+    private var animation: android.animation.ValueAnimator? = null
     private var tint = Color.GRAY
     private val cached = mutableMapOf<FlintPhase, Bitmap>()
 
@@ -30,24 +33,32 @@ internal class FlintMascotView(context: Context) : View(context) {
         if (phase == next) return
         phase = next
         tint = color
-        cached[next]?.let { artwork = it; invalidate(); return }
+        cached[next]?.let { display(it); return }
         renderer.execute {
             val image = loadArtwork(next != FlintPhase.CONNECTED, color)
             post {
                 if (image != null) cached[next] = image
-                if (phase == next) { artwork = image; invalidate() }
+                if (phase == next && image != null) display(image)
             }
         }
         invalidate()
     }
 
+    private fun display(image: Bitmap) {
+        animation?.cancel(); previous = artwork; artwork = image
+        if (previous == null) { blend = 1f; invalidate(); return }
+        animation = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 300; addUpdateListener { blend = it.animatedValue as Float; invalidate() }; start()
+        }
+    }
+    override fun onDetachedFromWindow() { animation?.cancel(); super.onDetachedFromWindow() }
     private fun decode(name: String): Bitmap? {
         val id = resources.getIdentifier(name, "drawable", context.packageName)
         if (id == 0) return null
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true; inScaled = false }
         BitmapFactory.decodeResource(resources, id, bounds)
         var sample = 1
-        while (max(bounds.outWidth, bounds.outHeight) / sample > 768) sample *= 2
+        while (max(bounds.outWidth, bounds.outHeight) / sample > 1536) sample *= 2
         return BitmapFactory.decodeResource(resources, id, BitmapFactory.Options().apply {
             inScaled = false
             inSampleSize = sample
@@ -114,7 +125,8 @@ internal class FlintMascotView(context: Context) : View(context) {
         val image = artwork
         if (image != null) {
             paint.style = Paint.Style.FILL
-            canvas.drawBitmap(image, null, destination, paint)
+            previous?.takeIf { blend < 1f }?.let { paint.alpha = 255; canvas.drawBitmap(it, null, destination, paint) }
+            paint.alpha = (255 * blend).toInt(); canvas.drawBitmap(image, null, destination, paint); paint.alpha = 255
         } else {
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = 3 * resources.displayMetrics.density

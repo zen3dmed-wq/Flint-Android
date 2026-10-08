@@ -146,6 +146,22 @@ class VpnServiceInstrumentedTest {
         assertEquals("disconnected", second.await { it.getString(VpnContract.STATE) == "disconnected" }.getString(VpnContract.STATE))
     }
 
+    @Test fun unreachableServerNeverBecomesConnected() {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("flintLocalVpnTest") == "true")
+        foregroundActivity()
+        shell("appops set ${context.packageName} ACTIVATE_VPN allow")
+        val binding = bind(); binding.await()
+        val config = fixtureConfig()
+        val native = JSONObject(config.getJSONObject("xray_config_data").getString("config"))
+        native.getJSONArray("outbounds").getJSONObject(0).getJSONObject("settings")
+            .getJSONArray("vnext").getJSONObject(0).put("port", 18449)
+        config.getJSONObject("xray_config_data").put("config", native.toString())
+        connect(config)
+        val failed = binding.await { it.getString(VpnContract.STATE) == "error" }
+        assertTrue(failed.getString(VpnContract.MESSAGE).orEmpty().contains("DATA_PATH"))
+        assertFalse("A local TUN without working forwarding is not connected", binding.states.contains("connected"))
+    }
+
     private fun foregroundActivity() {
         context.startActivity(Intent().setClassName(context.packageName, "app.flint.prototype.MainActivity").apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -166,7 +182,7 @@ class VpnServiceInstrumentedTest {
             val root = instrumentation.uiAutomation.rootInActiveWindow
             if (mainResumed && root?.packageName?.toString() == context.packageName) {
                 val disconnect = root.findAccessibilityNodeInfosByText("Отключить VPN")
-                    .any { it.text?.toString() == "Отключить VPN" && it.isVisibleToUser && it.isEnabled && it.isClickable }
+                    .any { (it.text?.toString() == "Отключить VPN" || it.contentDescription?.toString() == "Отключить VPN") && it.isVisibleToUser && it.isEnabled && it.isClickable }
                 val protected = root.findAccessibilityNodeInfosByText("Вы защищены")
                     .any { it.text?.toString() == "Вы защищены" && it.isVisibleToUser }
                 if (disconnect && protected) {

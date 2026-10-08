@@ -30,8 +30,11 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
                      private val scope: CoroutineScope, private val changed: suspend (Boolean) -> Unit) {
     private val s = FlintStyle(activity)
     private val panels = mutableListOf<FlintStyle.Panel>()
-    private fun panel(title: String, wide: Boolean = false) = s.panel(title, wide).also { panels.add(it) }
-    fun close() { panels.toList().forEach { it.dialog.dismiss() }; panels.clear() }
+    private val polls = mutableMapOf<FlintStyle.Panel, Job>()
+    private fun panel(title: String, wide: Boolean = false) = s.panel(title, wide).also { p ->
+        panels.add(p); p.dialog.setOnDismissListener { polls.remove(p)?.cancel(); panels.remove(p) }
+    }
+    fun close() { polls.values.toList().forEach { it.cancel() }; polls.clear(); panels.toList().forEach { it.dialog.dismiss() }; panels.clear() }
     private fun task(p: FlintStyle.Panel, action: suspend () -> Unit) {
         if (p.busy) return
         p.busy = true; p.message.text = "Загрузка…"
@@ -145,11 +148,29 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
             p.body.removeAllViews()
             api.subscriptions.forEach { sub ->
                 val id = sub.string("id")
-                val b = s.button("${if (id == api.selectedId) "✓  " else ""}${subTitle(sub)}\n${traffic(sub)}\n${expiry(sub)}") {
-                    task(p) { api.selectedId = id; changed(true); p.dialog.dismiss() }
+                val active = sub.string("status").equals("active", true) &&
+                    (sub.string("expiresAt").isBlank() || epoch(sub.string("expiresAt")) > System.currentTimeMillis()) &&
+                    sub.optJSONObject("traffic")?.optBoolean("limitReached") != true
+                val card = s.column().apply {
+                    background = s.surface(if (id == api.selectedId) 0xFF174A3F.toInt() else s.card)
+                    setPadding(s.dp(14), s.dp(12), s.dp(14), s.dp(12))
+                    isFocusable = true; isFocusableInTouchMode = BuildConfig.IS_TV
+                    isEnabled = active; alpha = if (active) 1f else .55f
+                    contentDescription = subTitle(sub) + if (id == api.selectedId) ", выбрана" else ""
+                    setOnClickListener { if (active) task(p) { api.selectedId = id; changed(true); p.dialog.dismiss() } }
                 }
-                if (id == api.selectedId) { b.background = s.surface(0xFF174A3F.toInt()); b.setTextColor(s.mint) }
-                s.add(p.body, b, 96)
+                s.add(card, s.label((if (id == api.selectedId) "✓  " else "") + subTitle(sub), 17f, true), gap = 0)
+                val bar = FrameLayout(activity).apply { background = s.shape(0xFF77818E.toInt(), android.graphics.Color.TRANSPARENT, 8); clipToOutline = true }
+                val fill = View(activity).apply { background = s.shape(0xFF008CFF.toInt(), android.graphics.Color.TRANSPARENT, 8) }
+                bar.addView(fill, FrameLayout.LayoutParams(0, -1))
+                bar.addView(s.label(traffic(sub), 12f).apply { gravity = Gravity.CENTER }, FrameLayout.LayoutParams(-1, -1))
+                bar.addOnLayoutChangeListener { _, left, _, right, _, _, _, _, _ ->
+                    val width = ((right - left) * fraction(sub)).toInt()
+                    if (fill.layoutParams.width != width) fill.layoutParams = FrameLayout.LayoutParams(width, -1)
+                }
+                s.add(card, bar, 22); s.add(card, s.label(expiry(sub), 12f, color = s.muted))
+                if (!active) s.add(card, s.label("Подписка неактивна", 12f, color = s.muted), gap = 6)
+                s.add(p.body, card)
             }
             if (api.subscriptions.isEmpty()) s.add(p.body, s.label("У вас пока нет подписок", color = s.muted))
             s.add(p.body, s.button("Купить / продлить подписку") { p.dialog.dismiss(); purchase() }, 48)
@@ -238,6 +259,25 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
             }
             draw(data)
             if (data.string("status").lowercase() in setOf("paid", "completed", "succeeded")) { api.refresh(); changed(true) }
+            if (data.string("status").lowercase() !in setOf("paid", "completed", "succeeded", "cancelled", "canceled", "expired", "failed")) {
+                polls.remove(p)?.cancel()
+                polls[p] = scope.launch {
+                    while (isActive && p.dialog.isShowing && api.draft("orderDraft")?.string("orderId") == id) {
+                        delay(5000)
+                        if (p.busy) continue
+                        p.busy = true
+                        try {
+                            val updated = api.request("GET", "/orders/${Uri.encode(id)}").data
+                            if (updated.string("status") != data.string("status")) { data = updated; draw(data) }
+                            if (data.string("status").lowercase() in setOf("paid", "completed", "succeeded")) {
+                                api.refresh(); changed(true); break
+                            }
+                        } catch (e: CancellationException) { throw e }
+                        catch (_: Exception) { /* The explicit check stays available during a temporary outage. */ }
+                        finally { p.busy = false }
+                    }
+                }
+            }
         }
     }
     fun friends() {

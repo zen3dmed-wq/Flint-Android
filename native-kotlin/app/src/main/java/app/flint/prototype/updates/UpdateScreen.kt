@@ -22,7 +22,7 @@ class UpdateScreen(private val activity: Activity, private val api: FlintAccount
             try {
                 p.message.text = "Проверяем обновления…"
                 val target = if (BuildConfig.IS_TV) "tv" else "phone"
-                val data = api.request("GET", "/app/update?platform=android&version=${BuildConfig.VERSION_NAME.substringBefore('-')}&distribution=$target&arch=${Build.SUPPORTED_ABIS.first()}").data
+                val data = api.request("GET", "/app/update?platform=android&version=${BuildConfig.VERSION_NAME.substringBefore('-')}&variant=$target&abi=${Build.SUPPORTED_ABIS.first()}").data
                 val latest = data.optJSONObject("latest")
                 if (!data.optBoolean("updateAvailable") || latest == null) { p.message.text = "Установлена актуальная версия"; return@launch }
                 s.add(p.body, s.label("Доступна версия ${latest.string("version")}", 19f, true, s.mint))

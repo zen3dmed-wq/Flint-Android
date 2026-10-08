@@ -27,7 +27,9 @@ class ApiError(val status: Int, val code: String, message: String) : Exception(m
 data class ApiReply(val status: Int, val data: JSONObject)
 
 /** Fixed first-party API; secrets are encrypted with a non-exportable Android key. */
-class FlintAccount(private val context: Context) {
+class FlintAccount(private val context: Context,
+    private val testTransport: (suspend (String, String, JSONObject?, String?, String?) -> ApiReply)? = null) {
+    init { require(testTransport == null || BuildConfig.DEBUG) }
     private val prefs = context.getSharedPreferences("flint-account", Context.MODE_PRIVATE)
     private val authLock = Mutex()
     private val vault = TokenVault(context)
@@ -122,9 +124,12 @@ class FlintAccount(private val context: Context) {
             }
         }
         if (epoch != before) throw ApiError(401, "account_changed", "Аккаунт изменён. Повторите действие.")
-        return raw(method, path, body, tokens.string("accessToken"), idempotencyKey)
+        val retry = raw(method, path, body, tokens.string("accessToken"), idempotencyKey)
+        if (epoch != before) throw ApiError(401, "account_changed", "Аккаунт изменён. Повторите действие.")
+        return retry
     }
     private suspend fun raw(method: String, path: String, body: JSONObject?, token: String?, key: String?): ApiReply = withContext(Dispatchers.IO) {
+        testTransport?.let { return@withContext it(method, path, body, token, key) }
         val c = URL(BASE + path).openConnection() as HttpURLConnection
         try {
             c.requestMethod = method; c.connectTimeout = 12_000; c.readTimeout = 20_000

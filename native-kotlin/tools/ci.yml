@@ -86,4 +86,5 @@ jobs:
             native-kotlin/app/build/outputs/androidTest-results/
             native-kotlin/evidence/
             native-kotlin/build/vpn-fixture/
+            native-kotlin/build/vpn-fixture-launch.log
           retention-days: 14

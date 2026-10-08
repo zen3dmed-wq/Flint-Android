@@ -30,7 +30,7 @@ object AutomaticMonitor {
                     try {
                         c = underlying.openConnection(URL(FlintAccount.BASE + "/locations")) as HttpURLConnection
                         c.connectTimeout = 4000; c.readTimeout = 4000; c.instanceFollowRedirects = false
-                        if (c.responseCode != 200) JSONObject() else c.inputStream.bufferedReader().use { JSONObject(it.readText().take(1_000_000)) }
+                        if (c.responseCode != 200) JSONObject() else c.inputStream.use { input -> val out = java.io.ByteArrayOutputStream(); val buffer = ByteArray(8192); while (true) { val n = input.read(buffer); if (n < 0) break; require(out.size() + n <= 1_000_000); out.write(buffer, 0, n) }; JSONObject(out.toString("UTF-8")) }
                     } catch (_: Exception) { JSONObject() } finally { c?.disconnect() }
                 }
                 val now = System.currentTimeMillis()
@@ -59,7 +59,12 @@ object AutomaticMonitor {
         val next = JSONObject(config.toString()).put("hostName", candidate.getString("host"))
             .put("description", candidate.getString("name")).put("flintServerId", candidate.getString("id"))
         val native = JSONObject(next.getJSONObject("xray_config_data").getString("config"))
-        native.getJSONArray("outbounds").put(0, candidate.getJSONObject("outbound"))
+        val outbounds = native.getJSONArray("outbounds")
+        val index = (0 until outbounds.length()).firstOrNull { outbounds.getJSONObject(it).optString("protocol") in setOf("vless", "vmess", "trojan", "shadowsocks") } ?: error("No VPN outbound")
+        val replacement = JSONObject(candidate.getJSONObject("outbound").toString())
+        val tag = outbounds.getJSONObject(index).optString("tag")
+        if (tag.isNotBlank()) replacement.put("tag", tag)
+        outbounds.put(index, replacement)
         next.put("xray_config_data", JSONObject().put("config", native.toString()))
         return next
     }

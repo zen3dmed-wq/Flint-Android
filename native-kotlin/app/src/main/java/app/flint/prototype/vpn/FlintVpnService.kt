@@ -49,6 +49,9 @@ class FlintVpnService : VpnService() {
     private val native = Xray.instance
     private var stateJob: Job? = null
     private var monitorJob: Job? = null
+    private val widgetUpdates = Channel<String>(Channel.CONFLATED)
+    private var lastWidgetState = ""
+    private var forgetSaved = false
     private var nativeStarted = false
     private var destroyed = false
     private var foreground = false
@@ -68,6 +71,7 @@ class FlintVpnService : VpnService() {
                 VpnContract.UNREGISTER -> clients.remove(msg.replyTo)
                 VpnContract.REQUEST_STATUS -> msg.replyTo?.let(::sendSnapshot)
                 VpnContract.DISCONNECT -> requestStop()
+                5 -> { forgetSaved = true; requestStop() }
             }
         }
     })
@@ -75,6 +79,7 @@ class FlintVpnService : VpnService() {
     override fun onCreate() {
         super.onCreate()
         createChannel()
+        scope.launch { for (state in widgetUpdates) withContext(Dispatchers.IO) { app.flint.prototype.home.HomeWidget.refresh(this@FlintVpnService, state) } }
         scope.launch {
             for (command in commands) {
                 try {
@@ -96,7 +101,8 @@ class FlintVpnService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         lastStartId = startId
-        if (intent?.action == VpnContract.ACTION_DISCONNECT) {
+        if (intent?.action == VpnContract.ACTION_DISCONNECT || intent?.action == "app.flint.prototype.vpn.FORGET") {
+            if (intent.action == "app.flint.prototype.vpn.FORGET") forgetSaved = true
             requestStop()
             return START_NOT_STICKY
         }
@@ -272,6 +278,10 @@ class FlintVpnService : VpnService() {
         if (request == generation.get()) publish(snapshot.copy(state = "disconnecting", generation = request))
         stopNative()
         recoveryFile.delete()
+        if (forgetSaved) {
+            withContext(nativeDispatcher) { AtomicFile(File(filesDir, "last-vpn-config.json")).delete() }
+            forgetSaved = false
+        }
         if (request == generation.get() && !destroyed) {
             publish(Snapshot(generation = request))
             pendingGeneration = null
@@ -328,7 +338,7 @@ class FlintVpnService : VpnService() {
         snapshot = value.copy(timestamp = System.currentTimeMillis())
         clients.toList().forEach(::sendSnapshot)
         if (foreground) getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification())
-        scope.launch(Dispatchers.IO) { app.flint.prototype.home.HomeWidget.refresh(this@FlintVpnService, value.state) }
+        if (lastWidgetState != value.state) { lastWidgetState = value.state; widgetUpdates.trySend(value.state) }
     }
 
     private fun sendSnapshot(client: Messenger) {

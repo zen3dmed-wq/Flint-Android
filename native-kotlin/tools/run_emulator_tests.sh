@@ -18,7 +18,7 @@ for n in $(seq 1 40); do
   test -f build/vpn-fixture/ready && break
   sleep 1
 done
-test -f build/vpn-fixture/ready || exit 1
+test -f build/vpn-fixture/ready || { cat build/vpn-fixture-launch.log; exit 1; }
 gradle --no-daemon :app:connectedPhoneDebugAndroidTest \
   -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true \
   -Pandroid.testInstrumentationRunnerArguments.notClass=app.flint.prototype.NativeTvUiTest \

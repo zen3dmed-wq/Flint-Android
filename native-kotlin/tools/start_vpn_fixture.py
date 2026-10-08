@@ -4,6 +4,7 @@ Both listeners bind to 127.0.0.1. Android emulator reaches the VLESS listener
 through its standard host alias 10.0.2.2. No production account/server is used.
 """
 import argparse
+import base64
 import http.client
 import http.server
 import json
@@ -108,10 +109,11 @@ def main():
     certificate = args.directory / 'tls.crt'
     private = args.directory / 'tls.key'
     subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', str(private), '-out', str(certificate), '-days', '1', '-subj', '/CN=localhost', '-addext', 'subjectAltName=DNS:localhost'], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    key_output = subprocess.check_output([str(args.binary.resolve()), 'x25519'], text=True)
-    keys = dict(line.split(':', 1) for line in key_output.splitlines() if ':' in line)
-    reality_private = keys['PrivateKey'].strip()
-    reality_public = (keys.get('Password') or keys.get('PublicKey')).strip()
+    private_der = subprocess.check_output(['openssl', 'genpkey', '-algorithm', 'X25519', '-outform', 'DER'])
+    public_der = subprocess.check_output(['openssl', 'pkey', '-inform', 'DER', '-pubout', '-outform', 'DER'], input=private_der)
+    # X25519 PKCS#8/SPKI DER end with the raw 32-byte private/public key.
+    reality_private = base64.urlsafe_b64encode(private_der[-32:]).rstrip(b'=').decode('ascii')
+    reality_public = base64.urlsafe_b64encode(public_der[-32:]).rstrip(b'=').decode('ascii')
     (args.directory / 'reality-public-key').write_text(reality_public, encoding='ascii')
     config.write_text(json.dumps({
         'log': {'loglevel': 'info'},
