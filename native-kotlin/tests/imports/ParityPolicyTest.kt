@@ -30,6 +30,19 @@ class ParityPolicyTest {
         assertNull(ServerBalance.load(doc, p, at+1000))
         assertFalse(ServerBalance.matches("vpn.example.com:444", p.host, p.port))
     }
+    @Test fun failedNodeBypassesLoadCooldownButNeedsAvailableBackup() {
+        val now = 500_000L
+        val profiles = listOf(server("a", "192.0.2.1"), server("b", "192.0.2.1").copy(port=8443), server("unknown", "192.0.2.3"))
+        val state = ServerBalance.State()
+        fun health(at: Long) = mapOf("a" to ServerBalance.Health(false,null,at), "b" to ServerBalance.Health(true,80,at,95,at), "unknown" to ServerBalance.Health(null,null,at))
+        assertNull(state.choose(profiles,health(now),"a",false,now-1000,now))
+        assertNull(state.choose(profiles,health(now),"a",true,now-1000,now))
+        assertNull(state.choose(profiles,health(now),"a",true,now-1000,now+1))
+        assertEquals("b",state.choose(profiles,health(now+15000),"a",true,now-1000,now+15000))
+        val none = health(now+30000).toMutableMap().apply { put("b",ServerBalance.Health(false,null,now+30000)) }
+        assertNull(state.choose(profiles,none,"a",true,now-1000,now+30000))
+        assertNull(state.choose(profiles,none.mapValues { it.value.copy(checkedAt=now+45000) },"a",true,now-1000,now+45000))
+    }
     @Test fun priceBenefitDoesNotInventDiscountOverExplicitBackendZero() {
         val base = JSONObject("""{"id":"a","durationDays":30,"price":{"amount":120,"currency":"RUB"}}""")
         val year = JSONObject("""{"id":"b","durationDays":360,"price":{"amount":1200,"currency":"RUB"},"savingsPercent":0}""")

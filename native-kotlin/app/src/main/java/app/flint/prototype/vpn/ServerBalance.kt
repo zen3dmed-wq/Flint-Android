@@ -40,22 +40,23 @@ object ServerBalance {
     class State {
         private var samples = 0; private var lastAt = 0L; private var reason = ""
         fun choose(profiles: List<ServerProfile>, health: Map<String, Health>, active: String, auto: Boolean, connectedAt: Long, now: Long): String? {
-            if (!auto || now - connectedAt < 180_000 || connectedAt == 0L) { reset(); return null }
+            if (!auto || connectedAt == 0L) { reset(); return null }
             val current = health[active] ?: return null
             val down = current.available == false && fresh(current.checkedAt, now)
             val loaded = current.load != null && current.load >= 85 && fresh(current.loadAt, now)
+            if (!down && now - connectedAt < 180_000) { reset(); return null }
             if (!down && !loaded) { reset(); return null }
             val kind = if (down) "down" else "load"
             if (reason != kind) { reset(); reason = kind }
             val at = if (down) current.checkedAt else current.loadAt
             if (at <= lastAt) return null
             lastAt = at; samples++
-            if (samples < 3) return null
+            if (samples < if (down) 2 else 3) return null
             val node = profiles.find { it.id == active }
             val best = profiles.filter { p ->
                 val h = health[p.id]
-                p.id != active && p.host != node?.host && h != null && (down || (h.load != null && fresh(h.loadAt, now))) &&
-                    (h.load == null || !fresh(h.loadAt, now) || h.load < 70) && score(h, now) + 200 < score(current, now)
+                p.id != active && (p.host != node?.host || p.port != node?.port) && h != null && h.available == true && fresh(h.checkedAt, now) &&
+                    (down || (h.load != null && fresh(h.loadAt, now) && h.load < 70)) && score(h, now) + 200 < score(current, now)
             }.minByOrNull { score(health[it.id], now) }
             if (best != null) reset()
             return best?.id

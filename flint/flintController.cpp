@@ -179,7 +179,7 @@ FlintController::FlintController(SecureQSettings *settings, QObject *parent)
     m_sessionsCount = m_settings->value("Conf/flintSessionsCount", 0).toInt();
 
     // Controller lifetime, not the visible QML page. Android may still suspend/kill its UI process.
-    m_balanceTimer.setInterval(45000 + int(QDateTime::currentMSecsSinceEpoch()%15000));
+    m_balanceTimer.setInterval(15000 + int(QDateTime::currentMSecsSinceEpoch()%5000));
     connect(&m_balanceTimer, &QTimer::timeout, this, [this] {
         if (m_tunnelConnected && selectedCountry()=="AUTO" && selectedSavedServerId().isEmpty() && !m_profilePreparing)
             refreshServerHealth();

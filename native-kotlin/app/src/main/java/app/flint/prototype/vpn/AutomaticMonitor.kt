@@ -5,6 +5,8 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import app.flint.prototype.imports.ServerProfile
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import org.json.JSONObject
 import java.net.InetSocketAddress
 
@@ -20,12 +22,13 @@ object AutomaticMonitor {
             val balance = ServerBalance.State(); val connectedAt = System.currentTimeMillis()
             val cm = context.getSystemService(ConnectivityManager::class.java)
             while (isActive) {
-                delay(30_000)
+                delay(15_000)
                 val underlying = cm.allNetworks.firstOrNull { cm.getNetworkCapabilities(it)?.let { c -> !c.hasTransport(NetworkCapabilities.TRANSPORT_VPN) && c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) } == true } ?: continue
-                val document = app.flint.prototype.account.LocationClient.fetch(context)
-                val now = System.currentTimeMillis()
-                val health = mutableMapOf<String, ServerBalance.Health>()
-                for (p in profiles.take(30)) {
+                val active = config.optString("flintServerId")
+                // A dead tunnel must not make optional API telemetry hold up recovery.
+                val document = withTimeoutOrNull(2500) { app.flint.prototype.account.LocationClient.fetch(context) } ?: JSONObject()
+                val slots = Semaphore(6)
+                val health = coroutineScope { profiles.sortedBy { it.id != active }.take(30).map { p -> async { slots.withPermit {
                     val latency = withContext(Dispatchers.IO) {
                         try {
                             val address = underlying.getAllByName(p.host).first()
@@ -34,10 +37,11 @@ object AutomaticMonitor {
                             maxOf(1, (System.nanoTime() - start) / 1_000_000)
                         } catch (_: Exception) { null }
                     }
+                    val now = System.currentTimeMillis()
                     val load = ServerBalance.load(document, p, now)
-                    health[p.id] = ServerBalance.Health(latency != null, latency, now, load?.first, load?.second ?: 0)
-                }
-                val active = config.optString("flintServerId")
+                    p.id to ServerBalance.Health(latency != null, latency, now, load?.first, load?.second ?: 0)
+                } } }.awaitAll().toMap().toMutableMap() }
+                val now = System.currentTimeMillis()
                 if (!VpnReachability.verify(context, config)) health[active]?.let { health[active] = it.copy(available = false, checkedAt = now) }
                 val id = balance.choose(profiles, health, active, true, connectedAt, now) ?: continue
                 val candidate = (0 until candidates.length()).map { candidates.getJSONObject(it) }.first { it.optString("id") == id }

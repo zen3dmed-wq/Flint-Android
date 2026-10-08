@@ -206,6 +206,8 @@ class FlintVpnService : VpnService() {
             if (command.generation != generation.get() || destroyed) return
             prefs.edit().putBoolean("desired", true).commit()
             val nativeState = MutableStateFlow(ProtocolState.CONNECTING)
+            var coreFailed = false
+            var connectionEstablished = false
             stateJob = scope.launch {
                 nativeState.collect { current ->
                     if (command.generation == generation.get() && !destroyed) {
@@ -215,7 +217,8 @@ class FlintVpnService : VpnService() {
                             ProtocolState.CONNECTED -> Unit
                             ProtocolState.DISCONNECTING -> publish(snapshot.copy(state = "disconnecting"))
                             ProtocolState.DISCONNECTED -> if (nativeStarted) {
-                                requestStop()
+                                if (connectionEstablished) recoverAutomatic(config, command.generation)
+                                else coreFailed = true
                             }
                             ProtocolState.UNKNOWN -> Unit
                         }
@@ -228,8 +231,8 @@ class FlintVpnService : VpnService() {
                     // Native errors may contain endpoints/credentials. Keep display safe.
                     scope.launch {
                         if (generation.get() == command.generation) {
-                            prefs.edit().putBoolean("desired", false).commit()
-                            requestStop()
+                            if (connectionEstablished) recoverAutomatic(config, command.generation)
+                            else coreFailed = true
                         }
                     }
                 }
@@ -242,19 +245,16 @@ class FlintVpnService : VpnService() {
                 return
             }
             publish(snapshot.copy(state = "connecting", message = "Проверяем интернет через VPN…"))
+            check(!coreFailed) { "core_stopped" }
             if (!VpnReachability.verify(this, config, previousNetworks)) throw java.io.IOException("data_path")
+            check(!coreFailed) { "core_stopped" }
             if (command.generation != generation.get() || destroyed) { stopNative(); return }
+            connectionEstablished = true
             publish(snapshot.copy(state = "connected", message = ""))
             config.remove("flintTried")
             pendingGeneration = null
             monitorJob = AutomaticMonitor.start(this, scope, config) { next ->
-                if (generation.get() == command.generation) {
-                    val dir = File(filesDir, VpnContract.CONFIG_DIRECTORY).apply { mkdirs() }
-                    val file = File(dir, java.util.UUID.randomUUID().toString() + ".json")
-                    file.writeText(next.toString())
-                    val request = generation.incrementAndGet(); pendingGeneration = request
-                    commands.trySend(Command.Connect(request, file.name)); watchNativeDeadline(request, 30_000)
-                }
+                enqueueAutomatic(next, command.generation)
             }
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
@@ -293,6 +293,37 @@ class FlintVpnService : VpnService() {
                 leaveForeground()
                 stopSelfResult(lastStartId)
             }
+        }
+    }
+
+    private fun recoverAutomatic(config: JSONObject, expected: Long) {
+        if (generation.get() != expected || destroyed) return
+        val candidates = config.optJSONArray("flintCandidates") ?: org.json.JSONArray()
+        val next = (0 until candidates.length()).mapNotNull { candidates.optJSONObject(it) }
+            .firstOrNull { it.optString("id") != config.optString("flintServerId") }
+        if (!config.optBoolean("flintAutomatic") || !prefs.getBoolean("desired", false) || prepare(this) != null || next == null) {
+            requestStop(); return
+        }
+        val replacement = AutomaticMonitor.switchConfig(config, next)
+        replacement.put("flintTried", org.json.JSONArray().put(config.optString("flintServerId")))
+        enqueueAutomatic(replacement, expected)
+    }
+
+    private fun enqueueAutomatic(config: JSONObject, expected: Long) {
+        if (generation.get() != expected || destroyed || !prefs.getBoolean("desired", false)) return
+        val request = generation.incrementAndGet(); pendingGeneration = request
+        publish(snapshot.copy(state = "connecting", message = "Сервер недоступен или перегружен. Переподключаемся…", generation = request))
+        scope.launch {
+            var file: File? = null
+            try {
+                file = withContext(Dispatchers.IO) {
+                    val dir = File(filesDir, VpnContract.CONFIG_DIRECTORY).apply { mkdirs() }
+                    File(dir, java.util.UUID.randomUUID().toString() + ".json").apply { writeText(config.toString()) }
+                }
+                if (generation.get() != request || destroyed) { discardTransient(file.name); return@launch }
+                commands.trySend(Command.Connect(request, file.name)); watchNativeDeadline(request, 30_000)
+            } catch (e: CancellationException) { file?.let { discardTransient(it.name) }; throw e }
+              catch (_: Exception) { file?.let { discardTransient(it.name) }; if (generation.get() == request) requestStop() }
         }
     }
 

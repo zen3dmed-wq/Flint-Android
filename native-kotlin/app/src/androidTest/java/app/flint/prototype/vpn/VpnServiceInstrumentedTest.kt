@@ -146,6 +146,43 @@ class VpnServiceInstrumentedTest {
         assertEquals("disconnected", second.await { it.getString(VpnContract.STATE) == "disconnected" }.getString(VpnContract.STATE))
     }
 
+    @Test fun automaticModeRecoversWhenConnectedNodeStopsForwarding() {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("flintLocalVpnTest") == "true")
+        foregroundActivity()
+        shell("appops set ${context.packageName} ACTIVATE_VPN allow")
+        val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
+        val direct = cm.allNetworks.first { cm.getNetworkCapabilities(it)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == false }
+        fun fault(enabled: Boolean) {
+            val c = direct.openConnection(URL("http://10.0.2.2:18080/fixture/fault-${if (enabled) "on" else "off"}")) as HttpURLConnection
+            c.connectTimeout = 3000; c.readTimeout = 3000
+            try { assertEquals(200, c.responseCode) } finally { c.disconnect() }
+        }
+        fault(false)
+        try {
+            val config = fixtureConfig()
+            val native = JSONObject(config.getJSONObject("xray_config_data").getString("config"))
+            val working = JSONObject(native.getJSONArray("outbounds").getJSONObject(0).toString())
+            val first = native.getJSONArray("outbounds").getJSONObject(0)
+            first.getJSONObject("settings").getJSONArray("vnext").getJSONObject(0).put("port",18445)
+            fun candidate(id: String, port: Int, outbound: JSONObject) = JSONObject().put("id",id).put("name",id).put("host","10.0.2.2").put("port",port).put("outbound",outbound)
+            config.put("flintAutomatic",true).put("flintServerId","fixture-fault")
+                .put("flintCandidates",JSONArray().put(candidate("fixture-fault",18445,first)).put(candidate("fixture-backup",18443,working)))
+            config.getJSONObject("xray_config_data").put("config",native.toString())
+            val binding = bind(); binding.await(); connect(config)
+            binding.await { it.getString(VpnContract.STATE) == "connected" }
+            assertEquals("FLINT_VPN_TUNNEL_OK",throughTunnel())
+            shell("input keyevent KEYCODE_HOME")
+            fault(true)
+            binding.await(110) { it.getString(VpnContract.STATE) == "connected" && it.getString(VpnContract.SERVER_ID) == "fixture-backup" }
+            assertEquals("FLINT_VPN_TUNNEL_OK",throughTunnel())
+            binding.send(VpnContract.DISCONNECT)
+            binding.await { it.getString(VpnContract.STATE) == "disconnected" }
+            SystemClock.sleep(17_000)
+            binding.send(VpnContract.REQUEST_STATUS)
+            assertEquals("disconnected",binding.await().getString(VpnContract.STATE))
+        } finally { fault(false) }
+    }
+
     @Test fun unreachableServerNeverBecomesConnected() {
         assumeTrue(InstrumentationRegistry.getArguments().getString("flintLocalVpnTest") == "true")
         foregroundActivity()
@@ -348,8 +385,8 @@ class VpnServiceInstrumentedTest {
         }
         override fun onServiceDisconnected(name: ComponentName?) { service = null }
         fun send(command: Int) { service?.send(Message.obtain(null, command).apply { replyTo = replies }) }
-        fun await(predicate: (Bundle) -> Boolean = { true }): Bundle {
-            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(35)
+        fun await(timeoutSeconds: Long = 35, predicate: (Bundle) -> Boolean = { true }): Bundle {
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds)
             while (System.nanoTime() < deadline) {
                 val next = queue.poll(1, TimeUnit.SECONDS) ?: continue
                 if (predicate(next)) return next

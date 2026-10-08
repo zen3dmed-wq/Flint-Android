@@ -10,6 +10,7 @@ import http.server
 import json
 import pathlib
 import signal
+import select
 import socket
 import socketserver
 import struct
@@ -22,6 +23,24 @@ from urllib.parse import urlsplit
 
 FIXTURE_ID = '11111111-1111-4111-8111-111111111111'
 MARKER = b'FLINT_VPN_TUNNEL_OK'
+FAULT = threading.Event()
+
+
+class FaultRelay(socketserver.BaseRequestHandler):
+    """A disposable node whose established connections can be killed by the test."""
+    def handle(self):
+        if FAULT.is_set(): return
+        try:
+            with socket.create_connection(('127.0.0.1', 18443), timeout=2) as upstream:
+                peers = [self.request, upstream]
+                while not FAULT.is_set():
+                    readable, _, _ = select.select(peers, [], [], .2)
+                    for source in readable:
+                        data = source.recv(65536)
+                        if not data: return
+                        (upstream if source is self.request else self.request).sendall(data)
+        except OSError:
+            pass
 
 
 class DnsHandler(socketserver.BaseRequestHandler):
@@ -43,6 +62,8 @@ class DnsHandler(socketserver.BaseRequestHandler):
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path == '/fixture/fault-on': FAULT.set()
+        if self.path == '/fixture/fault-off': FAULT.clear()
         with self.server.request_lock:
             self.server.request_count += 1
             count = self.server.request_count
@@ -141,6 +162,9 @@ def main():
     server.request_log.write_text('', encoding='utf-8')
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
+    relay = socketserver.ThreadingTCPServer(('127.0.0.1', 18445), FaultRelay)
+    relay.daemon_threads = True
+    threading.Thread(target=relay.serve_forever, daemon=True).start()
     dns = socketserver.ThreadingUDPServer(('127.0.0.1', 15353), DnsHandler)
     threading.Thread(target=dns.serve_forever, daemon=True).start()
     tls_server = http.server.ThreadingHTTPServer(('127.0.0.1', 19443), Handler)

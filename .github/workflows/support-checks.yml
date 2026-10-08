@@ -1,5 +1,6 @@
 name: Flint support controller checks
 on:
+  workflow_dispatch:
   pull_request:
     paths: ['flint/**', 'tests/controller/**', '.github/workflows/support-checks.yml']
 permissions:
