@@ -14,13 +14,17 @@ import org.junit.runner.RunWith
 class NativeTvUiTest {
     @Test fun remoteNavigationCanImportAndChangeServerWhileConnected() {
         UiTestSupport.launch(tv = true, phase = FlintPhase.CONNECTED).use { scenario ->
+            // The preceding phone tests can leave the emulator in touch mode.
+            // Exercise a real remote key before asking for keyboard focus.
+            UiTestSupport.press(KeyEvent.KEYCODE_DPAD_DOWN)
             scenario.onActivity { activity ->
                 val metrics = activity.resources.displayMetrics
                 assertTrue("TV test requires landscape width >= 960dp", metrics.widthPixels / metrics.density >= 960)
                 assertTrue("TV test requires height >= 540dp", metrics.heightPixels / metrics.density >= 540)
                 val add = UiTestSupport.findText(activity.flintView, "Добавить сервер") as Button
                 UiTestSupport.assertOnScreen(add)
-                assertTrue(add.requestFocus())
+                assertNotNull("The first remote key must establish a focused control", activity.currentFocus)
+                assertTrue("TV actions must accept focus after a remote key", add.requestFocus())
             }
             UiTestSupport.press(KeyEvent.KEYCODE_DPAD_RIGHT)
             scenario.onActivity { assertEquals("Из буфера", (it.currentFocus as? Button)?.text?.toString()) }

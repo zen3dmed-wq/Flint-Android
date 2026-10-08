@@ -16,6 +16,9 @@ object XrayConfigBuilder {
         require(socksPort in 1024..65535) { "Некорректный локальный порт" }
         val config = profile.originalConfigJson?.let(::JSONObject) ?: JSONObject()
             .put("outbounds", JSONArray().put(profile.outbound()))
+        // The prototype bundles expanded routing rules, not arbitrary external .dat files.
+        // Reject imported dependencies explicitly instead of changing their routing meaning.
+        rejectExternalGeoRules(config)
         // Imported file paths and management listeners do not belong in an Android client.
         config.put("log", JSONObject().put("loglevel", "warning"))
         config.remove("api")
@@ -39,6 +42,36 @@ object XrayConfigBuilder {
         if (result.toByteArray(Charsets.UTF_8).size > SubscriptionParser.MAX_BYTES)
             throw ImportException("Конфигурация VPN слишком большая")
         return result
+    }
+
+    private fun rejectExternalGeoRules(config: JSONObject) {
+        fun external(value: String): Boolean = listOf("geosite:", "geoip:", "ext:", "ext-domain:", "ext-ip:")
+            .any { value.trim().startsWith(it, ignoreCase = true) }
+        fun check(value: Any?) {
+            val requiresDatabase = when (value) {
+                is String -> external(value)
+                is JSONArray -> (0 until value.length()).any { external(value.optString(it)) }
+                else -> false
+            }
+            if (requiresDatabase) throw ImportException(
+                "Профиль Xray использует внешние базы geosite/geoip, которых нет в тестовой версии. " +
+                    "Импортируйте ссылку VLESS, VMess, Trojan или Shadowsocks либо JSON с явными доменами и IP-адресами.")
+        }
+        val rules = config.optJSONObject("routing")?.optJSONArray("rules")
+        if (rules != null) for (index in 0 until rules.length()) {
+            val rule = rules.optJSONObject(index) ?: continue
+            for (key in listOf("domain", "ip", "source")) check(rule.opt(key))
+        }
+        val dns = config.optJSONObject("dns") ?: return
+        val servers = dns.optJSONArray("servers")
+        if (servers != null) for (index in 0 until servers.length()) {
+            val server = servers.optJSONObject(index) ?: continue
+            for (key in listOf("domains", "expectIPs", "unexpectedIPs")) check(server.opt(key))
+        }
+        dns.optJSONObject("hosts")?.let { hosts ->
+            val names = hosts.keys()
+            while (names.hasNext()) check(names.next())
+        }
     }
 
     private fun applyRussianRouting(config: JSONObject, catalog: JSONObject, customDomains: List<String>) {

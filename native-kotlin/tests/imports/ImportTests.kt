@@ -200,6 +200,29 @@ fun main(args: Array<String>) {
         fails("группа", { XrayConfigBuilder.build(profile, routingCatalogJson = "{}") })
         fails("сайта", { XrayConfigBuilder.normalizeDomain("https://example.ru/path") })
     }
+    checks["imported external geo databases are rejected without changing routing"] = {
+        fun root(): JSONObject = JSONObject().put("outbounds", JSONArray().put(SubscriptionParser.parse(BASE).profiles.single().outbound()))
+        for ((field, reference) in listOf("domain" to "geosite:category-ads-all", "ip" to "geoip:private",
+            "domain" to "ext:custom.dat:region", "source" to "geoip:ru")) {
+            val original = root().put("routing", JSONObject().put("rules", JSONArray().put(
+                JSONObject().put("type", "field").put(field, JSONArray().put(reference)).put("outboundTag", "proxy"))))
+            val profile = SubscriptionParser.parse(original.toString()).profiles.single()
+            fails("внешние базы", { XrayConfigBuilder.build(profile, ruDirect = false) })
+            check(profile.originalConfigJson == original.toString())
+        }
+        for ((field, reference) in listOf("domains" to "geosite:ru", "expectIPs" to "geoip:ru")) {
+            val original = root().put("dns", JSONObject().put("servers", JSONArray().put(
+                JSONObject().put("address", "1.1.1.1").put(field, JSONArray().put(reference)))))
+            val profile = SubscriptionParser.parse(original.toString()).profiles.single()
+            fails("внешние базы", { XrayConfigBuilder.build(profile, ruDirect = false) })
+        }
+        val plain = root().put("routing", JSONObject().put("rules", JSONArray().put(JSONObject()
+            .put("type", "field").put("domain", JSONArray().put("domain:example.test"))
+            .put("ip", JSONArray().put("192.0.2.0/24")).put("outboundTag", "proxy"))))
+        val profile = SubscriptionParser.parse(plain.toString()).profiles.single()
+        val built = JSONObject(XrayConfigBuilder.build(profile, ruDirect = false))
+        check(built.getJSONObject("routing").toString() == plain.getJSONObject("routing").toString())
+    }
     checks["HTTP redirect and bounded error reporting without credentials"] = {
         LocalHttpFixture().use { server ->
             val base = "http://127.0.0.1:${server.port}"

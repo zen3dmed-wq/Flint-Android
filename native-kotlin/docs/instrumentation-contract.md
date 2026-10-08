@@ -31,6 +31,12 @@ For example, use `adb shell am instrument -w -r -e class <filter>
 app.flint.vpn.kotlin.test/androidx.test.runner.AndroidJUnitRunner`, or the
 equivalent Gradle runner argument.
 
+When invoking the Gradle connected-test task, also pass
+`-Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true`. Otherwise AGP
+uninstalls the target APK at the end and removes its external-files screenshots
+before `adb pull` can collect them. The CI script applies this to both runs and
+copies the phone evidence before changing the viewport.
+
 Phone tests exercise the file-import action from the real native dialog, check
 that primary controls remain on screen, show all four connection states, and
 recreate a connected screen without invoking the VPN-toggle callback. The QR
@@ -53,6 +59,9 @@ APK. The test requires a viewport of at least 960x540 dp, uses real D-pad key
 events to move focus and activate buttons, opens the native server dialog, and
 selects a different server while the injected state is connected. It asserts
 that this route invokes a server-selection callback without a disconnect toggle.
+The first D-pad event explicitly leaves the phone emulator's prior touch mode.
+The TV controls also accept initial focus in touch mode for hybrid TV launchers;
+this behaviour is disabled in the phone layout.
 
 Restore `adb shell wm size reset` and `adb shell wm density reset` afterwards.
 Do not apply these viewport overrides to a user's physical device.

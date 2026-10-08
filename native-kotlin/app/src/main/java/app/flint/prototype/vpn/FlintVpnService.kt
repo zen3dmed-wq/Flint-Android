@@ -102,8 +102,18 @@ class FlintVpnService : VpnService() {
         if (intent?.action == VpnContract.ACTION_CONNECT) {
             val request = generation.incrementAndGet()
             pendingGeneration = request
-            if (!startForegroundSafely(startId)) return START_NOT_STICKY
-            commands.trySend(Command.Connect(request, intent.getStringExtra(VpnContract.EXTRA_CONFIG_FILE)))
+            val fileName = intent.getStringExtra(VpnContract.EXTRA_CONFIG_FILE)
+            if (!startForegroundSafely(startId)) {
+                discardTransient(fileName)
+                return START_NOT_STICKY
+            }
+            if (commands.trySend(Command.Connect(request, fileName)).isFailure) {
+                discardTransient(fileName)
+                pendingGeneration = null
+                leaveForeground()
+                stopSelfResult(startId)
+                return START_NOT_STICKY
+            }
             watchNativeDeadline(request, 30_000)
         } else if (intent == null || intent.action == SERVICE_INTERFACE) {
             // Process recovery is permitted only for a connection the user left on.
@@ -358,6 +368,12 @@ class FlintVpnService : VpnService() {
         generation.incrementAndGet()
         stateJob?.cancel()
         commands.close()
+        // Closing first prevents new producers from handing us files while the
+        // queued requests are drained. The active request keeps its own finally.
+        while (true) {
+            val command = commands.tryReceive().getOrNull() ?: break
+            if (command is Command.Connect) discardTransient(command.fileName)
+        }
         scope.cancel()
         mainHandler.removeCallbacksAndMessages(null)
         // This service is intentionally isolated in :vpn. Terminating this process

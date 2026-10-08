@@ -11,6 +11,9 @@ tun2socks engine as Flint 8.10.25. Imports subscription links, raw/Base64 lists,
 VLESS/Reality, VMess, Trojan, Shadowsocks and Xray JSON. Imports from clipboard,
 text, file or QR image. The phone and TV APKs include ARM32 and ARM64; Android
 selects the correct architecture. Minimum Android version: 11 / API 30.
+Imported Xray JSON must contain explicit routing domains/IPs: external
+`geosite`/`geoip`/`ext` databases are not included and are rejected before startup.
+The built-in Russian routing catalog is already expanded and needs no such files.
 
 The service owns VPN state across navigation. Permission denial does not start
 the engine. Russian routing uses the existing bundled catalog and bypasses the

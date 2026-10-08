@@ -7,6 +7,8 @@ fixture_pid=''
 collect() {
   timeout 15s adb pull /sdcard/Android/data/app.flint.vpn.kotlin/files/ui-evidence evidence/ >/dev/null 2>&1 || true
   timeout 10s adb logcat -d > evidence/emulator-logcat.txt 2>&1 || true
+  timeout 5s adb shell wm size reset >/dev/null 2>&1 || true
+  timeout 5s adb shell wm density reset >/dev/null 2>&1 || true
   if [ -n "$fixture_pid" ]; then kill "$fixture_pid" 2>/dev/null || true; fi
 }
 trap collect EXIT
@@ -18,6 +20,7 @@ for n in $(seq 1 40); do
 done
 test -f build/vpn-fixture/ready || exit 1
 gradle --no-daemon :app:connectedPhoneDebugAndroidTest \
+  -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true \
   -Pandroid.testInstrumentationRunnerArguments.notClass=app.flint.prototype.NativeTvUiTest \
   -Pandroid.testInstrumentationRunnerArguments.flintLocalVpnTest=true
 phone_result=$?
@@ -27,10 +30,12 @@ timeout 15s adb pull /sdcard/Android/data/app.flint.vpn.kotlin/files/ui-evidence
 adb shell wm size 1280x720
 adb shell wm density 160
 gradle --no-daemon :app:connectedPhoneDebugAndroidTest \
+  -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true \
   -Pandroid.testInstrumentationRunnerArguments.class=app.flint.prototype.NativeTvUiTest
 tv_result=$?
 cp -a app/build/outputs/androidTest-results evidence/tv/ || true
 cp -a app/build/reports/androidTests evidence/tv/ || true
+timeout 15s adb pull /sdcard/Android/data/app.flint.vpn.kotlin/files/ui-evidence evidence/tv/ || true
 python3 - "$phone_result" "$tv_result" <<'PY'
 import json, pathlib, sys
 pathlib.Path('evidence/result.json').write_text(json.dumps({'phoneExit': int(sys.argv[1]), 'tvExit': int(sys.argv[2])}))

@@ -77,6 +77,7 @@ class FlintHomeView(
         )
         background = surface()
         isFocusable = true
+        isFocusableInTouchMode = isTv
         setOnCheckedChangeListener { _, value ->
             if (!syncing) callbacks.onRuDirectChanged(value)
         }
@@ -370,6 +371,9 @@ class FlintHomeView(
         background = surface()
         stateListAnimator = null
         isFocusable = true
+        // Hybrid TV launchers can leave the window in touch mode. TV controls
+        // still need an initial focus target before the first remote key.
+        isFocusableInTouchMode = isTv
         setOnClickListener { action() }
     }
 
