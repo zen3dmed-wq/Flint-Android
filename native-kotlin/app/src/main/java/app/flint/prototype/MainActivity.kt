@@ -296,6 +296,7 @@ class MainActivity : Activity(), FlintUiCallbacks {
                         .put("description", profile.name).put("flintServerId", profile.id)
                         .put("flintRuDirect", ru)
                         .put("flintRussianAppsDirect", ru && prefs.getBoolean("automaticRouting", true))
+                        .put(app.flint.prototype.routing.DirectApps.CONFIG_KEY, app.flint.prototype.routing.DirectApps.policy(prefs))
                         .put("flintAutomatic", selected == null)
                         .put("flintCandidates", JSONArray(availableProfiles.map { candidate ->
                             val prepared = ProfileProbe.withFingerprint(candidate, fingerprints[candidate.id])

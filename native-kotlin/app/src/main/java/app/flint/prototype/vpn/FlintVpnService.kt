@@ -191,7 +191,7 @@ class FlintVpnService : VpnService() {
         var attemptedConfig: JSONObject? = null
         try {
             check(prepare(this) == null) { "permission" }
-            val config = withContext(nativeDispatcher) { readConfig(command) }
+            val config = withContext(nativeDispatcher) { readConfig(command).also { app.flint.prototype.routing.DirectApps.applyInstalled(this@FlintVpnService, it) } }
             attemptedConfig = config
             require(config.optString("protocol").equals("xray", true)) { "protocol" }
             require(config.optJSONObject("xray_config_data")?.optString("config")?.isNotBlank() == true) { "config" }

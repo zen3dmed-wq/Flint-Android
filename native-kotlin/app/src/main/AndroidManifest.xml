@@ -12,6 +12,20 @@
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.software.leanback" android:required="${isTvRequired}" />
     <queries>
+        <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>
+        <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LEANBACK_LAUNCHER" /></intent>
+        <package android:name="ru.rostel" />
+        <package android:name="com.gpn.azs" />
+        <package android:name="ru.yandex.taxi" />
+        <package android:name="ru.dublgis.dgismobile" />
+        <package android:name="ru.sberbankmobile" />
+        <package android:name="com.idamob.tinkoff.android" />
+        <package android:name="ru.vtb24.mobilebanking.android" />
+        <package android:name="ru.alfabank.mobile.android" />
+        <package android:name="ru.ozon.app.android" />
+        <package android:name="com.wildberries.ru" />
+        <package android:name="com.octopod.russianpost.client.android" />
+        <package android:name="ru.fns.lkfl" />
         <package android:name="ru.yandex.yandexmaps" />
         <package android:name="ru.yandex.yandexnavi" />
     </queries>

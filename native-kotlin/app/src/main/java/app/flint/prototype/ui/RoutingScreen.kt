@@ -42,7 +42,7 @@ class RoutingScreen(private val activity: Activity, private val prefs: SharedPre
             background = null; setPadding(0, 0, 0, 0)
             contentDescription = "Посмотреть автоматические правила"
         }; s.add(p.body, summary, 44, 0)
-        s.add(p.body, s.label("Автоматически: российские сервисы, Яндекс Карты, Навигатор и локальная сеть — напрямую, остальные сайты — через VPN. Правила обновляются из конфигурации.", 13f, color = s.muted), gap = 0)
+        s.add(p.body, s.label("Автоматически: российские сервисы, известные российские приложения и локальная сеть — напрямую. Остальной трафик — через VPN.", 13f, color = s.muted), gap = 0)
         fun toggle(label: String, value: Boolean): Switch = Switch(activity).apply { text = label; textSize = 14f; setTextColor(s.ink); isChecked = value; minHeight = s.dp(48) }
         val direct = toggle("Разделять трафик", enabled()); s.add(p.body, direct, 48)
         val automatic = toggle("Определять маршрут автоматически", prefs.getBoolean("automaticRouting", true)); s.add(p.body, automatic, 56)
@@ -51,8 +51,8 @@ class RoutingScreen(private val activity: Activity, private val prefs: SharedPre
             automatic.isEnabled = direct.isChecked
             explanation.text = if (!direct.isChecked) "Выключено: весь интернет-трафик идёт через VPN."
                 else if (automatic.isChecked) "Ваши сайты ниже дополняют автоматические правила."
-                else "Вручную: только сайты ниже идут напрямую, остальные — через VPN."
-            summary.text = if (!automatic.isChecked) "Вручную: напрямую идут только добавленные сайты"
+                else "Вручную: выбранные приложения и сайты ниже идут напрямую, остальные — через VPN."
+            summary.text = if (!automatic.isChecked) "Вручную: выбранные приложения и сайты"
                 else if (policy() == null) "Встроенные правила: geosite:category-ru · Подробнее ›"
                 else "Правила из конфигурации Flint · Подробнее ›"
         }
@@ -60,6 +60,9 @@ class RoutingScreen(private val activity: Activity, private val prefs: SharedPre
         direct.setOnCheckedChangeListener { _, value -> setEnabled(value); updateMode() }
         automatic.setOnCheckedChangeListener { _, value -> prefs.edit().putBoolean("automaticRouting", value).apply(); updateMode(); saved() }
         updateMode()
+        s.add(p.body, s.button("Приложения напрямую") {
+            DirectAppsScreen(activity, prefs, scope, enabled) { saved() }.show()
+        }, 48)
         val field = s.field("example.ru или https://…"); s.add(p.body, field, 50)
         val sites = s.column()
         fun draw() {

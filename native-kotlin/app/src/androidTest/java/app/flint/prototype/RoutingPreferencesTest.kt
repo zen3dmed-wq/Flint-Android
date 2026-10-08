@@ -8,6 +8,26 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RoutingPreferencesTest {
+    @Test fun directAppChoicesSurviveReopenAndMissingAppsDoNotBreakVpnConfig() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val prefs = context.getSharedPreferences("direct-app-test", 0)
+        prefs.edit().clear().commit()
+        val choices = mapOf("ru.rostel" to false, "app.missing.fixture" to true, context.packageName to true)
+        assertTrue(app.flint.prototype.routing.DirectApps.save(prefs, choices))
+        assertEquals(choices, app.flint.prototype.routing.DirectApps.overrides(prefs))
+        val config = JSONObject().put("flintRuDirect", true)
+            .put(app.flint.prototype.routing.DirectApps.CONFIG_KEY, app.flint.prototype.routing.DirectApps.policy(prefs))
+        app.flint.prototype.routing.DirectApps.applyInstalled(context, config)
+        val apps = config.getJSONArray("splitTunnelApps").let { a -> (0 until a.length()).map { a.getString(it) } }
+        assertFalse(apps.contains("ru.rostel"))
+        assertFalse(apps.contains("app.missing.fixture"))
+        assertFalse(apps.contains(context.packageName))
+        config.put("flintRuDirect", false)
+        app.flint.prototype.routing.DirectApps.applyInstalled(context, config)
+        assertEquals(0, config.getInt("appSplitTunnelType"))
+        assertEquals(0, config.getJSONArray("splitTunnelApps").length())
+        prefs.edit().clear().commit()
+    }
     @Test fun qtStarterListMigratesOnceAndRespectsRemovalsAndCustomSites() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val prefs = context.getSharedPreferences("routing-migration-test", 0)

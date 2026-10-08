@@ -269,6 +269,36 @@ class VpnServiceInstrumentedTest {
         awaitColor("disconnected"); assertMainHidden()
     }
 
+    @Test fun selectedAppBypassesSystemVpnWhileOtherAppsRemainTunneled() {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("flintLocalVpnTest") == "true")
+        foregroundActivity()
+        shell("appops set ${context.packageName} ACTIVATE_VPN allow")
+        val binding = bind(); binding.await()
+        val probePackage = instrumentation.context.packageName
+        assertNotEquals(context.applicationInfo.uid, instrumentation.context.applicationInfo.uid)
+        val policy = JSONObject().put("automatic", false).put("overrides", JSONObject().put(probePackage, true))
+        val config = fixtureConfig().put("flintRuDirect", true)
+            .put(app.flint.prototype.routing.DirectApps.CONFIG_KEY, policy)
+            .put("flintServerId", "fixture-app-bypass")
+        connect(config)
+        binding.await { it.getString(VpnContract.STATE) == "connected" && it.getString(VpnContract.SERVER_ID) == "fixture-app-bypass" }
+        val system = shell("dumpsys vpn_management")
+        val excluded = Regex("disallowedApps=\\[([^]]*)]").findAll(system).flatMap { it.groupValues[1].split(',').map(String::trim) }.toSet()
+        assertTrue("Android system VPN config must exclude the selected installed app", probePackage in excluded)
+        assertFalse("Flint itself must stay in the VPN so reachability checks are real", context.packageName in excluded)
+        assertEquals("FLINT_VPN_TUNNEL_OK", throughTunnel())
+        connect(config.put("flintRuDirect", false).put("flintServerId", "fixture-app-bypass-off"))
+        binding.await { it.getString(VpnContract.STATE) == "connected" && it.getString(VpnContract.SERVER_ID) == "fixture-app-bypass-off" }
+        val after = Regex("disallowedApps=\\[([^]]*)]").findAll(shell("dumpsys vpn_management"))
+            .flatMap { it.groupValues[1].split(',').map(String::trim) }.toSet()
+        assertFalse("Turning off Sites RF must restore the selected app to the VPN", probePackage in after)
+        assertEquals("FLINT_VPN_TUNNEL_OK", throughTunnel())
+        val directory = File(requireNotNull(context.getExternalFilesDir(null)), "ui-evidence").apply { mkdirs() }
+        File(directory, "direct-apps-real.json").writeText(JSONObject().put("syntheticUiState", false)
+            .put("systemVpnExclusionVerified", true).put("offRemovesExclusion", true)
+            .put("otherAppRealTunTraffic", true).put("liveGosuslugiOrFuelAccountTested", false).toString(2))
+    }
+
     @Test fun quickSettingsTileTogglesRealVpnWithoutOpeningMain() {
         assumeTrue(InstrumentationRegistry.getArguments().getString("flintLocalVpnTest") == "true")
         foregroundActivity()
@@ -294,7 +324,14 @@ class VpnServiceInstrumentedTest {
             shell("cmd statusbar click-tile $component")
             binding.await { it.getString(VpnContract.STATE) == "disconnected" }
             awaitTile("Выключен")
-            shell("cmd statusbar collapse"); shell("cmd statusbar expand-settings")
+            shell("cmd statusbar collapse")
+            // The collapse command schedules an animation; immediately expanding
+            // races it and can leave SystemUI collapsed after a successful toggle.
+            val collapsedBy = SystemClock.uptimeMillis() + 5000
+            while (instrumentation.uiAutomation.rootInActiveWindow?.packageName?.toString() == "com.android.systemui" && SystemClock.uptimeMillis() < collapsedBy)
+                SystemClock.sleep(50)
+            assertNotEquals("Shade should be collapsed before reopening", "com.android.systemui", instrumentation.uiAutomation.rootInActiveWindow?.packageName?.toString())
+            shell("cmd statusbar expand-settings")
             awaitTile("Выключен")
             shell("cmd statusbar click-tile $component")
             binding.await { it.getString(VpnContract.STATE) == "connected" }

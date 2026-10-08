@@ -114,6 +114,18 @@ class AccountUiTest {
             }
         }
     }
+    @Test fun routingOpensInstalledAppChoicesAndSavesWithoutSendingAccountData() {
+        ActivityScenario.launch<AccountHarnessActivity>(Intent(UiTestSupport.instrumentation.targetContext, AccountHarnessActivity::class.java).putExtra("screen", "routing")).use {
+            UiTestSupport.awaitWindowContaining("Раздельное проксирование", "Приложения напрямую")
+            UiTestSupport.clickAccessibilityText("Приложения напрямую")
+            UiTestSupport.awaitWindowContaining("Приложения напрямую", "Найдено:", "Сохранить")
+            UiTestSupport.screenshot("direct-apps-fixture", false, FlintPhase.DISCONNECTED)
+            UiTestSupport.clickAccessibilityText("Сохранить")
+            UiTestSupport.awaitWindowContaining("Раздельное проксирование", "Сохранено")
+            org.junit.Assert.assertFalse(AccountHarnessActivity.requests.any { it.contains("installed") || it.contains("routing") })
+        }
+    }
+
     @Test fun settingsAndInvitationFitAndStayCentered() {
         for (screen in listOf("settings", "friends")) {
             ActivityScenario.launch<AccountHarnessActivity>(Intent(UiTestSupport.instrumentation.targetContext, AccountHarnessActivity::class.java).putExtra("screen", screen)).use { scenario ->
