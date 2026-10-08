@@ -27,7 +27,7 @@ internal object UiTestSupport {
             .putExtra("tv", tv).putExtra("phase", phase.name))
     }
 
-    fun findText(root: View, text: String): TextView? {
+    fun findText(root: View, text: String): View? {
         if (root.contentDescription?.toString() == text || root is TextView && root.text.toString() == text) return root
         if (root is ViewGroup) for (index in 0 until root.childCount) {
             findText(root.getChildAt(index), text)?.let { return it }

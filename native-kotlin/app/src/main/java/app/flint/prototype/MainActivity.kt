@@ -454,7 +454,7 @@ class MainActivity : Activity(), FlintUiCallbacks {
             try {
                 // A document result can arrive immediately after Activity recreation.
                 profilesReady.await()
-                val result = runInterruptible(Dispatchers.IO) { SubscriptionClient().import(readInput()) }
+                val result = runInterruptible(Dispatchers.IO) { FlintSubscriptionImport.import(this@MainActivity, readInput()) }
                 manualProfiles = withContext(Dispatchers.IO) { profilesStore.merge(result.profiles) }
                 combineProfiles()
                 if (state.selectedServerId != null && profiles.none { it.id == state.selectedServerId }) {
@@ -525,7 +525,7 @@ class MainActivity : Activity(), FlintUiCallbacks {
         checks.forEach { ping[it.first.id] = it.second }
         val ranked = checks.filter { it.second.second }.sortedBy { (it.second.first ?: 1000) + 12 * (loads[it.first.id]?.first ?: 0) }
         for ((candidate, _) in ranked.take(5)) {
-            val check = ProfileProbe.check(this, candidate)
+            val check = ProfileProbe.check(this, ProfileProbe.withFingerprint(candidate, fingerprints[candidate.id]))
             ping[candidate.id] = check.latency to check.available
             check.fingerprint?.let { fingerprints[candidate.id] = it }
             if (check.available) return candidate
@@ -557,7 +557,7 @@ class MainActivity : Activity(), FlintUiCallbacks {
         loadCachedAccountProfiles()
         val sub = account.selected
         if (reload && sub != null && sub.string("subscriptionUrl").isNotBlank()) {
-            val result = runInterruptible(Dispatchers.IO) { SubscriptionClient().import(sub.string("subscriptionUrl")) }
+            val result = runInterruptible(Dispatchers.IO) { FlintSubscriptionImport.import(this@MainActivity, sub.string("subscriptionUrl")) }
             accountProfiles = result.profiles
             withContext(Dispatchers.IO) { accountCache()?.let { target ->
                 val atomic = android.util.AtomicFile(target); val out = atomic.startWrite()

@@ -13,6 +13,7 @@ class SubscriptionClient(
     private val connectTimeoutMs: Int = 10_000,
     private val readTimeoutMs: Int = 15_000,
     private val totalTimeoutMs: Int = 30_000,
+    private val proxy: java.net.Proxy? = null,
 ) {
     fun import(input: String): ImportResult {
         val value = input.trim()
@@ -27,7 +28,7 @@ class SubscriptionClient(
         try {
             repeat(6) { attempt ->
                 checkDeadline(deadline)
-                val connection = url.openConnection() as HttpURLConnection
+                val connection = (if (proxy == null) url.openConnection(java.net.Proxy.NO_PROXY) else url.openConnection(proxy)) as HttpURLConnection
                 try {
                     val remaining = ((deadline - System.nanoTime()) / 1_000_000).coerceAtLeast(1).toInt()
                     connection.connectTimeout = minOf(connectTimeoutMs, remaining)
@@ -35,7 +36,7 @@ class SubscriptionClient(
                     connection.instanceFollowRedirects = false
                     connection.useCaches = false
                     connection.requestMethod = "GET"
-                    connection.setRequestProperty("User-Agent", "Flint-Kotlin-Prototype/0.1")
+                    connection.setRequestProperty("User-Agent", "Flint/8.10.25 Kotlin")
                     connection.setRequestProperty("Accept", "text/plain, application/json, */*")
                     connection.setRequestProperty("Accept-Encoding", "gzip")
                     when (val status = connection.responseCode) {

@@ -24,6 +24,7 @@ class FlintHomeView(context: Context, private val isTv: Boolean, private val cal
     private val connect = s.button("ПОДКЛЮЧИТЬСЯ") { callbacks.onConnectToggle() }.apply { textSize = 18f }
     private val guard = s.label("", 12f, true).apply { gravity = Gravity.CENTER; background = s.shape(0xE20A1A2A.toInt()) }
     private val buy = s.button("Купить / продлить подписку") { callbacks.onPurchase() }
+    private val tvPair = s.button("Добавить с помощью QR") { callbacks.onTvPair() }.apply { visibility = if (isTv) VISIBLE else GONE }
     private val subscription = FrameLayout(context).apply { background = s.surface(); isClickable = true; isFocusable = true; isFocusableInTouchMode = isTv }
     private val subscriptionTitle = s.label("", 14f, true).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
     private val change = s.label("Сменить ›", 12f, color = s.mint)
@@ -68,7 +69,7 @@ class FlintHomeView(context: Context, private val isTv: Boolean, private val cal
         subscription.setOnClickListener { callbacks.onSubscriptions() }
         russian.addView(routeToggle)
         support.addView(ImageView(context).apply { setImageResource(resources.getIdentifier("flint_logo", "drawable", context.packageName)) }, LayoutParams(s.dp(24), s.dp(24)).apply { leftMargin = s.dp(12); topMargin = s.dp(10) })
-        listOf(header, mascot, qr, clipboard, title, subtitle, connect, guard, buy, subscription, server, russian, devices, support).forEach { canvas.addView(it) }
+        listOf(header, mascot, qr, clipboard, title, subtitle, connect, guard, buy, tvPair, subscription, server, russian, devices, support).forEach { canvas.addView(it) }
         subtitle.setOnClickListener { if (state.message.isNotBlank()) s.notice("Подключение", state.message) }
         setOnApplyWindowInsetsListener { _, i ->
             val safe = i.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
@@ -105,15 +106,14 @@ class FlintHomeView(context: Context, private val isTv: Boolean, private val cal
         val subH = if (state.subscriptionTitle.isBlank() && state.trafficText.isBlank()) 0 else s.dp(if (dense) 76 else 84)
         val rightX = if (wide) left + colW + s.dp(16) else left
         var tilesTop = bodyTop + bodyH - 2 * tileH - gap
-        val subTop = if (wide) bodyTop else tilesTop - subH - gap
+        val pairHeight = if (isTv) s.dp(44) + gap else 0
+        val subTop = if (wide) bodyTop + pairHeight else tilesTop - subH - gap
         if (wide) tilesTop = subTop + subH + gap
-        val pairW = if (wide) colW else (colW - gap) / 2
+        val pairW = (colW - gap) / 2
+        place(tvPair, rightX, bodyTop, colW, s.dp(44))
         place(subscription, rightX, subTop, colW, subH)
-        if (wide) listOf(server, russian, devices, support).forEachIndexed { i, v -> place(v, rightX, tilesTop + i * (tileH + gap), colW, tileH) }
-        else {
-            place(server, left, tilesTop, pairW, tileH); place(russian, left + pairW + gap, tilesTop, pairW, tileH)
-            place(devices, left, tilesTop + tileH + gap, pairW, tileH); place(support, left + pairW + gap, tilesTop + tileH + gap, pairW, tileH)
-        }
+        place(server, rightX, tilesTop, pairW, tileH); place(russian, rightX + pairW + gap, tilesTop, pairW, tileH)
+        place(devices, rightX, tilesTop + tileH + gap, pairW, tileH); place(support, rightX + pairW + gap, tilesTop + tileH + gap, pairW, tileH)
         routeToggle.layoutParams = LayoutParams(s.dp(44), s.dp(36)).apply { leftMargin = pairW - s.dp(56); topMargin = s.dp(8) }
         (russian.getChildAt(1) as TextView).textSize = if (!wide && pairW < s.dp(175)) 13f else 14f
         val p = s.dp(12)
