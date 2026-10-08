@@ -198,7 +198,7 @@ class FlintVpnService : VpnService() {
             val name = config.optString("description", "Сервер").take(120)
             val serverId = config.optString("flintServerId").take(128)
             publish(Snapshot("connecting", serverName = name, serverId = serverId,
-                ruDirect = config.optBoolean("flintRussianAppsDirect", false), generation = command.generation))
+                ruDirect = config.optBoolean("flintRuDirect", config.optBoolean("flintRussianAppsDirect", false)), generation = command.generation))
             // Original configuration is stored before resolution and is resolved anew
             // on process recovery. No account tokens or profiles go through Binder.
             withContext(nativeDispatcher) { saveRecovery(config.toString()) }

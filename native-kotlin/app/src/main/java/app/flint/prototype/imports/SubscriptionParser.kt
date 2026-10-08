@@ -59,7 +59,7 @@ object SubscriptionParser {
 
     private fun parseUri(raw: String): ServerProfile {
         val scheme = raw.substringBefore("://").lowercase(Locale.ROOT)
-        if (scheme !in schemes) fail("Этот протокол пока не поддерживается в прототипе")
+        if (scheme !in schemes) fail("Этот протокол не поддерживается. Используйте VLESS, VMess, Trojan или Shadowsocks.")
         if (scheme == "vmess") return parseVmess(raw)
         if (scheme == "ss") return parseShadowsocks(raw)
         val parts = splitUri(raw)

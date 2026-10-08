@@ -7,6 +7,12 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.ServiceConnection
+import android.os.Handler
+import android.os.IBinder
+import android.os.Looper
+import android.os.Message
+import android.os.Messenger
 import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
 import android.graphics.*
@@ -22,7 +28,39 @@ import app.flint.prototype.vpn.VpnContract
 import java.io.File
 
 class HomeWidget : AppWidgetProvider() {
-    override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) { refresh(context, stored(context)) }
+    override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) { refreshLive(context) }
+    override fun onReceive(context: Context, intent: Intent) {
+        super.onReceive(context, intent)
+        if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) refreshLive(context)
+    }
+    private fun refreshLive(context: Context) {
+        refresh(context, stored(context)) // Also replaces legacy Activity PendingIntents after an upgrade.
+        val pending = goAsync()
+        val app = context.applicationContext
+        val handler = Handler(Looper.getMainLooper())
+        var bound = false; var done = false
+        lateinit var connection: ServiceConnection
+        fun finish(state: String?) {
+            if (done) return
+            done = true; handler.removeCallbacksAndMessages(null)
+            if (state != null) refresh(app, state)
+            if (bound) runCatching { app.unbindService(connection) }
+            pending?.finish()
+        }
+        val replies = Messenger(Handler(Looper.getMainLooper()) { msg ->
+            if (msg.what == VpnContract.STATUS) finish(msg.data.getString(VpnContract.STATE))
+            true
+        })
+        connection = object : ServiceConnection {
+            override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+                if (done) return
+                runCatching { Messenger(service).send(Message.obtain(null, VpnContract.REQUEST_STATUS).apply { replyTo = replies }) }.onFailure { finish(null) }
+            }
+            override fun onServiceDisconnected(name: ComponentName?) { finish("disconnected") }
+        }
+        bound = runCatching { app.bindService(Intent(app, FlintVpnService::class.java), connection, Context.BIND_AUTO_CREATE) }.getOrDefault(false)
+        if (!bound) finish(null) else handler.postDelayed({ finish(null) }, 4000)
+    }
     companion object {
         fun stored(context: Context) = runCatching { File(context.filesDir, "widget-state").readText() }.getOrDefault("disconnected")
         fun icon(context: Context, state: String, adaptive: Boolean = false): Bitmap {

@@ -55,7 +55,7 @@ object XrayConfigBuilder {
                 else -> false
             }
             if (requiresDatabase) throw ImportException(
-                "Профиль Xray требует отдельные файлы баз geosite/geoip. " +
+                "Профиль Xray использует внешние базы geosite/geoip, которые не входят в приложение. " +
                     "Импортируйте ссылку VLESS, VMess, Trojan или Shadowsocks либо JSON с явными доменами и IP-адресами.")
         }
         val rules = config.optJSONObject("routing")?.optJSONArray("rules")

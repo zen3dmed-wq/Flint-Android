@@ -279,7 +279,8 @@ class MainActivity : Activity(), FlintUiCallbacks {
                     val wrapper = JSONObject().put("protocol", "xray").put("hostName", profile.host)
                         .put("dns1", "1.1.1.1").put("dns2", "1.0.0.1").put("mtu", "1500")
                         .put("description", profile.name).put("flintServerId", profile.id)
-                        .put("flintRussianAppsDirect", ru)
+                        .put("flintRuDirect", ru)
+                        .put("flintRussianAppsDirect", ru && prefs.getBoolean("automaticRouting", true))
                         .put("flintAutomatic", selected == null)
                         .put("flintCandidates", JSONArray(availableProfiles.map { candidate ->
                             val prepared = ProfileProbe.withFingerprint(candidate, fingerprints[candidate.id])

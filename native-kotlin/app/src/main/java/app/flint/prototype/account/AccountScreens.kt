@@ -336,58 +336,92 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
             }
         }
     }
-    fun devices() {
+    fun devices(subscriptionId: String = api.selectedId) {
         if (!requireAccount { devices() }) return
         val p = panel("Устройства")
+        s.add(p.footer, s.button("Обновить список") { p.dialog.dismiss(); devices(subscriptionId) }, 48)
         task(p) {
             api.refresh(); changed(false)
-            val sub = api.selected
-            s.add(p.body, s.button(sub?.let(::subTitle) ?: "Выбрать подписку") { p.dialog.dismiss(); subscriptions() }, 48)
+            val sub = api.subscriptions.find { it.string("id") == subscriptionId } ?: api.selected
+            if (api.subscriptions.size > 1) s.add(p.body, s.button(sub?.let(::subTitle).orEmpty() + "  ⌄") {
+                val choose = panel("Подписка для управления устройствами")
+                api.subscriptions.forEach { candidate -> s.add(choose.body, s.button(subTitle(candidate)) {
+                    choose.dialog.dismiss(); p.dialog.dismiss(); devices(candidate.string("id"))
+                }, 48) }
+            }, 48)
             if (sub != null) {
                 val sid = sub.string("id")
                 try {
                     val doc = api.request("GET", "/subscriptions/${Uri.encode(sid)}/devices").data
-                    val canManage = doc.optBoolean("canManageDevices") && doc.string("ownerUserId") == api.me.string("id") && doc.string("subscriptionId") == sid
-                    if (canManage) objects(doc, "items").distinctBy { it.string("id") }.forEach { device ->
-                        s.add(p.body, s.label(device.string("name").ifBlank { device.string("model") }, 16f, true))
-                        if (!device.optBoolean("revoked")) s.add(p.body, s.button("Отключить доступ") {
-                            confirm("Отключить устройство?", "Это действие отзовёт его VPN-доступ.") { task(p) {
-                                val result = api.request("DELETE", "/subscriptions/${Uri.encode(sid)}/devices/${Uri.encode(device.string("id"))}")
-                                if (result.status != 204) throw ApiError(result.status, "not_confirmed", "Сервер ещё не подтвердил отключение. Обновите список.")
-                                if (device.optBoolean("isCurrent")) activity.startService(Intent(activity, app.flint.prototype.vpn.FlintVpnService::class.java).setAction(app.flint.prototype.vpn.VpnContract.ACTION_DISCONNECT))
-                                p.dialog.dismiss(); devices()
-                            } }
-                        }, 44)
-                    } else s.add(p.body, s.label("Управление VPN-устройствами доступно владельцу подписки.", color = s.muted))
+                    val canManage = api.me.string("id").isNotBlank() && doc.optBoolean("canManageDevices") && doc.string("ownerUserId") == api.me.string("id") && doc.string("subscriptionId") == sid
+                    s.add(p.body, s.label(if (canManage) "Только вы, как владелец подписки, можете отключать устройства." else "Управление доступно только владельцу основной подписки.", color = s.muted))
+                    if (canManage) {
+                        s.add(p.body, s.label("УСТРОЙСТВА ПОДПИСКИ", 11f, color = s.muted))
+                        val items = objects(doc, "items").filter { it.string("id").isNotBlank() }.distinctBy { it.string("id") }
+                        if (items.isEmpty()) s.add(p.body, s.label("Устройства пока не добавлены"))
+                        items.forEach { device ->
+                            val card = s.column().apply { background = s.shape(); setPadding(s.dp(14), s.dp(14), s.dp(14), s.dp(14)) }
+                            val name = device.string("name").ifBlank { device.string("model").ifBlank { "Устройство" } }
+                            s.add(card, s.label(name + if (device.optBoolean("isCurrent")) " · это устройство" else "", 15f, true), gap = 0)
+                            s.add(card, s.label(if (device.optBoolean("revoked")) "Доступ отключён" else if (device.isNull("online")) "Статус VPN неизвестен" else if (device.optBoolean("online")) "VPN подключён" else "VPN не подключён", color = s.mint))
+                            s.add(card, s.label("Последняя активность: " + date(device.string("lastSeenAt")).ifBlank { "Нет данных" }, 12f, color = s.muted))
+                            if (!device.optBoolean("revoked")) s.add(card, s.button("Отключить доступ") {
+                                confirm("Отключить «$name»?", "Устройство потеряет доступ к VPN по этой подписке. Остальные устройства продолжат работать.") { task(p) {
+                                    val result = api.request("DELETE", "/subscriptions/${Uri.encode(sid)}/devices/${Uri.encode(device.string("id"))}")
+                                    if (result.status != 204) throw ApiError(result.status, "not_confirmed", "Сервер ещё не подтвердил отключение. Обновите список.")
+                                    if (device.optBoolean("isCurrent")) activity.startService(Intent(activity, app.flint.prototype.vpn.FlintVpnService::class.java).setAction(app.flint.prototype.vpn.VpnContract.ACTION_DISCONNECT))
+                                    p.dialog.dismiss(); devices(sid)
+                                } }
+                            }, 44)
+                            s.add(p.body, card)
+                        }
+                    }
                 } catch (e: ApiError) {
-                    if (e.status !in setOf(404, 405, 501)) throw e
-                    s.add(p.body, s.label("Отдельное отключение VPN-устройств пока не поддерживается вашим сервером. Ниже можно завершить вход в аккаунт.", color = s.muted))
+                    s.add(p.body, s.label(when (e.status) {
+                        403 -> "Управлять устройствами может только владелец основной подписки."
+                        404,405,501 -> "Вход и подписка работают. Отключение VPN на отдельном устройстве пока недоступно на сервере Flint. Ниже можно управлять входами в свой аккаунт."
+                        else -> "Не удалось загрузить устройства. Повторите обновление списка."
+                    }, color = s.muted))
                 }
-                s.add(p.body, s.button("Добавить устройство по QR") { shareSubscription(sub) }, 50)
+                s.add(p.body, s.button("Добавить устройство по QR") { shareSubscription(sub) }.apply {
+                    isEnabled = sub.string("status") == "active" && sub.string("subscriptionUrl").isNotBlank()
+                }, 50)
             }
             s.add(p.body, s.label("Сеансы входа в аккаунт", 18f, true))
-            val sessions = objects(api.request("GET", "/me/sessions").data, "items")
-            // Collapse presentation only. Same model/OS is not proof of the same physical device.
-            sessions.groupBy { it.string("model") + "|" + it.string("platform") }.values.forEach { group ->
+            s.add(p.body, s.label("Входы собраны по системе устройства. Откройте группу, чтобы завершить ненужный вход. Это список входов в аккаунт, а не активных VPN-подключений.", 12f, color = s.muted))
+            val sessions = objects(api.request("GET", "/me/sessions").data, "items").filter { it.string("id").isNotBlank() }.distinctBy { it.string("id") }
+            val groups = sessions.groupBy { if (it.string("deviceId").isNotBlank()) "device:" + it.string("deviceId") else "platform:" + it.string("platform").lowercase() }
+                .values.sortedByDescending { group -> group.any { it.optBoolean("isCurrent") } }
+            groups.forEach { group ->
                 val first = group.firstOrNull { it.optBoolean("isCurrent") } ?: group.first()
-                s.add(p.body, s.button(first.string("model").ifBlank { first.string("platform") } +
-                    (if (group.any { it.optBoolean("isCurrent") }) " · это устройство" else "") + "\nСеансов: ${group.size}") { sessionDetails(group) }, 68)
+                val known = first.string("deviceId").isNotBlank()
+                val name = if (known) first.string("model").ifBlank { first.string("platform") } else when(first.string("platform").lowercase()) {
+                    "android" -> "Android"; "android-tv" -> "Android TV"; "windows" -> "Windows"; "ios" -> "iPhone и iPad"; else -> "Другие устройства"
+                }
+                val card = s.column().apply { background = s.shape(0xFF102635.toInt()); setPadding(s.dp(14), s.dp(14), s.dp(14), s.dp(14)) }
+                s.add(card, s.label("Входы: $name", 15f, true), gap = 0)
+                s.add(card, s.label("Сеансов: ${group.size}" + (if (group.any { it.optBoolean("isCurrent") }) " · здесь текущий вход" else ""), 12f, color = s.muted))
+                if (!known && group.size > 1) s.add(card, s.label("Здесь могут быть входы с разных устройств.", 12f, color = s.muted))
+                val details = s.column().apply { visibility = View.GONE }
+                val expand = s.button("Показать входы") {}
+                expand.setOnClickListener { details.visibility = if (details.visibility == View.VISIBLE) View.GONE else View.VISIBLE; expand.text = if (details.visibility == View.VISIBLE) "Свернуть входы" else "Показать входы" }
+                s.add(card, expand, 46)
+                group.sortedWith(compareByDescending<JSONObject> { it.optBoolean("isCurrent") }.thenByDescending { it.string("lastActiveAt") }).forEach { row ->
+                    s.add(details, s.label(row.string("model").ifBlank { row.string("platform") }, 14f, true))
+                    s.add(details, s.label("Flint " + row.string("appVersion") + if (row.optBoolean("isCurrent")) " · текущий вход" else "", 13f))
+                    s.add(details, s.label("Последняя активность: " + date(row.string("lastActiveAt")).ifBlank { "Нет данных" }, 12f, color = s.muted))
+                    if (!row.optBoolean("isCurrent")) s.add(details, s.button("Завершить вход") {
+                        confirm("Завершить этот вход?", "На устройстве потребуется снова войти в аккаунт. Уже выданный VPN-ключ продолжит работать. Текущий вход и остальные сеансы сохранятся.") { task(p) {
+                            val fresh = objects(api.request("GET", "/me/sessions").data, "items").find { it.string("id") == row.string("id") }
+                            check(fresh != null && !fresh.optBoolean("isCurrent"))
+                            val result = api.request("DELETE", "/me/sessions/${Uri.encode(row.string("id"))}")
+                            if (result.status != 204) throw ApiError(result.status, "not_confirmed", "Сервер ещё не подтвердил завершение входа.")
+                            p.dialog.dismiss(); devices(subscriptionId)
+                        } }
+                    }, 46)
+                }
+                s.add(card, details); s.add(p.body, card)
             }
-            s.add(p.body, s.button("Обновить список") { p.dialog.dismiss(); devices() }, 48)
-        }
-    }
-    private fun sessionDetails(rows: List<JSONObject>) {
-        val p = panel("Сеансы входа")
-        rows.forEach { row ->
-            s.add(p.body, s.label("${row.string("model")} · Flint ${row.string("appVersion")}\nВход / обновление: ${date(row.string("lastActiveAt"))}"))
-            if (row.optBoolean("isCurrent")) s.add(p.body, s.label("Текущий сеанс", color = s.mint))
-            else s.add(p.body, s.button("Завершить сеанс") { confirm("Завершить вход?", "На устройстве потребуется снова войти в аккаунт. Это не отзыв общего ключа VPN.") { task(p) {
-                val fresh = objects(api.request("GET", "/me/sessions").data, "items").find { it.string("id") == row.string("id") }
-                check(fresh != null && !fresh.optBoolean("isCurrent"))
-                val result = api.request("DELETE", "/me/sessions/${Uri.encode(row.string("id"))}")
-                if (result.status != 204) throw ApiError(result.status, "not_confirmed", "Сервер ещё не подтвердил завершение входа.")
-                p.dialog.dismiss()
-            } } }, 46)
         }
     }
     fun shareSubscription(sub: JSONObject) {

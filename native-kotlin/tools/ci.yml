@@ -49,6 +49,7 @@ jobs:
         working-directory: native-kotlin
         run: gradle --no-daemon :app:testPhoneDebugUnitTest :app:assemblePhoneRelease :app:assembleTvRelease :app:assemblePhoneDebug :app:assemblePhoneDebugAndroidTest
       - name: Upload APKs and unit reports
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Flint-Native-build
