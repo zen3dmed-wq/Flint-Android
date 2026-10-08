@@ -48,7 +48,7 @@ class SupportScreens(private val activity: Activity, private val api: FlintAccou
         private val limits = s.label("До 3 открытых обращений · до 5 новых в час", 11f, color = s.muted)
         private val history = s.column()
         private val ticketList = s.column()
-        private val create = s.primary("Создать тикет") { newTicket() }
+        private val create = s.primary("Создать обращение") { newTicket() }
         private val back = s.button("Все обращения") { launch { refreshList(); showList() } }
         private val categoryButton = s.button("Загрузка тем…") { chooseCategory() }
         private val input = s.field("Опишите проблему").apply {
@@ -150,7 +150,7 @@ class SupportScreens(private val activity: Activity, private val api: FlintAccou
         }
         private fun renderList() {
                 ticketList.removeAllViews()
-                if (list.isEmpty()) s.add(ticketList, s.label("Обращений пока нет. Нажмите «Создать тикет», чтобы написать нам.", color = s.muted))
+                if (list.isEmpty()) s.add(ticketList, s.label("Обращений пока нет. Нажмите «Создать обращение», чтобы написать нам.", color = s.muted))
                 list.forEach { item ->
                     val unread = item.optInt("unreadCount").takeIf { it > 0 }?.let { " · новых: $it" }.orEmpty()
                     s.add(ticketList, s.button("№${item.string("id")} · ${status(item)}$unread\n${item.string("subject")}") {

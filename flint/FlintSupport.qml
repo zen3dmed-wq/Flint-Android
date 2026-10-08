@@ -123,7 +123,7 @@ ColumnLayout {
     }
     RowLayout {
         Layout.fillWidth: true
-        FlintButton { Layout.fillWidth: true; primary: chat.listing; text: chat.listing ? "Создать тикет" : "Все обращения"; enabled: !chat.busy; onClicked: { if (chat.listing) chat.newTicket(); else { chat.listing = true; chat.request("list", "GET", "/support/tickets") } } }
+        FlintButton { Layout.fillWidth: true; primary: chat.listing; text: chat.listing ? "Создать обращение" : "Все обращения"; enabled: !chat.busy; onClicked: { if (chat.listing) chat.newTicket(); else { chat.listing = true; chat.request("list", "GET", "/support/tickets") } } }
         FlintButton { text: "Обновить"; visible: chat.listing; enabled: !chat.busy; onClicked: chat.request("list", "GET", "/support/tickets") }
     }
     FlintChoice { id: category; visible: !chat.listing && !chat.ticket.id; Layout.fillWidth: true; model: chat.categories; textRole: "title" }
@@ -133,7 +133,7 @@ ColumnLayout {
         id: ticketScroll; visible: chat.listing; Layout.fillWidth: true; Layout.fillHeight: true; contentWidth: availableWidth; clip: true
         ColumnLayout {
             width: ticketScroll.availableWidth; spacing: 12
-            Text { Layout.fillWidth: true; visible: chat.tickets.length === 0; text: "Обращений пока нет. Нажмите «Создать тикет», чтобы написать нам."; color: "#B7C9DA"; wrapMode: Text.Wrap }
+            Text { Layout.fillWidth: true; visible: chat.tickets.length === 0; text: "Обращений пока нет. Нажмите «Создать обращение», чтобы написать нам."; color: "#B7C9DA"; wrapMode: Text.Wrap }
             Repeater { model: chat.tickets
                 FlintButton { required property var modelData; Layout.fillWidth: true; implicitHeight: 80; text: "№" + modelData.id + " · " + chat.statusLabel(modelData.status) + "\n" + modelData.subject; enabled: !chat.busy; onClicked: chat.openTicket(modelData.id) }
             }
@@ -170,6 +170,6 @@ ColumnLayout {
         FlintButton { text: "Отправить оценку"; enabled: !chat.busy; onClicked: chat.request("rating", "POST", chat.ticketPath + "/rating", {resolved: resolved.checked, score: score.currentIndex + 1, comment: comment.text.trim()}) }
     }
     Text { Layout.fillWidth: true; visible: text.length > 0; text: chat.error; color: "#F5C77A"; wrapMode: Text.Wrap; textFormat: Text.PlainText }
-    TextArea { id: composer; visible: !chat.listing && chat.ticket.status !== "closed"; Layout.fillWidth: true; Layout.preferredHeight: 90; color: "#F8FBFF"; placeholderText: "Напишите сообщение"; wrapMode: TextEdit.Wrap; onTextChanged: { if (text.length > 4000) text = text.slice(0,4000) } background: Rectangle { radius: 12; color: "#102635"; border.color: "#46637A" } }
+    TextArea { id: composer; visible: !chat.listing && chat.ticket.status !== "closed"; Layout.fillWidth: true; Layout.preferredHeight: 90; color: "#F8FBFF"; placeholderText: "Напишите сообщение"; placeholderTextColor: "#B7C9DA"; wrapMode: TextEdit.Wrap; onTextChanged: { if (text.length > 4000) text = text.slice(0,4000) } background: Rectangle { radius: 12; color: "#102635"; border.color: "#46637A" } }
     FlintButton { Layout.fillWidth: true; visible: !chat.listing && chat.ticket.status !== "closed"; primary: true; text: chat.busy ? "Загрузка…" : "Отправить"; enabled: !chat.busy; onClicked: chat.send() }
 }

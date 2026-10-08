@@ -11,8 +11,8 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class AccountUiTest {
     private fun createSupport() {
-        UiTestSupport.awaitWindowContaining("Создать тикет", "Помогите подключить телевизор")
-        UiTestSupport.clickAccessibilityText("Создать тикет")
+        UiTestSupport.awaitWindowContaining("Создать обращение", "Помогите подключить телевизор")
+        UiTestSupport.clickAccessibilityText("Создать обращение")
         UiTestSupport.awaitWindowContaining("Тема: Общий вопрос")
     }
     private fun writeSupport(text: String) {
@@ -62,7 +62,7 @@ class AccountUiTest {
     @Test fun supportThreeOpenTicketsPreventFourthWithoutBlockingExistingChat() {
         ActivityScenario.launch<AccountHarnessActivity>(Intent(UiTestSupport.instrumentation.targetContext,AccountHarnessActivity::class.java).putExtra("screen","support").putExtra("supportOpenCount",3)).use {
             UiTestSupport.awaitWindowContaining("Открыто обращений: 3 из 3", "Открытый вопрос 1")
-            UiTestSupport.clickAccessibilityText("Создать тикет")
+            UiTestSupport.clickAccessibilityText("Создать обращение")
             UiTestSupport.awaitWindowContaining("Открытый вопрос 1", "Открытый вопрос 2", "Открытый вопрос 3")
             org.junit.Assert.assertEquals(0,AccountHarnessActivity.requests.count { it == "POST /support/tickets" })
         }
@@ -95,7 +95,7 @@ class AccountUiTest {
             "subscriptions" to arrayOf("Мои подписки", "199,6 GB / 1000,0 GB"),
             "friends" to arrayOf("Пригласить друга", "FLINT-TEST"),
             "devices" to arrayOf("Устройства", "Добавить устройство по QR", "Сеансы входа в аккаунт")
-            ,"support" to arrayOf("Поддержка", "Создать тикет", "Помогите подключить телевизор", "Закрыто")
+            ,"support" to arrayOf("Поддержка", "Создать обращение", "Помогите подключить телевизор", "Закрыто")
             ,"settings" to arrayOf("Настройки Flint", "Добавить виджет на экран", "Закрыть")
             ,"identity" to arrayOf("Аккаунт Flint", "Подписка активна", "Способы входа · почта и Telegram")
             ,"routing" to arrayOf("Раздельное проксирование", "Добавить сайт", "zakupki.gov.ru")
