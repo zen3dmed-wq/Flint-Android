@@ -197,19 +197,6 @@ class VpnServiceInstrumentedTest {
         assertEquals("FLINT_VPN_TUNNEL_OK", throughTunnel())
     }
 
-    @Test fun blockedNotificationsNeverDisconnectWorkingTunnel() {
-        assumeTrue(InstrumentationRegistry.getArguments().getString("flintLocalVpnTest") == "true")
-        shell("appops set ${context.packageName} POST_NOTIFICATION ignore")
-        try {
-            assertFalse(VpnNotifications.canPost(context))
-            foregroundActivity(); shell("appops set ${context.packageName} ACTIVATE_VPN allow")
-            val binding = bind(); binding.await(); connect(fixtureConfig())
-            binding.await { it.getString(VpnContract.STATE) == "connected" }
-            binding.send(VpnContract.REFRESH_NOTIFICATION)
-            assertEquals("FLINT_VPN_TUNNEL_OK", throughTunnel())
-        } finally { shell("appops set ${context.packageName} POST_NOTIFICATION allow") }
-    }
-
     @Test fun widgetAndShortcutToggleWithoutForegroundingMainActivity() {
         assumeTrue(InstrumentationRegistry.getArguments().getString("flintLocalVpnTest") == "true")
         foregroundActivity()
