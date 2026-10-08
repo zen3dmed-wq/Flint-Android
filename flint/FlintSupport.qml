@@ -25,7 +25,7 @@ ColumnLayout {
         FlintController.accountRequest(requestId, method, path, body || {}, key || "")
     }
     function start() {
-        generation++; busy = ""; requestId = ""
+        generation++; busy = ""; requestId = ""; ticket = ({}); messages = []; lastRead = ""
         var draft = FlintController.clientDraft("support")
         composer.text = draft.body ? draft.body.text || "" : draft.text || ""
         request("categories", "GET", "/support/categories")
@@ -65,7 +65,7 @@ ColumnLayout {
         }
         request(draft.kind, "POST", draft.path, draft.body, draft.key)
     }
-    onActiveChanged: { if (active) start(); else { generation++; busy = ""; requestId = "" } }
+    onActiveChanged: { if (active) start(); else { generation++; busy = ""; requestId = ""; ticket = ({}); messages = []; lastRead = "" } }
     Connections {
         target: FlintController
         function onAccountResponse(id, status, data, failure) {
@@ -135,3 +135,4 @@ ColumnLayout {
     TextArea { id: composer; Layout.fillWidth: true; Layout.preferredHeight: 90; enabled: chat.ticket.status !== "closed"; color: "#F8FBFF"; placeholderText: "Напишите сообщение"; wrapMode: TextEdit.Wrap; onTextChanged: { if (text.length > 4000) text = text.slice(0,4000) } background: Rectangle { radius: 12; color: "#102635"; border.color: "#46637A" } }
     FlintButton { Layout.fillWidth: true; primary: true; text: chat.busy ? "Загрузка…" : "Отправить"; enabled: !chat.busy && chat.ticket.status !== "closed"; onClicked: chat.send() }
 }
+
