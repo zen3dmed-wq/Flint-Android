@@ -206,9 +206,9 @@ class FlintHomeView(
         title.setTextColor(ink)
         subtitle.text = next.message.ifBlank {
             when {
-                !next.hasProfile -> "Добавьте ссылку подписки или сервер"
                 next.phase == FlintPhase.CONNECTED -> next.serverLabel
                 next.phase == FlintPhase.CONNECTING -> "Ожидаем подтверждения VPN-службы"
+                !next.hasProfile -> "Добавьте ссылку подписки или сервер"
                 else -> "Выберите сервер и подключитесь"
             }
         }

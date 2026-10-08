@@ -27,8 +27,10 @@ class NativeTvUiTest {
                 assertTrue("TV actions must accept focus after a remote key", add.requestFocus())
             }
             UiTestSupport.press(KeyEvent.KEYCODE_DPAD_RIGHT)
+            UiTestSupport.awaitFocusedText("Из буфера")
             scenario.onActivity { assertEquals("Из буфера", (it.currentFocus as? Button)?.text?.toString()) }
             UiTestSupport.press(KeyEvent.KEYCODE_DPAD_CENTER)
+            UiTestSupport.awaitEvents(listOf("clipboard"))
             assertEquals(listOf("clipboard"), UiHarnessActivity.events.toList())
 
             scenario.onActivity { activity ->
@@ -37,12 +39,15 @@ class NativeTvUiTest {
                 assertTrue(server.requestFocus())
             }
             UiTestSupport.press(KeyEvent.KEYCODE_DPAD_CENTER)
-            val picker = UiTestSupport.instrumentation.uiAutomation.rootInActiveWindow
+            val picker = UiTestSupport.awaitWindowContaining("TCP 23 мс", "Нет ответа TCP")
             assertFalse("The measurement must identify the TCP probe", picker.findAccessibilityNodeInfosByText("TCP 23 мс").isEmpty())
             assertFalse("A failed port probe must not claim a failed VPN handshake", picker.findAccessibilityNodeInfosByText("Нет ответа TCP").isEmpty())
+            UiTestSupport.awaitFocusedText("Автоматически")
             UiTestSupport.screenshot("tv-server-picker-fixture", true, FlintPhase.CONNECTED)
             UiTestSupport.press(KeyEvent.KEYCODE_DPAD_DOWN)
+            UiTestSupport.awaitFocusedText("Армения · тест A")
             UiTestSupport.press(KeyEvent.KEYCODE_DPAD_CENTER)
+            UiTestSupport.awaitEvents(listOf("clipboard", "server:server-a"))
             assertEquals(listOf("clipboard", "server:server-a"), UiHarnessActivity.events.toList())
             scenario.onActivity { activity ->
                 assertEquals("server-a", activity.uiState.selectedServerId)
@@ -50,6 +55,7 @@ class NativeTvUiTest {
                 assertNotNull(UiTestSupport.findText(activity.flintView, "Отключить VPN"))
             }
             assertFalse("Changing location must not force a UI disconnect", UiHarnessActivity.events.contains("connectToggle"))
+            UiTestSupport.awaitWindowContaining("Вы защищены", "Армения · тест A")
             UiTestSupport.screenshot("tv-connected-fixture", true, FlintPhase.CONNECTED)
         }
     }

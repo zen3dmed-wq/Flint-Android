@@ -48,6 +48,45 @@ internal object UiTestSupport {
         instrumentation.waitForIdleSync()
     }
 
+    /** Window attachment/accessibility propagation can outlive the main-looper idle point. */
+    fun awaitWindowContaining(vararg texts: String): AccessibilityNodeInfo {
+        val deadline = SystemClock.uptimeMillis() + 8000
+        while (SystemClock.uptimeMillis() < deadline) {
+            val root = instrumentation.uiAutomation.rootInActiveWindow
+            if (root != null && texts.all { root.findAccessibilityNodeInfosByText(it).isNotEmpty() }) {
+                return root
+            }
+            SystemClock.sleep(50)
+        }
+        throw AssertionError("No active accessibility window containing ${texts.joinToString()} within 8 seconds")
+    }
+
+    fun awaitFocusedText(text: String) {
+        val deadline = SystemClock.uptimeMillis() + 8000
+        var lastFocus: String? = null
+        while (SystemClock.uptimeMillis() < deadline) {
+            val focus = instrumentation.uiAutomation.rootInActiveWindow
+                ?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            lastFocus = focus?.text?.toString()
+            if (lastFocus?.contains(text) == true) return
+            SystemClock.sleep(50)
+        }
+        throw AssertionError("Expected keyboard focus on $text within 8 seconds; last focus: $lastFocus")
+    }
+
+    fun awaitEvents(expected: List<String>) {
+        val deadline = SystemClock.uptimeMillis() + 8000
+        while (SystemClock.uptimeMillis() < deadline) {
+            if (UiHarnessActivity.events.toList() == expected) {
+                instrumentation.waitForIdleSync()
+                assertEquals("Callbacks must occur exactly once and in order", expected, UiHarnessActivity.events.toList())
+                return
+            }
+            SystemClock.sleep(50)
+        }
+        assertEquals("Expected callbacks within 8 seconds", expected, UiHarnessActivity.events.toList())
+    }
+
     fun clickAccessibilityText(text: String) {
         val deadline = SystemClock.uptimeMillis() + 5000
         while (SystemClock.uptimeMillis() < deadline) {
