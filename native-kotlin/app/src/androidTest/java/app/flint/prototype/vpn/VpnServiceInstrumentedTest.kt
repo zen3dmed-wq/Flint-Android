@@ -91,6 +91,7 @@ class VpnServiceInstrumentedTest {
         assertEquals("fixture-local", connected.getString(VpnContract.SERVER_ID))
         assertFalse(connected.getBoolean(VpnContract.RU_DIRECT))
         assertEquals("FLINT_VPN_TUNNEL_OK", throughTunnel())
+        assertDnsThroughTunnel()
         first.close()
 
         // Force Activity background and unbind every visible client, then create
@@ -116,6 +117,7 @@ class VpnServiceInstrumentedTest {
             it.getString(VpnContract.STATE) == "connected" && it.getString(VpnContract.SERVER_ID) == "fixture-russian-routing"
         }
         assertTrue(russianStarted.getBoolean(VpnContract.RU_DIRECT))
+        assertDnsThroughTunnel()
 
         // A real switch back from the large routing profile must also stop/start
         // safely, and forwarding is verified again through the VLESS fixture.
@@ -283,5 +285,15 @@ class VpnServiceInstrumentedTest {
             .put("description", "Local test fixture").put("flintServerId", "fixture-local")
             .put("flintRussianAppsDirect", ruDirect)
             .put("xray_config_data", JSONObject().put("config", native.toString()))
+    }
+
+    private fun assertDnsThroughTunnel() {
+        val name = "flint-${System.nanoTime()}.example"
+        val addresses = java.net.InetAddress.getAllByName(name)
+        assertTrue("Android DNS must travel through TUN, SOCKS UDP and VLESS", addresses.any { it.hostAddress == "93.184.215.14" })
+        val c = URL("http://$name:18080/android/dns-and-http").openConnection() as HttpURLConnection
+        c.connectTimeout = 4000; c.readTimeout = 4000
+        try { assertEquals("FLINT_VPN_TUNNEL_OK", c.inputStream.bufferedReader().use { it.readText() }) }
+        finally { c.disconnect() }
     }
 }

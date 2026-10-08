@@ -10,6 +10,7 @@ import json
 import pathlib
 import signal
 import socket
+import socketserver
 import struct
 import subprocess
 import threading
@@ -19,6 +20,23 @@ from urllib.parse import urlsplit
 
 FIXTURE_ID = '11111111-1111-4111-8111-111111111111'
 MARKER = b'FLINT_VPN_TUNNEL_OK'
+
+
+class DnsHandler(socketserver.BaseRequestHandler):
+    def handle(self):
+        packet, sock = self.request
+        # The fixture returns an address outside the RU/private routing catalog.
+        # It is never a public resolver and only binds to loopback.
+        end = 12
+        while end < len(packet) and packet[end]:
+            end += packet[end] + 1
+        end += 5
+        if end > len(packet):
+            return
+        qtype = struct.unpack('!H', packet[end-4:end-2])[0]
+        answer = b'\xc0\x0c\x00\x01\x00\x01\x00\x00\x00\x00\x00\x04' + socket.inet_aton('93.184.215.14') if qtype == 1 else b''
+        response = packet[:2] + b'\x81\x80\x00\x01' + struct.pack('!H', bool(answer)) + b'\x00\x00\x00\x00' + packet[12:end] + answer
+        sock.sendto(response, self.client_address)
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -92,9 +110,12 @@ def main():
                       'streamSettings': {'network': 'tcp', 'security': 'none'}}],
         # Current Xray blocks private destinations by default for VLESS inbounds,
         # including a loopback redirect. Allow only the fixture HTTP endpoint.
-        'outbounds': [{'protocol': 'freedom', 'settings': {'redirect': '127.0.0.1:18080',
+        'outbounds': [{'tag': 'http', 'protocol': 'freedom', 'settings': {'redirect': '127.0.0.1:18080',
                        'finalRules': [{'action': 'allow', 'network': 'tcp',
-                                       'ip': ['127.0.0.1/32'], 'port': '18080'}]}}]
+                                       'ip': ['127.0.0.1/32'], 'port': '18080'}]}},
+                      {'tag': 'dns', 'protocol': 'freedom', 'settings': {'redirect': '127.0.0.1:15353',
+                       'finalRules': [{'action': 'allow', 'network': 'udp', 'ip': ['127.0.0.1/32'], 'port': '15353'}]}}],
+        'routing': {'rules': [{'type': 'field', 'network': 'udp', 'port': '53', 'outboundTag': 'dns'}]}
     }), encoding='utf-8')
     server = http.server.ThreadingHTTPServer(('127.0.0.1', 18080), Handler)
     server.daemon_threads = True
@@ -104,6 +125,8 @@ def main():
     server.request_log.write_text('', encoding='utf-8')
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
+    dns = socketserver.ThreadingUDPServer(('127.0.0.1', 15353), DnsHandler)
+    threading.Thread(target=dns.serve_forever, daemon=True).start()
     stopped = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stopped.set())
     signal.signal(signal.SIGINT, lambda *_: stopped.set())
@@ -135,6 +158,8 @@ def main():
                 child.wait()
             server.shutdown()
             server.server_close()
+            dns.shutdown()
+            dns.server_close()
 
 
 if __name__ == '__main__':
