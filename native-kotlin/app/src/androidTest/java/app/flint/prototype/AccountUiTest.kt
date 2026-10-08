@@ -16,14 +16,21 @@ class AccountUiTest {
         UiTestSupport.awaitWindowContaining("Тема: Общий вопрос")
     }
     private fun writeSupport(text: String) {
-        val root = UiTestSupport.awaitWindowContaining("Отправить в поддержку")
+        UiTestSupport.awaitWindowContaining("Отправить в поддержку")
         fun field(node: android.view.accessibility.AccessibilityNodeInfo): android.view.accessibility.AccessibilityNodeInfo? {
-            if(node.isEditable) return node
+            if(node.isEditable && node.isVisibleToUser && node.isEnabled) return node
             for(i in 0 until node.childCount) node.getChild(i)?.let { field(it)?.let { f -> return f } }
             return null
         }
-        org.junit.Assert.assertTrue(requireNotNull(field(root)).performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT,
-            android.os.Bundle().apply { putCharSequence(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,text) }))
+        // The button may enter the accessibility tree before the editor does.
+        val deadline = android.os.SystemClock.uptimeMillis() + 8000
+        while (android.os.SystemClock.uptimeMillis() < deadline) {
+            val editor = UiTestSupport.instrumentation.uiAutomation.rootInActiveWindow?.let { field(it) }
+            if (editor != null && editor.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT,
+                    android.os.Bundle().apply { putCharSequence(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,text) })) return
+            android.os.SystemClock.sleep(50)
+        }
+        org.junit.Assert.fail("Support editor must accept text within 8 seconds")
     }
     @Test fun supportChatRepliesReadCloseAndRatingFollowV1Contract() {
         ActivityScenario.launch<AccountHarnessActivity>(Intent(UiTestSupport.instrumentation.targetContext,AccountHarnessActivity::class.java).putExtra("screen","support")).use {
