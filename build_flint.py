@@ -32,12 +32,12 @@ def replace(path, old, new, required=True):
 replace(
     "CMakeLists.txt",
     'set(AMNEZIAVPN_VERSION 5.0.3.0 CACHE STRING "Client app version")',
-    'set(AMNEZIAVPN_VERSION 8.10.25 CACHE STRING "Client app version")'
+    'set(AMNEZIAVPN_VERSION 8.10.26 CACHE STRING "Client app version")'
 )
 replace(
     "CMakeLists.txt",
     'set(APP_ANDROID_VERSION_CODE 2163)',
-    'set(APP_ANDROID_VERSION_CODE 2195)'
+    'set(APP_ANDROID_VERSION_CODE 2196)'
 )
 replace(
     "client/cmake/branding/common.cmake",
@@ -181,7 +181,7 @@ shutil.copy2(flint / "PageHome.qml",
 shutil.copy2(flint / "PageStart.qml",
              root / "client/ui/qml/Pages2/PageStart.qml")
 
-for name in ("FlintAccount.qml", "FlintIdentity.qml", "FlintButton.qml", "FlintField.qml", "FlintChoice.qml", "FlintDevices.qml", "FlintSites.qml", "DeviceRows.js", "FlintFocus.js", "FlintUsage.js", "FlintPlans.js", "FlintSubscriptions.qml", "FlintTrafficBar.qml", "FlintMascot.qml", "FlintUpdates.qml"):
+for name in ("FlintSupport.qml", "FlintAccount.qml", "FlintIdentity.qml", "FlintButton.qml", "FlintField.qml", "FlintChoice.qml", "FlintDevices.qml", "FlintSites.qml", "DeviceRows.js", "FlintFocus.js", "FlintUsage.js", "FlintPlans.js", "FlintSubscriptions.qml", "FlintTrafficBar.qml", "FlintMascot.qml", "FlintUpdates.qml"):
     shutil.copy2(flint / name, root / "client/ui/qml/Pages2" / name)
 # Flint's user-visible assets. The Amnezia engine remains internal only.
 qml_assets = root / "client/ui/qml/Assets"
@@ -191,7 +191,7 @@ for asset in ["flint-dog.svg", "flint-background.svg", "flint-main.png", "flint-
 
 qml_qrc = root / "client/ui/qml/qml.qrc"
 qrc = qml_qrc.read_text(encoding="utf-8")
-for name in ("FlintAccount.qml", "FlintIdentity.qml", "FlintButton.qml", "FlintField.qml", "FlintChoice.qml", "FlintDevices.qml", "FlintSites.qml", "DeviceRows.js", "FlintFocus.js", "FlintUsage.js", "FlintPlans.js", "FlintSubscriptions.qml", "FlintTrafficBar.qml", "FlintMascot.qml", "FlintUpdates.qml"):
+for name in ("FlintSupport.qml", "FlintAccount.qml", "FlintIdentity.qml", "FlintButton.qml", "FlintField.qml", "FlintChoice.qml", "FlintDevices.qml", "FlintSites.qml", "DeviceRows.js", "FlintFocus.js", "FlintUsage.js", "FlintPlans.js", "FlintSubscriptions.qml", "FlintTrafficBar.qml", "FlintMascot.qml", "FlintUpdates.qml"):
     qrc = qrc.replace("    </qresource>", f"        <file>Pages2/{name}</file>\n    </qresource>", 1)
 for asset in ["flint-dog.svg", "flint-background.svg", "flint-main.png", "flint-main-sad.png", "flint-background.jpg", "flint-logo.svg", "flint-logo.png"]:
     entry = f"        <file>Assets/{asset}</file>\n"
@@ -394,7 +394,7 @@ assert 'parseSubscriptionProfiles' in (root / "client/ui/controllers/flintContro
 assert 'flintProfileServerId' in (root / "client/core/controllers/coreController.cpp").read_text(encoding="utf-8")
 assert 'clearQtCaches();' in (root / "client/amneziaApplication.cpp").read_text(encoding="utf-8")
 
-print("Flint Android 8.10.25 startup-safe patch applied and statically verified")
+print("Flint Android 8.10.26 startup-safe patch applied and statically verified")
 
 apply_vpn_permission(root)
 apply_android_diagnostics(root, flint)

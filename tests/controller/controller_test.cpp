@@ -10,6 +10,28 @@
 class ControllerTests : public QObject {
     Q_OBJECT
 private slots:
+    void supportV1RoutesAndIdempotency() {
+        QTemporaryDir dir; SecureQSettings settings(dir.filePath("support.ini"), QSettings::IniFormat);
+        settings.setValue("Conf/flintStartupSchema",999);
+        FlintController c(&settings); QSignalSpy response(&c, &FlintController::accountResponse);
+        const QList<QPair<QString,QString>> allowed {
+            {"GET","/support/categories"},{"GET","/support/tickets?status=open"},
+            {"GET","/support/tickets/ticket-1?afterMessageId=9007199254740993"},
+            {"POST","/support/tickets"},{"POST","/support/tickets/ticket-1/messages"},
+            {"POST","/support/tickets/ticket-1/read"},{"POST","/support/tickets/ticket-1/close"},
+            {"POST","/support/tickets/ticket-1/rating"}
+        };
+        for (const auto &entry : allowed) {
+            response.clear(); c.accountRequest("test",entry.first,entry.second,{},"test-key");
+            QCOMPARE(response.size(),1); QCOMPARE(response.last().at(1).toInt(),401);
+        }
+        for (const auto &entry : QList<QPair<QString,QString>>{{"POST","/support/categories"},{"DELETE","/support/tickets/ticket-1"},{"GET","/support/tickets/ticket-1/messages"},{"GET","/support/tickets/ticket-1?afterMessageId=x&token=secret"}}) {
+            response.clear(); c.accountRequest("test",entry.first,entry.second,{},"test-key");
+            QCOMPARE(response.size(),1); QCOMPARE(response.last().at(1).toInt(),400);
+        }
+        response.clear(); c.accountRequest("test","POST","/support/tickets/ticket-1/messages",{},"");
+        QCOMPARE(response.last().at(1).toInt(),400);
+    }
     void russianRoutingEnabledOncePerApplicationLaunch() {
         QTemporaryDir dir; SecureQSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
         settings.setValue("Conf/flintStartupSchema",999);

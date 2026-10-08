@@ -73,7 +73,7 @@ void FlintController::requestHomeWidget()
 
 namespace {
 const QString kApiBase = QStringLiteral("https://flintmain.ru/api/v1");
-const QString kVersion = QStringLiteral("8.10.25");
+const QString kVersion = QStringLiteral("8.10.26");
 
 bool isProfileUri(const QString &s)
 {
@@ -327,13 +327,17 @@ void FlintController::accountRequest(const QString &id, const QString &method, c
         "^/(config|me(/sessions(/[A-Za-z0-9_-]{1,128})?|/email-login|/telegram/bot/(start|complete))?|subscriptions(/[A-Za-z0-9_-]+/devices(/[A-Za-z0-9_-]+)?)?|plans|payment-methods|orders(/[A-Za-z0-9_-]+(/(payment-link|cancel))?)?|referrals(/apply)?|support/tickets(/[A-Za-z0-9_-]+)?)$"));
     static const QRegularExpression deviceDelete(QStringLiteral("^/subscriptions/[A-Za-z0-9_-]+/devices/[A-Za-z0-9_-]+$"));
     static const QRegularExpression sessionDelete(QStringLiteral("^/me/sessions/[A-Za-z0-9_-]{1,128}$"));
+    static const QRegularExpression supportGet(QStringLiteral("^/support/(categories|tickets(\\?(status=(all|open|closed)))?|tickets/[A-Za-z0-9_-]{1,128}(\\?afterMessageId=[A-Za-z0-9_-]{1,128})?)$"));
+    static const QRegularExpression supportPost(QStringLiteral("^/support/tickets(/[A-Za-z0-9_-]{1,128}/(messages|read|close|rating))?$"));
+    const bool isSupport = path.startsWith("/support/");
+    const bool supportAllowed = (method == "GET" && supportGet.match(path).hasMatch()) || (method == "POST" && supportPost.match(path).hasMatch());
     const bool isSession = sessionDelete.match(path).hasMatch();
     const bool isIdentity = path == "/me/email-login" || path == "/me/telegram/bot/start" || path == "/me/telegram/bot/complete";
     if (isIdentity && method != "POST") { emit accountResponse(id, 400, {}, QStringLiteral("Операция API не поддерживается")); return; }
-    if (!allowed.match(path).hasMatch() || (isSession && method != "DELETE") || (method != "GET" && method != "POST" && !(method == "DELETE" && (deviceDelete.match(path).hasMatch() || isSession)))) {
+    if ((isSupport ? !supportAllowed : !allowed.match(path).hasMatch()) || (isSession && method != "DELETE") || (method != "GET" && method != "POST" && !(method == "DELETE" && (deviceDelete.match(path).hasMatch() || isSession)))) {
         emit accountResponse(id, 400, {}, QStringLiteral("Операция API не поддерживается")); return;
     }
-    if (method == "POST" && (path == "/orders" || path == "/support/tickets") && key.isEmpty()) {
+    if (method == "POST" && (path == "/orders" || path == "/support/tickets" || (isSupport && path.endsWith("/messages"))) && key.isEmpty()) {
         emit accountResponse(id, 400, {}, QStringLiteral("Не указан ключ повторного запроса")); return;
     }
     if (isSession) {
@@ -388,7 +392,9 @@ void FlintController::accountRequestImpl(const QString &id, const QString &metho
                 : QStringLiteral("Операция недоступна на подключённом API (HTTP %1).").arg(status);
         } else if (method == "DELETE" && path.startsWith("/me/sessions/") && status != 204) error = QStringLiteral("Сервер ещё не подтвердил завершение входа");
         else if (status != 204 && !document.isObject()) error = QStringLiteral("Некорректный ответ API");
-        emit accountResponse(id, status, document.object().toVariantMap(), error);
+        auto responseData = document.object().toVariantMap();
+        if (status == 429) responseData.insert("retryAfterSeconds", qMax(1, reply->rawHeader("Retry-After").toInt()));
+        emit accountResponse(id, status, responseData, error);
     });
 }
 
@@ -460,7 +466,11 @@ QNetworkRequest FlintController::apiRequest(const QString &path, bool authorized
     QNetworkRequest r(QUrl(apiBase() + path));
     r.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
     r.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+#ifdef Q_OS_IOS
+    r.setRawHeader("X-Client", QByteArray("ios/") + kVersion.toUtf8());
+#else
     r.setRawHeader("X-Client", QByteArray("android/") + kVersion.toUtf8());
+#endif
     r.setRawHeader("User-Agent", QByteArray("Flint/") + kVersion.toUtf8());
     r.setTransferTimeout(9000);
     if (authorized) {
