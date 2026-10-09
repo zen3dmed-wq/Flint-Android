@@ -221,9 +221,52 @@ class VpnServiceInstrumentedTest {
         assertEquals(app.flint.prototype.R.drawable.ic_vpn_status, posted.smallIcon.resId)
         assertEquals("FLINT", posted.extras.getCharSequence(android.app.Notification.EXTRA_TITLE))
         assertTrue(posted.flags and android.app.Notification.FLAG_ONGOING_EVENT != 0)
+        assertTrue(posted.flags and android.app.Notification.FLAG_NO_CLEAR != 0)
+        assertTrue(posted.flags and android.app.Notification.FLAG_FOREGROUND_SERVICE != 0)
+        assertEquals(0, posted.flags and android.app.Notification.FLAG_AUTO_CANCEL)
+        val restore = requireNotNull(posted.deleteIntent)
         val channel = manager.getNotificationChannel(posted.channelId)
         assertEquals(android.app.NotificationManager.IMPORTANCE_DEFAULT, channel.importance)
         assertNull(channel.sound); assertFalse(channel.shouldVibrate())
+        assertEquals("FLINT_VPN_TUNNEL_OK", throughTunnel())
+        fun liveNotice() = manager.activeNotifications.firstOrNull { it.id == VpnNotifications.ID }
+        fun waitUntil(message: String, timeout: Long = 5000, condition: () -> Boolean) {
+            val end = SystemClock.uptimeMillis() + timeout
+            while (SystemClock.uptimeMillis() < end && !condition()) SystemClock.sleep(50)
+            assertTrue(message, condition())
+        }
+        // Exercise Android's actual Clear all, with a removable control notice.
+        val ordinaryId = 8196
+        manager.notify(ordinaryId, android.app.Notification.Builder(context, posted.channelId)
+            .setSmallIcon(app.flint.prototype.R.drawable.ic_vpn_status)
+            .setContentTitle("Flint notification test").setContentText("Clearable control").build())
+        waitUntil("Control notification was posted") { manager.activeNotifications.any { it.id == ordinaryId } }
+        shell("cmd statusbar expand-notifications")
+        try {
+            val clear = app.flint.prototype.UiTestSupport.awaitWindowContaining("Clear all")
+                .findAccessibilityNodeInfosByText("Clear all").first()
+            var clickable = clear
+            while (!clickable.isClickable && clickable.parent != null) clickable = clickable.parent
+            assertTrue("System Clear all must be clickable", clickable.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK))
+            waitUntil("Clear all removed the ordinary notification") { manager.activeNotifications.none { it.id == ordinaryId } }
+            assertNotNull("VPN notification survives Clear all", liveNotice())
+        } finally { shell("cmd statusbar collapse"); manager.cancel(ordinaryId) }
+        assertEquals("FLINT_VPN_TUNNEL_OK", throughTunnel())
+        // Android 14+ may allow a swipe even for ongoing notifications. The
+        // active service must retain/restore its own notice without opening Main.
+        shell("cmd statusbar expand-notifications")
+        val row = app.flint.prototype.UiTestSupport.awaitWindowContaining("VPN включён")
+            .findAccessibilityNodeInfosByText("VPN включён").first()
+        val bounds = android.graphics.Rect(); row.getBoundsInScreen(bounds)
+        val width = context.resources.displayMetrics.widthPixels
+        shell("input swipe ${width / 2} ${bounds.centerY()} ${width - 2} ${bounds.centerY()} 350")
+        SystemClock.sleep(1500)
+        waitUntil("VPN notification remains after swipe or is restored", 18_000) { liveNotice() != null }
+        shell("cmd statusbar collapse")
+        // Timer must not repeatedly repost a healthy notification (icon flicker).
+        val stablePostTime = requireNotNull(liveNotice()).postTime
+        SystemClock.sleep(16_000)
+        assertEquals("Unchanged notification must stay stable", stablePostTime, requireNotNull(liveNotice()).postTime)
         assertEquals("FLINT_VPN_TUNNEL_OK", throughTunnel())
         val directory = File(context.getExternalFilesDir(null), "ui-evidence").apply { mkdirs() }
         instrumentation.uiAutomation.waitForIdle(500, 5000)
@@ -232,6 +275,20 @@ class VpnServiceInstrumentedTest {
         }
         foregroundActivity(); binding.send(VpnContract.REFRESH_NOTIFICATION)
         assertEquals("FLINT_VPN_TUNNEL_OK", throughTunnel())
+        binding.send(VpnContract.DISCONNECT)
+        binding.await { it.getString(VpnContract.STATE) == "disconnected" }
+        waitUntil("Stopping VPN removes the notification") { liveNotice() == null }
+        restore.send() // A stale callback after Stop may not reconnect or repost.
+        SystemClock.sleep(1500)
+        binding.send(VpnContract.REQUEST_STATUS)
+        assertEquals("disconnected", binding.await().getString(VpnContract.STATE))
+        assertNull(liveNotice())
+        File(directory, "vpn-notification-persistence-real.json").writeText(JSONObject()
+            .put("syntheticUiState", false).put("clearAllRetainsVpn", true)
+            .put("clearAllRemovesOrdinary", true).put("swipeRetainedOrRestored", true)
+            .put("idleNotificationNotReposted", true).put("realTunAfterClearAndSwipe", true)
+            .put("stopRemovesNotification", true).put("staleDismissalDoesNotRestart", true)
+            .put("physicalOemTested", false).toString(2))
     }
 
     @Test fun widgetAndShortcutToggleWithoutForegroundingMainActivity() {

@@ -26,6 +26,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -48,6 +50,7 @@ class FlintVpnService : VpnService() {
     private val native = Xray.instance
     private var stateJob: Job? = null
     private var monitorJob: Job? = null
+    private var notificationJob: Job? = null
     private val widgetUpdates = Channel<String>(Channel.CONFLATED)
     private val widgetLock = Mutex()
     private var lastWidgetState = ""
@@ -103,6 +106,12 @@ class FlintVpnService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         lastStartId = startId
+        if (intent?.action == VpnContract.ACTION_RESTORE_NOTIFICATION) {
+            // A delayed dismissal must never restart a stopped VPN or load a profile.
+            if (!foreground) { stopSelfResult(startId); return START_NOT_STICKY }
+            mainHandler.postDelayed({ restoreNotificationIfMissing() }, 300)
+            return START_STICKY
+        }
         if (intent?.action == VpnContract.ACTION_TOGGLE) {
             // A widget click is a foreground-service PendingIntent, not an Activity.
             // Query this live state; neither a cached color nor the UI decides.
@@ -428,8 +437,26 @@ class FlintVpnService : VpnService() {
     }
 
     private fun refreshNotification() {
-        if (foreground && VpnNotifications.canPost(this)) runCatching {
-            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification())
+        if (foreground && !destroyed && VpnNotifications.canPostOnChannel(this, notificationChannel)) runCatching {
+            val manager = getSystemService(NotificationManager::class.java)
+            val current = manager.activeNotifications.firstOrNull { it.id == NOTIFICATION_ID }?.notification
+            val next = notification()
+            if (current == null) showForeground()
+            else if (current.extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() !=
+                next.extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()) {
+                manager.notify(NOTIFICATION_ID, next)
+            }
+        }
+    }
+
+    private fun restoreNotificationIfMissing() {
+        if (!foreground || destroyed || !prefs.getBoolean("desired", false) ||
+            snapshot.state !in setOf("connected", "connecting")) return
+        if (!VpnNotifications.canPostOnChannel(this, notificationChannel)) return
+        runCatching {
+            if (getSystemService(NotificationManager::class.java).activeNotifications.none { it.id == NOTIFICATION_ID }) {
+                showForeground()
+            }
         }
     }
 
@@ -448,6 +475,11 @@ class FlintVpnService : VpnService() {
         if (Build.VERSION.SDK_INT >= 34) startForeground(NOTIFICATION_ID, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED)
         else startForeground(NOTIFICATION_ID, notification())
         foreground = true
+        if (notificationJob?.isActive != true) notificationJob = scope.launch {
+            // OEM notification removal may omit deleteIntent. No network polling,
+            // wake lock, repeated alerts or dependence on the visible Activity.
+            while (isActive) { delay(15_000); restoreNotificationIfMissing() }
+        }
     }
 
     private fun startForegroundSafely(startId: Int): Boolean = try {
@@ -462,6 +494,7 @@ class FlintVpnService : VpnService() {
     }
 
     private fun leaveForeground() {
+        notificationJob?.cancel(); notificationJob = null
         if (foreground) { stopForeground(STOP_FOREGROUND_REMOVE); foreground = false }
     }
 

@@ -1,7 +1,7 @@
-# Flint 8.11.5 — native Android / Android TV
+# Flint 8.11.6 — native Android / Android TV
 
 Native Kotlin client, now using the original production application ID
-`app.flint.vpn` as requested. Version 8.11.5 / code 3005. Release signing must
+`app.flint.vpn` as requested. Version 8.11.6 / code 3006. Release signing must
 match the deployed Qt certificate; inspect the delivered APK checks for evidence.
 
 ## Installation and migration
@@ -99,7 +99,7 @@ after reopening the shade, real TUN traffic and hidden MainActivity.
 New support conversations use the selected category title as subject; message
 text remains separate, including line breaks. Saved idempotent retries stay unchanged.
 
-РОССИЙСКИЕ ПРИЛОЖЕНИЯ — 8.11.5
+РОССИЙСКИЕ ПРИЛОЖЕНИЯ — 8.11.6
 При включённых «Сайты РФ» в автоматическом режиме Госуслуги, АЗС Газпромнефть,
 банки, карты и магазины из встроенного списка работают напрямую целиком.
 Сайты РФ → Приложения напрямую: можно изменить выбор или добавить приложение.
@@ -107,3 +107,15 @@ text remains separate, including line breaks. Saved idempotent retries stay unch
 закройте и откройте проблемное приложение заново. Другие приложения сохраняют VPN.
 Список приложений хранится на устройстве и не передаётся на сервер.
 Проверка реальных аккаунтов Госуслуг/банков/АЗС не выполнялась.
+
+## VPN notification persistence — 8.11.6
+
+The service marks its notification ongoing, non-auto-cancelling and NO_CLEAR.
+A dismissal callback restores a missing notice only while an existing connection
+is active or reconnecting. An independent 15-second service check covers OEM
+removals without a callback. Existing notifications are not repeatedly reposted.
+Stop cancels recovery; a late dismissal callback cannot start VPN. Existing app,
+channel and channel-group notification blocks remain respected. Android 14+ may
+permit an individual swipe; Android/OEM status-bar visibility is not controlled
+by the app. System Clear all and swipe/stop behavior are exercised with a real
+local VPN fixture in instrumentation; physical OEM behavior needs device testing.

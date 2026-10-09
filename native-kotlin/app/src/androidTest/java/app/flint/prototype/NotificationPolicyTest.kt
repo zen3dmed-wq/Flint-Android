@@ -27,6 +27,8 @@ class NotificationPolicyTest {
             manager.createNotificationChannel(NotificationChannel(blocked, "Blocked fixture", NotificationManager.IMPORTANCE_NONE))
             assertEquals(blocked, VpnNotifications.ensureChannel(context, "$prefix-unused", listOf(blocked)))
             assertNull(manager.getNotificationChannel("$prefix-unused"))
+            assertFalse("Restoring a notice must respect a blocked channel", VpnNotifications.canPostOnChannel(context, blocked))
+            assertFalse("Restoring must not create a new channel around a block", VpnNotifications.canPostOnChannel(context, "$prefix-unused"))
             assertTrue(VpnNotifications.preserveLegacy(NotificationManager.IMPORTANCE_LOW, true, false))
             assertTrue(VpnNotifications.preserveLegacy(NotificationManager.IMPORTANCE_LOW, false, true))
             assertTrue(VpnNotifications.preserveLegacy(NotificationManager.IMPORTANCE_NONE, false, false))

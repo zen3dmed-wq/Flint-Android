@@ -37,13 +37,25 @@ object VpnNotifications {
         (Build.VERSION.SDK_INT < 33 || context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) &&
             context.getSystemService(NotificationManager::class.java).areNotificationsEnabled()
 
+    fun canPostOnChannel(context: Context, channelId: String): Boolean {
+        if (!canPost(context)) return false
+        val manager = context.getSystemService(NotificationManager::class.java)
+        val channel = manager.getNotificationChannel(channelId) ?: return false
+        return channel.importance != NotificationManager.IMPORTANCE_NONE &&
+            (channel.group?.let(manager::getNotificationChannelGroup)?.isBlocked != true)
+    }
+
     fun build(context: Context, channel: String, content: String): Notification {
         val stop = PendingIntent.getService(context, 1,
             Intent(context, FlintVpnService::class.java).setAction(VpnContract.ACTION_DISCONNECT),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val dismissed = PendingIntent.getService(context, 2,
+            Intent(context, FlintVpnService::class.java).setAction(VpnContract.ACTION_RESTORE_NOTIFICATION),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val builder = Notification.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_vpn_status).setContentTitle("FLINT")
-            .setContentText(content).setOngoing(true).setShowWhen(false).setOnlyAlertOnce(true)
+            .setContentText(content).setOngoing(true).setAutoCancel(false).setShowWhen(false).setOnlyAlertOnce(true)
+            .setDeleteIntent(dismissed)
             .setCategory(Notification.CATEGORY_SERVICE)
             .addAction(Notification.Action.Builder(null, "Отключить", stop).build())
         if (Build.VERSION.SDK_INT >= 31) builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
@@ -52,6 +64,6 @@ object VpnNotifications {
             builder.setContentIntent(PendingIntent.getActivity(context, 0, intent,
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
         }
-        return builder.build()
+        return builder.build().apply { flags = flags or Notification.FLAG_NO_CLEAR }
     }
 }
