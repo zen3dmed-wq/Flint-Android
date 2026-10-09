@@ -58,6 +58,16 @@ internal object UiTestSupport {
             }
             SystemClock.sleep(50)
         }
+        val directory = File(instrumentation.targetContext.getExternalFilesDir(null), "ui-evidence").apply { mkdirs() }
+        instrumentation.uiAutomation.takeScreenshot()?.let { bitmap ->
+            File(directory, "accessibility-timeout.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        }
+        fun describe(node: AccessibilityNodeInfo?, depth: Int = 0): String {
+            if (node == null || depth > 30) return ""
+            return "${"  ".repeat(depth)}${node.packageName} ${node.viewIdResourceName} ${node.text} ${node.contentDescription}\n" +
+                (0 until node.childCount).joinToString("") { describe(node.getChild(it), depth + 1) }
+        }
+        File(directory, "accessibility-timeout.txt").writeText(describe(instrumentation.uiAutomation.rootInActiveWindow))
         throw AssertionError("No active accessibility window containing ${texts.joinToString()} within 8 seconds")
     }
 

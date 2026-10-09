@@ -250,7 +250,16 @@ class VpnServiceInstrumentedTest {
             assertTrue("System Clear all must be clickable", clickable.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK))
             waitUntil("Clear all removed the ordinary notification") { manager.activeNotifications.none { it.id == ordinaryId } }
             assertNotNull("VPN notification survives Clear all", liveNotice())
-        } finally { shell("cmd statusbar collapse"); manager.cancel(ordinaryId) }
+        } finally {
+            shell("cmd statusbar collapse"); manager.cancel(ordinaryId)
+            // Clear all and collapse both animate asynchronously. Reopening before
+            // SystemUI relinquishes the active window races the queued collapse.
+            waitUntil("Notification shade finishes collapsing") {
+                instrumentation.uiAutomation.rootInActiveWindow?.packageName?.toString()
+                    ?.let { it != "com.android.systemui" } == true
+            }
+            instrumentation.uiAutomation.waitForIdle(500, 5000)
+        }
         assertEquals("FLINT_VPN_TUNNEL_OK", throughTunnel())
         // Android 14+ may allow a swipe even for ongoing notifications. The
         // active service must retain/restore its own notice without opening Main.
