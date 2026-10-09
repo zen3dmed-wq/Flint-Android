@@ -271,13 +271,21 @@ class VpnServiceInstrumentedTest {
         shell("input swipe ${width / 2} ${bounds.centerY()} ${width - 2} ${bounds.centerY()} 350")
         SystemClock.sleep(1500)
         waitUntil("VPN notification remains after swipe or is restored", 18_000) { liveNotice() != null }
+        waitUntil("Restored VPN notification is visible in the actual shade", 18_000) {
+            app.flint.prototype.UiTestSupport.accessibilityText(
+                instrumentation.uiAutomation.rootInActiveWindow, "VPN включён")?.isVisibleToUser == true
+        }
+        val directory = File(context.getExternalFilesDir(null), "ui-evidence").apply { mkdirs() }
+        instrumentation.uiAutomation.waitForIdle(500, 5000)
+        File(directory, "vpn-notification-after-swipe-real.png").outputStream().use {
+            assertTrue(instrumentation.uiAutomation.takeScreenshot().compress(Bitmap.CompressFormat.PNG, 100, it))
+        }
         shell("cmd statusbar collapse")
         // Timer must not repeatedly repost a healthy notification (icon flicker).
         val stablePostTime = requireNotNull(liveNotice()).postTime
         SystemClock.sleep(16_000)
         assertEquals("Unchanged notification must stay stable", stablePostTime, requireNotNull(liveNotice()).postTime)
         assertEquals("FLINT_VPN_TUNNEL_OK", throughTunnel())
-        val directory = File(context.getExternalFilesDir(null), "ui-evidence").apply { mkdirs() }
         instrumentation.uiAutomation.waitForIdle(500, 5000)
         File(directory, "vpn-status-icon-real.png").outputStream().use {
             assertTrue(instrumentation.uiAutomation.takeScreenshot().compress(Bitmap.CompressFormat.PNG, 100, it))
@@ -295,6 +303,7 @@ class VpnServiceInstrumentedTest {
         File(directory, "vpn-notification-persistence-real.json").writeText(JSONObject()
             .put("syntheticUiState", false).put("clearAllRetainsVpn", true)
             .put("clearAllRemovesOrdinary", true).put("swipeRetainedOrRestored", true)
+            .put("visibleInShadeAfterSwipe", true)
             .put("idleNotificationNotReposted", true).put("realTunAfterClearAndSwipe", true)
             .put("stopRemovesNotification", true).put("staleDismissalDoesNotRestart", true)
             .put("physicalOemTested", false).toString(2))
