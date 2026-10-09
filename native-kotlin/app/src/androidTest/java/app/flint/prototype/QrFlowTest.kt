@@ -74,7 +74,7 @@ class QrFlowTest {
                     fun decode(format: BarcodeFormat, text: String): String? {
                         val bits = MultiFormatWriter().encode(text, format, 600, 600)
                         val pixels = IntArray(600 * 600) { if (bits[it % 600, it / 600]) android.graphics.Color.BLACK else android.graphics.Color.WHITE }
-                        return scanner.decoderFactory.createDecoder(emptyMap()).decode(RGBLuminanceSource(600, 600, pixels))?.text
+                        return scanner.decoderFactory.createDecoder(emptyMap<com.google.zxing.DecodeHintType, Any>()).decode(RGBLuminanceSource(600, 600, pixels))?.text
                     }
                     assertEquals("https://example.invalid/sub/qr", decode(BarcodeFormat.QR_CODE, "https://example.invalid/sub/qr"))
                     assertNull(decode(BarcodeFormat.CODE_128, "123456789012"))
