@@ -49,11 +49,20 @@ internal object UiTestSupport {
     }
 
     /** Window attachment/accessibility propagation can outlive the main-looper idle point. */
+    fun accessibilityText(root: AccessibilityNodeInfo?, text: String): AccessibilityNodeInfo? {
+        if (root == null) return null
+        if (root.text?.toString()?.contains(text) == true || root.contentDescription?.toString()?.contains(text) == true) return root
+        for (i in 0 until root.childCount) accessibilityText(root.getChild(i), text)?.let { return it }
+        return null
+    }
+
     fun awaitWindowContaining(vararg texts: String): AccessibilityNodeInfo {
         val deadline = SystemClock.uptimeMillis() + 8000
         while (SystemClock.uptimeMillis() < deadline) {
             val root = instrumentation.uiAutomation.rootInActiveWindow
-            if (root != null && texts.all { root.findAccessibilityNodeInfosByText(it).isNotEmpty() }) {
+            // SystemUI's indexed text search may return no match for visible
+            // notification text. Its actual child nodes remain authoritative.
+            if (root != null && texts.all { root.findAccessibilityNodeInfosByText(it).isNotEmpty() || accessibilityText(root, it) != null }) {
                 return root
             }
             SystemClock.sleep(50)

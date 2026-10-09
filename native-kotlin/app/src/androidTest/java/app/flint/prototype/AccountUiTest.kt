@@ -166,13 +166,21 @@ class AccountUiTest {
             while ("GET /config" !in AccountHarnessActivity.requests && android.os.SystemClock.uptimeMillis() < deadline) android.os.SystemClock.sleep(50)
             UiTestSupport.clickAccessibilityText("Поддержка")
             createSupport()
-            val root = UiTestSupport.awaitWindowContaining("Отправить в поддержку", "Все обращения")
+            var root = UiTestSupport.awaitWindowContaining("Отправить в поддержку", "Все обращения")
             fun editable(node: android.view.accessibility.AccessibilityNodeInfo): android.view.accessibility.AccessibilityNodeInfo? {
                 if (node.isEditable) return node
                 for (i in 0 until node.childCount) node.getChild(i)?.let { child -> editable(child)?.let { return it } }
                 return null
             }
-            val field = requireNotNull(editable(root)) { "Support must immediately show an editable message field" }
+            // The label and footer editor can enter accessibility in different frames.
+            val editorDeadline = android.os.SystemClock.uptimeMillis() + 8000
+            var editor = editable(root)
+            while ((editor == null || !editor.isEnabled) && android.os.SystemClock.uptimeMillis() < editorDeadline) {
+                android.os.SystemClock.sleep(50)
+                UiTestSupport.instrumentation.uiAutomation.rootInActiveWindow?.let { root = it }
+                editor = editable(root)
+            }
+            val field = requireNotNull(editor) { "Support must show an editable message field within 8 seconds" }
             org.junit.Assert.assertTrue(field.isEnabled)
             org.junit.Assert.assertEquals("Опишите проблему", field.hintText?.toString())
             org.junit.Assert.assertTrue(root.findAccessibilityNodeInfosByText("Госзакупки").isEmpty())
@@ -197,4 +205,3 @@ class AccountUiTest {
         }
     }
 }
-

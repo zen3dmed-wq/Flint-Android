@@ -264,8 +264,8 @@ class VpnServiceInstrumentedTest {
         // Android 14+ may allow a swipe even for ongoing notifications. The
         // active service must retain/restore its own notice without opening Main.
         shell("cmd statusbar expand-notifications")
-        val row = app.flint.prototype.UiTestSupport.awaitWindowContaining("VPN включён")
-            .findAccessibilityNodeInfosByText("VPN включён").first()
+        val shade = app.flint.prototype.UiTestSupport.awaitWindowContaining("VPN включён")
+        val row = requireNotNull(app.flint.prototype.UiTestSupport.accessibilityText(shade, "VPN включён"))
         val bounds = android.graphics.Rect(); row.getBoundsInScreen(bounds)
         val width = context.resources.displayMetrics.widthPixels
         shell("input swipe ${width / 2} ${bounds.centerY()} ${width - 2} ${bounds.centerY()} 350")
