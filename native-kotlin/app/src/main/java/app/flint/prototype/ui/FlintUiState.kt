@@ -45,6 +45,5 @@ interface FlintUiCallbacks {
     fun onRouting() {}
     fun onProbe(initialize: Boolean) {}
     fun onScanCamera() {}
-    fun onShareQr() {}
     fun onTvPair() {}
 }

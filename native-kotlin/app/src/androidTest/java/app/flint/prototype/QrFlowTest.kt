@@ -7,7 +7,6 @@ import android.graphics.Rect
 import android.os.SystemClock
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import app.flint.prototype.testing.AccountHarnessActivity
 import app.flint.prototype.ui.FlintPhase
 import app.flint.prototype.ui.FlintQrCaptureActivity
 import com.google.zxing.BarcodeFormat
@@ -20,36 +19,6 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class QrFlowTest {
-    @Test fun mainQrMenuSharesChosenSubscriptionWithoutChangingActiveVpn() {
-        val context = UiTestSupport.instrumentation.targetContext
-        ActivityScenario.launch<AccountHarnessActivity>(Intent(context, AccountHarnessActivity::class.java)
-            .putExtra("screen", "home").putExtra("qrSubscriptions", true)).use {
-            // Wait for fixture login, which occurs asynchronously.
-            val deadline = SystemClock.uptimeMillis() + 8000
-            while (AccountHarnessActivity.requests.none { it == "GET /config" } && SystemClock.uptimeMillis() < deadline) SystemClock.sleep(50)
-            UiTestSupport.clickAccessibilityText("QR-код")
-            UiTestSupport.awaitWindowContaining("Поделиться через QR-код", "Сканировать QR-код", "QR-код на картинке")
-            UiTestSupport.clickAccessibilityText("Поделиться через QR-код")
-            UiTestSupport.awaitWindowContaining("12 Месяцев · используется сейчас", "Вторая подписка")
-            UiTestSupport.clickAccessibilityText("Вторая подписка")
-            UiTestSupport.awaitWindowContaining("Копировать ссылку", "Вторая подписка")
-            UiTestSupport.screenshot("qr-share-fixture", false, FlintPhase.DISCONNECTED)
-            val shot = UiTestSupport.instrumentation.uiAutomation.takeScreenshot()!!
-            val image = java.io.File(context.cacheDir, "qr-share-fixture.png")
-            try {
-                image.outputStream().use { shot.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
-                assertEquals("https://example.invalid/sub/second", app.flint.prototype.data.QrImageDecoder.decode(context, android.net.Uri.fromFile(image)))
-            } finally { image.delete(); shot.recycle() }
-            assertEquals("fixture-sub", context.getSharedPreferences("flint-account", 0).getString("selected", ""))
-            assertFalse(AccountHarnessActivity.requests.any { it.contains("/devices") || it.contains("/select") })
-            UiTestSupport.clickAccessibilityText("Копировать ссылку")
-            it.onActivity { activity ->
-                val clipboard = activity.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                assertEquals("https://example.invalid/sub/second", clipboard.primaryClip!!.getItemAt(0).text.toString())
-            }
-        }
-    }
-
     @Test fun cameraHasSquareQrCropInBothOrientationsAndRejectsBarcodes() {
         val inst = UiTestSupport.instrumentation
         inst.uiAutomation.grantRuntimePermission(inst.targetContext.packageName, Manifest.permission.CAMERA)
