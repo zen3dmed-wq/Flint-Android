@@ -17,7 +17,7 @@ Only one VPN can run at a time. Save manually imported links before removing the
 
 ## QR camera update
 
-The camera has a square decode crop in portrait and landscape, no red scan line,
+The camera stays in portrait orientation with a square decode crop, no red scan line,
 and accepts QR codes only. Image imports and the existing QR sharing flow are retained.
 
 ## Product behavior

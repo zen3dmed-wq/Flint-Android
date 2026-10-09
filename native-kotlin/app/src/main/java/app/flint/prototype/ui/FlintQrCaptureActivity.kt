@@ -20,6 +20,7 @@ import com.journeyapps.barcodescanner.ViewfinderView
 class FlintQrCaptureActivity : CaptureActivity() {
     override fun initializeContent(): DecoratedBarcodeView {
         intent.putExtra(Intents.Scan.FORMATS, "QR_CODE")
+        // The manifest owns portrait orientation; do not lock to the sensor at launch.
         intent.putExtra(Intents.Scan.ORIENTATION_LOCKED, false)
         intent.putExtra(Intents.Scan.BEEP_ENABLED, false)
         intent.putExtra(Intents.Scan.PROMPT_MESSAGE, "")
@@ -31,7 +32,7 @@ class FlintQrCaptureActivity : CaptureActivity() {
             insets
         }
         s.add(root, s.label("Сканировать QR-код", 24f, true), gap = 0)
-        s.add(root, s.label("Поместите QR-код целиком в квадрат. Он считается автоматически.", color = s.muted))
+        s.add(root, s.label("Поместите QR-код целиком в квадрат. Он считывается автоматически.", color = s.muted))
         val scanner = layoutInflater.inflate(R.layout.flint_qr_capture, root, false) as DecoratedBarcodeView
         // Also constrain direct launches: CaptureManager reads extras only for ACTION_SCAN.
         scanner.decoderFactory = DefaultDecoderFactory(listOf(BarcodeFormat.QR_CODE))
@@ -72,4 +73,3 @@ class FlintQrViewfinder(context: Context, attrs: AttributeSet?) : ViewfinderView
         preview?.framingRect?.let { canvas.drawRect(it, border) }
     }
 }
-

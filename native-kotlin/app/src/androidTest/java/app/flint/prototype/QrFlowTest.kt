@@ -19,14 +19,16 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class QrFlowTest {
-    @Test fun cameraHasSquareQrCropInBothOrientationsAndRejectsBarcodes() {
+    @Test fun cameraStaysPortraitWithSquareQrCropAndRejectsBarcodes() {
         val inst = UiTestSupport.instrumentation
         inst.uiAutomation.grantRuntimePermission(inst.targetContext.packageName, Manifest.permission.CAMERA)
+        try {
         ActivityScenario.launch<FlintQrCaptureActivity>(Intent(inst.targetContext, FlintQrCaptureActivity::class.java)).use { scenario ->
-            for (orientation in listOf(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE)) {
-                scenario.onActivity { it.requestedOrientation = orientation }
-                val expected = if (orientation == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT)
-                    android.content.res.Configuration.ORIENTATION_PORTRAIT else android.content.res.Configuration.ORIENTATION_LANDSCAPE
+            for (rotation in listOf(android.app.UiAutomation.ROTATION_FREEZE_90, android.app.UiAutomation.ROTATION_FREEZE_0)) {
+                assertTrue(inst.uiAutomation.setRotation(rotation))
+                inst.waitForIdleSync()
+                SystemClock.sleep(500)
+                val expected = android.content.res.Configuration.ORIENTATION_PORTRAIT
                 var frame: Rect? = null
                 val deadline = SystemClock.uptimeMillis() + 10000
                 while (frame == null && SystemClock.uptimeMillis() < deadline) {
@@ -40,6 +42,8 @@ class QrFlowTest {
                 assertEquals(frame!!.width(), frame!!.height())
                 assertTrue(frame!!.width() > 100)
                 scenario.onActivity { activity ->
+                    assertEquals(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, activity.requestedOrientation)
+                    assertEquals(expected, activity.resources.configuration.orientation)
                     val barcode = activity.findViewById<com.journeyapps.barcodescanner.BarcodeView>(com.google.zxing.client.android.R.id.zxing_barcode_surface)
                     val scanner = barcode.parent as DecoratedBarcodeView
                     fun decode(format: BarcodeFormat, text: String): String? {
@@ -50,11 +54,12 @@ class QrFlowTest {
                     assertEquals("https://example.invalid/sub/qr", decode(BarcodeFormat.QR_CODE, "https://example.invalid/sub/qr"))
                     assertNull(decode(BarcodeFormat.CODE_128, "123456789012"))
                 }
-                UiTestSupport.screenshot(if (orientation == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) "qr-camera-fixture" else "qr-camera-landscape-fixture", false, FlintPhase.DISCONNECTED)
+
             }
-            scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
+            UiTestSupport.screenshot("qr-camera-fixture", false, FlintPhase.DISCONNECTED)
             UiTestSupport.awaitWindowContaining("Сканировать QR-код", "Закрыть")
             UiTestSupport.clickAccessibilityText("Закрыть")
         }
+        } finally { inst.uiAutomation.setRotation(android.app.UiAutomation.ROTATION_UNFREEZE) }
     }
 }
