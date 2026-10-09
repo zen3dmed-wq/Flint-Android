@@ -12,14 +12,13 @@ import com.google.zxing.client.android.Intents
 import com.journeyapps.barcodescanner.BarcodeView
 import com.journeyapps.barcodescanner.CaptureActivity
 import com.journeyapps.barcodescanner.DecoratedBarcodeView
+import com.journeyapps.barcodescanner.DefaultDecoderFactory
+import com.google.zxing.BarcodeFormat
 import com.journeyapps.barcodescanner.ViewfinderView
 
 /** CaptureActivity owns camera permission, pause/resume and the result contract. */
 class FlintQrCaptureActivity : CaptureActivity() {
     override fun initializeContent(): DecoratedBarcodeView {
-        // CaptureManager applies format restrictions only for the scan action.
-        // Keep that contract even when Android recreates or directly opens this screen.
-        intent.action = Intents.Scan.ACTION
         intent.putExtra(Intents.Scan.FORMATS, "QR_CODE")
         intent.putExtra(Intents.Scan.ORIENTATION_LOCKED, false)
         intent.putExtra(Intents.Scan.BEEP_ENABLED, false)
@@ -34,6 +33,8 @@ class FlintQrCaptureActivity : CaptureActivity() {
         s.add(root, s.label("Сканировать QR-код", 24f, true), gap = 0)
         s.add(root, s.label("Поместите QR-код целиком в квадрат. Он считается автоматически.", color = s.muted))
         val scanner = layoutInflater.inflate(R.layout.flint_qr_capture, root, false) as DecoratedBarcodeView
+        // Also constrain direct launches: CaptureManager reads extras only for ACTION_SCAN.
+        scanner.decoderFactory = DefaultDecoderFactory(listOf(BarcodeFormat.QR_CODE))
         root.addView(scanner, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = s.dp(16); bottomMargin = s.dp(16) })
         val close = s.button("Закрыть") { finish() }
         if (packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_FLASH)) {
@@ -71,3 +72,4 @@ class FlintQrViewfinder(context: Context, attrs: AttributeSet?) : ViewfinderView
         preview?.framingRect?.let { canvas.drawRect(it, border) }
     }
 }
+
