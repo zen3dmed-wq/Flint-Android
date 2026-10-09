@@ -22,7 +22,7 @@ class AccountHarnessActivity : Activity() {
             val data = when {
                 path == "/auth/login" -> """{"accessToken":"test-only-access","refreshToken":"test-only-refresh"}"""
                 path == "/me" -> """{"id":"ui-fixture","email":"test@example.invalid","hasPassword":true}"""
-                path == "/subscriptions" -> """{"items":[{"id":"fixture-sub","status":"active","plan":{"name":"12 Месяцев"},"expiresAt":"2027-09-17T11:04:00Z","traffic":{"usedBytes":199600000000,"limitBytes":1000000000000,"updatedAt":"2026-10-08T07:00:00Z"}}]}"""
+                path == "/subscriptions" -> if (intent.getBooleanExtra("qrSubscriptions", false)) """{"items":[{"id":"fixture-sub","status":"active","plan":{"name":"12 Месяцев"},"subscriptionUrl":"https://example.invalid/sub/first"},{"id":"fixture-second","status":"active","plan":{"name":"Вторая подписка"},"subscriptionUrl":"https://example.invalid/sub/second"}]}""" else """{"items":[{"id":"fixture-sub","status":"active","plan":{"name":"12 Месяцев"},"expiresAt":"2027-09-17T11:04:00Z","traffic":{"usedBytes":199600000000,"limitBytes":1000000000000,"updatedAt":"2026-10-08T07:00:00Z"}}]}"""
                 path == "/config" -> """{"purchasesEnabled":true,"referralsEnabled":true,"flintIntegration":{"supportEnabled":true}}"""
                 path == "/plans" -> """{"items":[{"id":"1","name":"1 Месяц","durationDays":30,"price":{"amount":120,"currency":"RUB"}},{"id":"3","name":"3 Месяца","durationDays":90,"price":{"amount":340,"currency":"RUB"}},{"id":"6","name":"6 Месяцев","durationDays":180,"price":{"amount":680,"currency":"RUB"}},{"id":"12","name":"12 Месяцев","durationDays":360,"price":{"amount":1300,"currency":"RUB"}}]}"""
                 path == "/payment-methods" -> """{"items":[{"id":"fixture-card","title":"Карта, СБП, крипта"}]}"""
@@ -42,6 +42,7 @@ class AccountHarnessActivity : Activity() {
             override fun onImportFile() {}
             override fun onRuDirectChanged(enabled: Boolean) {}
             override fun onSupport() { screens.support() }
+            override fun onShareQr() { screens.shareConnection() }
         })
         setContentView(home); home.render(UiHarnessActivity.fixture())
         screens = AccountScreens(this, api, scope) {}

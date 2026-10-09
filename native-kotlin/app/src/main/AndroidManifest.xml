@@ -52,6 +52,7 @@
                 <category android:name="${launcherCategory}" />
             </intent-filter>
         </activity>
+        <activity android:name=".ui.FlintQrCaptureActivity" android:exported="false" android:screenOrientation="fullSensor" android:theme="@style/FlintTheme" />
         <service android:name=".account.LocationService" android:exported="false" />
         <service android:name=".vpn.FlintVpnService" android:permission="android.permission.BIND_VPN_SERVICE"
             android:exported="false" android:process=":vpn" android:foregroundServiceType="systemExempted">

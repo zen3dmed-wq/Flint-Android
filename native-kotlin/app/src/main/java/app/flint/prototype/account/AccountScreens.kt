@@ -424,13 +424,37 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
             }
         }
     }
+    fun shareConnection() {
+        if (!requireAccount { shareConnection() }) return
+        val p = panel("Поделиться через QR-код")
+        fun draw() {
+            p.body.removeAllViews()
+            val available = api.subscriptions.filter { it.string("status") == "active" && it.string("subscriptionUrl").isNotBlank() }
+            s.add(p.body, s.label("Выберите подписку для другого устройства. Текущее VPN-подключение не изменится.", color = s.muted))
+            if (available.isEmpty()) s.add(p.body, s.label("Нет активной подписки со ссылкой подключения.", color = s.muted))
+            available.sortedByDescending { it.string("id") == api.selectedId }.forEach { sub ->
+                s.add(p.body, s.button(subTitle(sub) + if (sub.string("id") == api.selectedId) " · используется сейчас" else "") {
+                    p.dialog.dismiss(); shareSubscription(sub)
+                }, 52)
+            }
+        }
+        draw()
+        // Cached subscriptions can be shared while the API is unreachable.
+        s.add(p.footer, s.button("Обновить список") { task(p) { api.refresh(); draw() } }, 48)
+        if (api.subscriptions.isEmpty()) task(p) { api.refresh(); draw() }
+    }
     fun shareSubscription(sub: JSONObject) {
         val url = sub.string("subscriptionUrl")
-        val p = panel("Добавить устройство")
+        val p = panel("Поделиться через QR-код")
         if (url.isBlank()) { p.error("У этой подписки пока нет ссылки подключения."); return }
+        s.add(p.body, s.label(subTitle(sub), 18f, true))
         s.add(p.body, s.label("Отсканируйте QR в приложении Flint на другом устройстве.", color = s.muted))
         addQr(p, url)
         s.add(p.body, s.label("QR содержит секретную ссылку подписки. Не отправляйте его посторонним. Это общий ключ: устройства с ним нельзя отключить по отдельности.", 12f, color = s.muted))
+        s.add(p.footer, s.button("Копировать ссылку") {
+            (activity.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Flint", url))
+            p.message.text = "Ссылка скопирована"
+        }, 48)
     }
     var supportChanged: () -> Unit = {}
     private val supportChat by lazy { SupportScreens(activity, api, scope) { supportChanged() } }

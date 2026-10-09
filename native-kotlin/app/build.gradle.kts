@@ -6,8 +6,8 @@ android {
         applicationId = "app.flint.vpn"
         minSdk = 30
         targetSdk = 36
-        versionCode = 3004
-        versionName = "8.11.4"
+        versionCode = 3005
+        versionName = "8.11.5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     flavorDimensions += "screen"

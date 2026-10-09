@@ -410,9 +410,11 @@ class MainActivity : Activity(), FlintUiCallbacks {
         style.add(panel.body, style.button("Добавить") { val value = field.text.toString(); if (value.isBlank()) panel.error("Введите ссылку") else { panel.dialog.dismiss(); importText(value) } }, 48)
     }
     override fun onImportQrImage() = pick("image/*", REQUEST_QR)
+    override fun onShareQr() = accountScreens.shareConnection()
     override fun onScanCamera() {
         if (BuildConfig.IS_TV) { onTvPair(); return }
         IntentIntegrator(this).setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
+            .setCaptureActivity(app.flint.prototype.ui.FlintQrCaptureActivity::class.java)
             .setPrompt("Наведите камеру на QR-код подписки Flint").setBeepEnabled(false).setOrientationLocked(false).initiateScan()
     }
     override fun onImportFile() = pick("*/*", REQUEST_FILE)
