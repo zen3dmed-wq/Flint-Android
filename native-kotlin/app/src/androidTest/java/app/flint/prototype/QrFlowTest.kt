@@ -25,12 +25,14 @@ class QrFlowTest {
         ActivityScenario.launch<FlintQrCaptureActivity>(Intent(inst.targetContext, FlintQrCaptureActivity::class.java)).use { scenario ->
             for (orientation in listOf(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE)) {
                 scenario.onActivity { it.requestedOrientation = orientation }
+                val expected = if (orientation == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT)
+                    android.content.res.Configuration.ORIENTATION_PORTRAIT else android.content.res.Configuration.ORIENTATION_LANDSCAPE
                 var frame: Rect? = null
                 val deadline = SystemClock.uptimeMillis() + 10000
                 while (frame == null && SystemClock.uptimeMillis() < deadline) {
                     scenario.onActivity { activity ->
                         val scanner = activity.findViewById<com.journeyapps.barcodescanner.BarcodeView>(com.google.zxing.client.android.R.id.zxing_barcode_surface)
-                        frame = scanner.framingRect
+                        frame = if (activity.resources.configuration.orientation == expected) scanner.framingRect else null
                     }
                     SystemClock.sleep(100)
                 }
@@ -48,10 +50,10 @@ class QrFlowTest {
                     assertEquals("https://example.invalid/sub/qr", decode(BarcodeFormat.QR_CODE, "https://example.invalid/sub/qr"))
                     assertNull(decode(BarcodeFormat.CODE_128, "123456789012"))
                 }
+                UiTestSupport.screenshot(if (orientation == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) "qr-camera-fixture" else "qr-camera-landscape-fixture", false, FlintPhase.DISCONNECTED)
             }
             scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
             UiTestSupport.awaitWindowContaining("Сканировать QR-код", "Закрыть")
-            UiTestSupport.screenshot("qr-camera-fixture", false, FlintPhase.DISCONNECTED)
             UiTestSupport.clickAccessibilityText("Закрыть")
         }
     }

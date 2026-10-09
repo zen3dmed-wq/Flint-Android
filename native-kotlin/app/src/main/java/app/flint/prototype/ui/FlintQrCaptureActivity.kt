@@ -17,6 +17,9 @@ import com.journeyapps.barcodescanner.ViewfinderView
 /** CaptureActivity owns camera permission, pause/resume and the result contract. */
 class FlintQrCaptureActivity : CaptureActivity() {
     override fun initializeContent(): DecoratedBarcodeView {
+        // CaptureManager applies format restrictions only for the scan action.
+        // Keep that contract even when Android recreates or directly opens this screen.
+        intent.action = Intents.Scan.ACTION
         intent.putExtra(Intents.Scan.FORMATS, "QR_CODE")
         intent.putExtra(Intents.Scan.ORIENTATION_LOCKED, false)
         intent.putExtra(Intents.Scan.BEEP_ENABLED, false)

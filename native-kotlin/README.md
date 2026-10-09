@@ -1,7 +1,7 @@
-# Flint 8.11.4 — native Android / Android TV
+# Flint 8.11.5 — native Android / Android TV
 
 Native Kotlin client, now using the original production application ID
-`app.flint.vpn` as requested. Version 8.11.4 / code 3004. Release signing must
+`app.flint.vpn` as requested. Version 8.11.5 / code 3005. Release signing must
 match the deployed Qt certificate; inspect the delivered APK checks for evidence.
 
 ## Installation and migration
@@ -15,6 +15,11 @@ The earlier `app.flint.vpn.kotlin` test/native packages remain separate; Android
 does not transfer their private account/profile data into the production package.
 Only one VPN can run at a time. Save manually imported links before removing them.
 
+## QR camera update
+
+The camera has a square decode crop in portrait and landscape, no red scan line,
+and accepts QR codes only. Image imports and the existing QR sharing flow are retained.
+
 ## Product behavior
 
 - Exact Qt monochrome husky status icon, immediate persistent service notification,
@@ -25,7 +30,8 @@ Only one VPN can run at a time. Save manually imported links before removing the
 - Qt order and separate flows for settings, profile, login methods, referrals,
   purchase, subscriptions, devices, support and routing. Device management has its
   own subscription selection and never changes the active VPN subscription.
-- Support opens directly to the message form, with idempotent send/retry and inline replies.
+- Support opens the conversation list with statuses and Create Request, then a chat.
+  Idempotent retries preserve the message and respect API limits.
 - All product dialogs wrap content and center within the available window. Only
   overflowing content scrolls; header/footer remain visible when the keyboard opens.
 - Location telemetry uses authenticated /locations with token refresh. The VPN
@@ -93,7 +99,7 @@ after reopening the shade, real TUN traffic and hidden MainActivity.
 New support conversations use the selected category title as subject; message
 text remains separate, including line breaks. Saved idempotent retries stay unchanged.
 
-РОССИЙСКИЕ ПРИЛОЖЕНИЯ — 8.11.4
+РОССИЙСКИЕ ПРИЛОЖЕНИЯ — 8.11.5
 При включённых «Сайты РФ» в автоматическом режиме Госуслуги, АЗС Газпромнефть,
 банки, карты и магазины из встроенного списка работают напрямую целиком.
 Сайты РФ → Приложения напрямую: можно изменить выбор или добавить приложение.
