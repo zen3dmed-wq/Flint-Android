@@ -131,13 +131,19 @@ class AccountUiTest {
             ActivityScenario.launch<AccountHarnessActivity>(Intent(UiTestSupport.instrumentation.targetContext, AccountHarnessActivity::class.java).putExtra("screen", screen)).use { scenario ->
                 UiTestSupport.awaitWindowContaining(if (screen == "settings") "Настройки Flint" else "Применить код")
                 UiTestSupport.instrumentation.waitForIdleSync()
+                var verified = false
+                val deadline = android.os.SystemClock.uptimeMillis() + 8000
+                while (!verified && android.os.SystemClock.uptimeMillis() < deadline) {
                 scenario.onActivity { activity ->
                     fun panel(view: android.view.View): android.view.View? {
                         if (view.tag == "flint-panel") return view
                         if (view is android.view.ViewGroup) for (i in 0 until view.childCount) panel(view.getChildAt(i))?.let { return it }
                         return null
                     }
-                    val p = android.view.inspector.WindowInspector.getGlobalWindowViews().mapNotNull { panel(it) }.last()
+                    val p = android.view.inspector.WindowInspector.getGlobalWindowViews().mapNotNull { panel(it) }.lastOrNull {
+                        it.isAttachedToWindow && it.isShown && it.height > 0 &&
+                            UiTestSupport.findText(it, if (screen == "settings") "Настройки Flint" else "Применить код") != null
+                    } ?: return@onActivity
                     val scroll = (p as android.view.ViewGroup).getChildAt(1) as android.widget.ScrollView
                     org.junit.Assert.assertFalse("$screen fits on this screen and must not scroll", scroll.canScrollVertically(1))
                     val bounds = android.graphics.Rect(); p.getGlobalVisibleRect(bounds)
@@ -146,7 +152,11 @@ class AccountUiTest {
                     bounds.set(position[0], position[1], position[0] + p.width, position[1] + p.height)
                     val visible = android.graphics.Rect(); activity.window.decorView.getWindowVisibleDisplayFrame(visible)
                     org.junit.Assert.assertTrue("$screen centered: $bounds inside $visible", kotlin.math.abs(bounds.centerY() - visible.centerY()) < 24 * activity.resources.displayMetrics.density)
+                    verified = true
                 }
+                    if (!verified) android.os.SystemClock.sleep(50)
+                }
+                org.junit.Assert.assertTrue("$screen panel must attach and finish layout within 8 seconds", verified)
             }
         }
     }
@@ -187,3 +197,4 @@ class AccountUiTest {
         }
     }
 }
+
