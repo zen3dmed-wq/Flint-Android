@@ -98,7 +98,7 @@ internal class TvPairingScreen(private val activity: Activity, private val api: 
                 }
                 qr.setImageDrawable(null); status.text = "QR истёк. Нажмите «Новый QR»."
             } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { qr.setImageDrawable(null); status.text = ""; explain(p, e) }
+            catch (e: Exception) { qr.setImageDrawable(null); qr.visibility = android.view.View.GONE; status.text = ""; explain(p, e) }
         }
     }
     fun scanned(value: String) {

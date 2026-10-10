@@ -1,7 +1,7 @@
-# Flint 8.11.6 — native Android / Android TV
+# Flint 8.11.8 — native Android / Android TV
 
 Native Kotlin client, now using the original production application ID
-`app.flint.vpn` as requested. Version 8.11.6 / code 3006. Release signing must
+`app.flint.vpn` as requested. Version 8.11.8 / code 3008. Release signing must
 match the deployed Qt certificate; inspect the delivered APK checks for evidence.
 
 ## Installation and migration
@@ -99,7 +99,7 @@ after reopening the shade, real TUN traffic and hidden MainActivity.
 New support conversations use the selected category title as subject; message
 text remains separate, including line breaks. Saved idempotent retries stay unchanged.
 
-РОССИЙСКИЕ ПРИЛОЖЕНИЯ — 8.11.6
+РОССИЙСКИЕ ПРИЛОЖЕНИЯ — 8.11.8
 При включённых «Сайты РФ» в автоматическом режиме Госуслуги, АЗС Газпромнефть,
 банки, карты и магазины из встроенного списка работают напрямую целиком.
 Сайты РФ → Приложения напрямую: можно изменить выбор или добавить приложение.
@@ -108,7 +108,7 @@ text remains separate, including line breaks. Saved idempotent retries stay unch
 Список приложений хранится на устройстве и не передаётся на сервер.
 Проверка реальных аккаунтов Госуслуг/банков/АЗС не выполнялась.
 
-## VPN notification persistence — 8.11.6
+## VPN notification persistence — 8.11.8
 
 The service marks its notification ongoing, non-auto-cancelling and NO_CLEAR.
 A dismissal callback restores a missing notice only while an existing connection
@@ -119,3 +119,13 @@ channel and channel-group notification blocks remain respected. Android 14+ may
 permit an individual swipe; Android/OEM status-bar visibility is not controlled
 by the app. System Clear all and swipe/stop behavior are exercised with a real
 local VPN fixture in instrumentation; physical OEM behavior needs device testing.
+
+## TV QR pairing over ordinary internet
+
+Phone and TV can use different providers. A short-lived encrypted profile transfer
+uses /devices/pairing/* on the first-party HTTPS API. Telegram and an existing TV VPN
+are not required. Both APKs must be 8.11.8+, and the separately supplied
+server-tv-pairing module must first be deployed by the backend developer.
+It has NOT been deployed on flintmain.ru in this task. No false QR/Telegram
+fallback is shown when the methods are absent. See server-tv-pairing/README.md
+in the developer delivery for deployment and shared-profile access limitations.

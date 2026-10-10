@@ -670,8 +670,9 @@ class MainActivity : Activity(), FlintUiCallbacks {
     private suspend fun prepareTvSettings(sub: JSONObject): JSONObject {
         profilesReady.await()
         val source = sub.string("subscriptionUrl")
-        val list = if (sub.string("id") == account.selectedId && accountProfiles.isNotEmpty()) accountProfiles
-            else runInterruptible(Dispatchers.IO) { FlintSubscriptionImport.import(this@MainActivity, source).profiles }
+        // /subscriptions may rotate the URL while the phone's running tunnel
+        // still uses its cached profile. Transfer the current source, not that cache.
+        val list = runInterruptible(Dispatchers.IO) { FlintSubscriptionImport.import(this@MainActivity, source).profiles }
         if (list.isEmpty()) throw ImportException("У подписки нет доступных конфигураций. Обновите список серверов.")
         return withContext(Dispatchers.Default) { PairingProtocol.payload(list, source, AccountScreens.subTitle(sub),
             customSites(), prefs.getBoolean("automaticRouting", true), routingPolicy(), state.selectedServerId) }

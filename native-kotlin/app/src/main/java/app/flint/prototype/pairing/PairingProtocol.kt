@@ -33,7 +33,9 @@ internal object PairingProtocol {
             require(value.length < 512)
             val uri = URI(value.trim())
             require(uri.scheme.equals("flint", true) && uri.host == "pair" && uri.path.isNullOrEmpty() && uri.userInfo == null && uri.port == -1)
-            val query = uri.rawQuery.orEmpty().split('&').associate { it.substringBefore('=') to it.substringAfter('=', "") }
+            val entries = uri.rawQuery.orEmpty().split('&')
+            require(entries.size == 2)
+            val query = entries.associate { it.substringBefore('=') to it.substringAfter('=', "") }
             require(query.keys == setOf("v", "id") && query["v"] == "1")
             val id = query.getValue("id"); val fragment = uri.rawFragment.orEmpty()
             require(fragment.startsWith("key="))

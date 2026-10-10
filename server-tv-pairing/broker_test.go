@@ -46,6 +46,9 @@ func call(b http.Handler, path string, input any, token string) (int, map[string
 	data, _ := json.Marshal(input)
 	r := httptest.NewRequest("POST", Prefix+path, bytes.NewReader(data))
 	r.RemoteAddr = "192.0.2.1:12345"
+	if token != "" {
+		r.RemoteAddr = "198.51.100.9:56789"
+	}
 	r.Header.Set("Content-Type", "application/json")
 	if token != "" {
 		r.Header.Set("Authorization", "Bearer "+token)
@@ -217,6 +220,70 @@ func TestEnvelopeBoundsUnknownFieldsAndNoAuthorizationBypass(t *testing.T) {
 	}
 	if s, _ := call(New(nil, false), "start", map[string]any{}, ""); s != 503 {
 		t.Fatal(s)
+	}
+}
+
+type blockingWriter struct {
+	*httptest.ResponseRecorder
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (w *blockingWriter) Write(data []byte) (int, error) {
+	close(w.entered)
+	<-w.release
+	return w.ResponseRecorder.Write(data)
+}
+func TestSlowDownloadDoesNotLockOtherTvRequestsAndAckReleasesQuota(t *testing.T) {
+	f := setup(t)
+	if s, _ := call(f.b, "approve", f.approve, "account-one"); s != 200 {
+		t.Fatal(s)
+	}
+	if f.b.storedBytes == 0 {
+		t.Fatal("No quota accounting")
+	}
+	data, _ := json.Marshal(f.proof())
+	r := httptest.NewRequest("POST", Prefix+"complete", bytes.NewReader(data))
+	r.Header.Set("Content-Type", "application/json")
+	writer := &blockingWriter{httptest.NewRecorder(), make(chan struct{}), make(chan struct{})}
+	done := make(chan struct{})
+	go func() { defer close(done); f.b.ServeHTTP(writer, r) }()
+	select {
+	case <-writer.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("No response")
+	}
+	defer func() { close(writer.release); <-done }()
+	ack := make(chan int, 1)
+	go func() { s, _ := call(f.b, "ack", f.proof(), ""); ack <- s }()
+	select {
+	case s := <-ack:
+		if s != 204 {
+			t.Fatal(s)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Slow response held global mutex")
+	}
+	if f.b.storedBytes != 0 {
+		t.Fatal("ACK retained ciphertext quota")
+	}
+}
+func TestCiphertextQuotaIsBoundedAndExpiredEntriesReleaseStorage(t *testing.T) {
+	f := setup(t)
+	f.b.storedBytes = 64 * 1024 * 1024
+	if s, _ := call(f.b, "approve", f.approve, "account-one"); s != 503 {
+		t.Fatal(s)
+	}
+	f.b.storedBytes = 0
+	if s, _ := call(f.b, "approve", f.approve, "account-one"); s != 200 {
+		t.Fatal(s)
+	}
+	f.now = f.now.Add(Lifetime)
+	f.b.mu.Lock()
+	f.b.gc()
+	f.b.mu.Unlock()
+	if f.b.storedBytes != 0 || len(f.b.sessions) != 0 {
+		t.Fatal("Expired ciphertext retained")
 	}
 }
 func TestUpstreamOnlyReadsAndRejectsInactiveUnownedAndRedirects(t *testing.T) {
