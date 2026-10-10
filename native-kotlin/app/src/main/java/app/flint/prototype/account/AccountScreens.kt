@@ -118,7 +118,7 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
         s.add(p.body, s.button("Обновить аккаунт") { task(p) { api.refresh(); changed(false); drawLoginMethods(p) } }, 48)
     }
     fun telegram(link: Boolean = false, after: () -> Unit = {}) {
-        val p = panel(if (link) "Привязать Telegram" else if (BuildConfig.IS_TV) "Добавить телевизор" else "Войти через Telegram")
+        val p = panel(if (link) "Привязать Telegram" else "Войти через Telegram")
         val key = if (link) "telegramLink" else "telegramLogin"
         val job = scope.launch {
             try {

@@ -51,6 +51,12 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="${launcherCategory}" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="flint" android:host="pair" />
+            </intent-filter>
         </activity>
         <activity android:name=".ui.FlintQrCaptureActivity" android:exported="false" android:screenOrientation="portrait" android:theme="@style/FlintTheme" />
         <service android:name=".account.LocationService" android:exported="false" />
