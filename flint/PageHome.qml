@@ -79,7 +79,7 @@ PageType {
         traceConnection("REQUESTED")
     }
     function connectionReport() {
-        return "Flint 8.10.27 / 2197\nmode=" + (autoConnection ? "auto" : "manual") +
+        return "Flint 8.10.28 / 2198\nmode=" + (autoConnection ? "auto" : "manual") +
             "\nruDirect=" + FlintController.ruDirectEnabled + "\ncore.error=" + lastConnectionError +
             "\n" + connectionEvents.join("\n") + "\n" + (lastNativeAttempt || FlintController.vpnDiagnostics())
     }
@@ -1362,7 +1362,7 @@ PageType {
     Popup {
         id: countryPopup
         Shortcut { sequence: "Back"; enabled: countryPopup.activeFocus; onActivated: countryPopup.close() }
-        onOpened: Qt.callLater(function() { FlintFocus.firstButton(countryPopup.contentItem) })
+        onOpened: { FlintController.refreshServers(); Qt.callLater(function() { FlintFocus.firstButton(countryPopup.contentItem) }) }
         x: Math.round((root.width - width) / 2)
         y: Math.round((root.height - height) / 2)
         width: Math.min(root.width - 28, 430)
@@ -1447,7 +1447,7 @@ PageType {
 
             RowLayout {
                 Layout.fillWidth: true
-                FlintButton { text: "Проверить"; enabled: !FlintController.healthBusy; onClicked: FlintController.refreshServerHealth() }
+                FlintButton { text: "Обновить"; enabled: !FlintController.healthBusy; onClicked: FlintController.refreshServers() }
                 FlintButton { text: "Автонастройка"; enabled: !root.connectionPending; onClicked: { countryPopup.close(); root.startInitialization() } }
             }
             FlintButton {
@@ -1661,7 +1661,25 @@ PageType {
                 onClicked: { settingsPopup.close(); updatesPopup.open(); FlintUpdateController.check(true) }
             }
             Text { text: "Настройки Flint"; color: root.ink; font.pixelSize: 21; font.bold: true }
-            Text { text: "Flint Android 8.10.27"; color: root.muted }
+            Switch {
+                visible: Qt.platform.os === "ios"
+                text: "Подключаться автоматически"
+                checked: FlintController.autoConnectEnabled
+                onToggled: FlintController.autoConnectEnabled = checked
+            }
+            Switch {
+                visible: Qt.platform.os === "ios"
+                text: "Защита при обрыве VPN"
+                checked: FlintController.killSwitchEnabled
+                onToggled: FlintController.killSwitchEnabled = checked
+            }
+            Text {
+                visible: Qt.platform.os === "ios"
+                Layout.fillWidth: true; wrapMode: Text.WordWrap; color: root.muted; font.pixelSize: 12
+                text: "Применяются при следующем подключении. Автоподключение использует системный VPN по требованию."
+            }
+
+            Text { text: "Flint Android 8.10.28"; color: root.muted }
             FlintButton {
                 Layout.fillWidth: true
                 text: "Диагностика подключения"

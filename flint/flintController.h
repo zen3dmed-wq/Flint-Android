@@ -22,6 +22,8 @@ class FlintController : public QObject
     friend class FlintUpdates;
     Q_PROPERTY(qulonglong receivedBytes MEMBER m_receivedBytes NOTIFY trafficChanged)
     Q_PROPERTY(qulonglong sentBytes MEMBER m_sentBytes NOTIFY trafficChanged)
+    Q_PROPERTY(bool autoConnectEnabled READ autoConnectEnabled WRITE setAutoConnectEnabled NOTIFY connectionPolicyChanged)
+    Q_PROPERTY(bool killSwitchEnabled READ killSwitchEnabled WRITE setKillSwitchEnabled NOTIFY connectionPolicyChanged)
     Q_PROPERTY(bool loggedIn READ loggedIn NOTIFY authChanged)
     Q_PROPERTY(QString email READ email NOTIFY authChanged)
     Q_PROPERTY(QString telegramUsername READ telegramUsername NOTIFY authChanged)
@@ -53,6 +55,11 @@ class FlintController : public QObject
 public:
     explicit FlintController(SecureQSettings *settings, QObject *parent=nullptr);
 
+    bool autoConnectEnabled() const;
+    bool killSwitchEnabled() const;
+    void setAutoConnectEnabled(bool enabled);
+    void setKillSwitchEnabled(bool enabled);
+    Q_INVOKABLE void refreshServers();
     bool loggedIn() const;
     QString email() const { return m_email; }
     QString telegramUsername() const { return m_telegramUsername; }
@@ -123,6 +130,7 @@ public slots:
     void askAssist(const QString &message);
 
 signals:
+    void connectionPolicyChanged();
     void externalImportPrepared(int count, const QString &error);
     void manualProfilesReady(const QStringList &profiles);
     void manualImportFinished(int count, const QString &error);

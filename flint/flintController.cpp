@@ -2,7 +2,57 @@
 #include "flintSubscriptionFetch.h"
 #include "flintDirectSites.h"
 #include "flintRouting.h"
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
 
+#ifdef Q_OS_IOS
+extern "C" bool FlintAutoConnectEnabled();
+extern "C" bool FlintKillSwitchEnabled();
+extern "C" void FlintSetConnectionPolicy(bool automatic,bool protection);
+#endif
+bool FlintController::autoConnectEnabled() const {
+#ifdef Q_OS_IOS
+    return FlintAutoConnectEnabled();
+#else
+    return m_settings->value("Conf/flintAutoConnect",false).toBool();
+#endif
+}
+bool FlintController::killSwitchEnabled() const {
+#ifdef Q_OS_IOS
+    return FlintKillSwitchEnabled();
+#else
+    return m_settings->value("Conf/flintKillSwitch",true).toBool();
+#endif
+}
+void FlintController::setAutoConnectEnabled(bool enabled) {
+#ifdef Q_OS_IOS
+    FlintSetConnectionPolicy(enabled,killSwitchEnabled());
+#else
+    m_settings->setValue("Conf/flintAutoConnect",enabled);
+#endif
+    emit connectionPolicyChanged();
+}
+void FlintController::setKillSwitchEnabled(bool enabled) {
+#ifdef Q_OS_IOS
+    FlintSetConnectionPolicy(autoConnectEnabled(),enabled);
+#else
+    m_settings->setValue("Conf/flintKillSwitch",enabled);
+#endif
+    emit connectionPolicyChanged();
+}
+void FlintController::refreshServers() {
+    if (m_profileReply || m_profilePreparing) return;
+    refreshServerHealth();
+    if (!loggedIn()) { importSubscription(false,true); return; }
+    authorizedGet("/subscriptions", [this](int status,const QByteArray &raw,const QString &) {
+        if (status>=200 && status<300) {
+            const auto document=QJsonDocument::fromJson(raw);
+            if(document.object().value("items").isArray()) applySubscriptions(document.object().value("items").toArray());
+        }
+        importSubscription(false,true);
+    });
+}
 QString FlintController::normalizeDirectSite(const QString &value) const
 {
     return FlintDirectSites::normalize(value);
@@ -73,7 +123,7 @@ void FlintController::requestHomeWidget()
 
 namespace {
 const QString kApiBase = QStringLiteral("https://flintmain.ru/api/v1");
-const QString kVersion = QStringLiteral("8.10.27");
+const QString kVersion = QStringLiteral("8.10.28");
 
 bool isProfileUri(const QString &s)
 {
