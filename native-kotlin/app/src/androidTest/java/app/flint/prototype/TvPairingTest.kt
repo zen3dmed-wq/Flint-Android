@@ -27,7 +27,10 @@ class TvPairingTest {
                 val qr=MultiFormatReader().decode(BinaryBitmap(HybridBinarizer(RGBLuminanceSource(bitmap.width,bitmap.height,pixels))),
                     mapOf(DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE),DecodeHintType.TRY_HARDER to true)).text
                 assertTrue(qr.startsWith("flint://pair?"));assertFalse(qr.contains("t.me"))
-                ActivityScenario.launch<PairingHarnessActivity>(Intent(context,PairingHarnessActivity::class.java).putExtra("qr",qr)).use {
+                // ActivityScenario clears the target task. Model the phone in a
+                // separate task so launching it does not destroy the fake TV.
+                ActivityScenario.launch<PairingHarnessActivity>(Intent(context,PairingHarnessActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK).putExtra("qr",qr)).use {
                     UiTestSupport.awaitWindowContaining("Тестовый телевизор","Передать · Тестовая подписка")
                     UiTestSupport.clickAccessibilityText("Передать · Тестовая подписка")
                     UiTestSupport.awaitWindowContaining("Настройки отправлены.")
