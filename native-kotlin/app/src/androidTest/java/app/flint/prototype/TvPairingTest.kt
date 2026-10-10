@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.SystemClock
 import androidx.test.core.app.ActivityScenario
 import app.flint.prototype.data.ProfileStore
+import app.flint.prototype.pairing.PairingProtocol
 import app.flint.prototype.testing.PairingFixture
 import app.flint.prototype.testing.PairingHarnessActivity
 import com.google.zxing.*
@@ -54,6 +55,32 @@ class TvPairingTest {
             UiTestSupport.awaitWindowContaining("Добавление ТВ без Telegram ещё не включено на сервере Flint.")
             assertEquals(listOf("/devices/pairing/start"),PairingFixture.requests.map {it.first})
             assertEquals(0,PairingFixture.connected.get())
+        }
+    }
+    @Test fun closingQrDuringAcknowledgementDoesNotStartVpn() {
+        val inst=UiTestSupport.instrumentation
+        val context=inst.targetContext
+        PairingFixture.reset();PairingFixture.holdAck=true
+        try {
+            ActivityScenario.launch<PairingHarnessActivity>(Intent(context,PairingHarnessActivity::class.java)).use { scenario ->
+                UiTestSupport.awaitWindowContaining("Ожидаем подтверждения на телефоне")
+                val bitmap=inst.uiAutomation.takeScreenshot()!!
+                val pixels=IntArray(bitmap.width*bitmap.height);bitmap.getPixels(pixels,0,bitmap.width,0,0,bitmap.width,bitmap.height)
+                val qr=MultiFormatReader().decode(BinaryBitmap(HybridBinarizer(RGBLuminanceSource(bitmap.width,bitmap.height,pixels))),
+                    mapOf(DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE),DecodeHintType.TRY_HARDER to true)).text
+                val target=PairingProtocol.parse(qr)
+                PairingFixture.envelope=PairingProtocol.seal(target.id,target.key,PairingProtocol.payload(
+                    listOf(PairingFixture.profile),PairingFixture.source,"Тестовая подписка",listOf("gosuslugi.ru","yandex.ru"),true,null,PairingFixture.profile.id))
+                val deadline=SystemClock.uptimeMillis()+10000
+                while(!PairingFixture.ackStarted && SystemClock.uptimeMillis()<deadline)SystemClock.sleep(50)
+                assertTrue(PairingFixture.ackStarted);assertEquals(1,PairingFixture.saved.get())
+                scenario.onActivity {it.closePairing()}
+                inst.waitForIdleSync()
+                assertEquals(0,PairingFixture.connected.get());assertFalse(PairingFixture.acknowledged)
+            }
+        } finally {
+            PairingFixture.holdAck=false
+            ProfileStore(context).merge(emptyList(),PairingFixture.source)
         }
     }
 }

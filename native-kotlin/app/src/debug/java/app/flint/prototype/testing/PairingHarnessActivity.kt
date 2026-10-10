@@ -21,11 +21,13 @@ object PairingFixture {
     @Volatile var envelope: JSONObject? = null
     @Volatile var challenge = ""
     @Volatile var acknowledged = false
+    @Volatile var holdAck = false
+    @Volatile var ackStarted = false
     val id = PairingProtocol.secret()
     val source = "https://pairing.example.invalid/sub/test"
     val profile = ServerProfile(ServerProfile.stableId("tv-pairing-fixture"), "Test TV node", "node.example.invalid", 443,
         "vless", """{"protocol":"vless","settings":{"vnext":[{"address":"node.example.invalid","port":443,"users":[{"id":"00000000-0000-0000-0000-000000000001"}]}]}}""")
-    fun reset() {requests.clear();saved.set(0);connected.set(0);envelope=null;challenge="";acknowledged=false}
+    fun reset() {requests.clear();saved.set(0);connected.set(0);envelope=null;challenge="";acknowledged=false;holdAck=false;ackStarted=false}
 }
 class PairingHarnessActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
@@ -57,7 +59,11 @@ class PairingHarnessActivity : Activity() {
                     check(token==null);check(PairingProtocol.challenge(body!!.getString("codeVerifier"))==PairingFixture.challenge)
                     PairingFixture.envelope?.let {ApiReply(200,JSONObject().put("encryptedSettings",it))} ?: ApiReply(202,JSONObject().put("status","pending"))
                 }
-                "/devices/pairing/ack" -> {check(token==null);PairingFixture.acknowledged=true;ApiReply(204,JSONObject())}
+                "/devices/pairing/ack" -> {
+                    check(token==null);PairingFixture.ackStarted=true
+                    if(PairingFixture.holdAck) awaitCancellation()
+                    PairingFixture.acknowledged=true;ApiReply(204,JSONObject())
+                }
                 "/devices/pairing/cancel" -> ApiReply(204,JSONObject())
                 else -> error("Unexpected fake pairing endpoint")
             }
@@ -71,5 +77,6 @@ class PairingHarnessActivity : Activity() {
         val qr=intent.getStringExtra("qr")
         if(qr==null) screen.receive() else scope.launch {api.login("test@example.invalid","test-only",false);screen.scanned(qr)}
     }
+    fun closePairing() {screen.close()}
     override fun onDestroy() {if(::screen.isInitialized)screen.close();scope.cancel();super.onDestroy()}
 }

@@ -92,7 +92,10 @@ internal class TvPairingScreen(private val activity: Activity, private val api: 
                     accept(transfer)
                     completed = true
                     runCatching { api.request("POST", "/devices/pairing/ack", JSONObject().put("pairingId", id).put("codeVerifier", verifier), false) }
-                    if (p.dialog.isShowing) p.dialog.dismiss()
+                    // Closing the QR while ACK is in flight must not start VPN afterwards.
+                    currentCoroutineContext().ensureActive()
+                    if (!p.dialog.isShowing) return@launch
+                    p.dialog.dismiss()
                     connect()
                     return@launch
                 }
@@ -140,7 +143,7 @@ internal class TvPairingScreen(private val activity: Activity, private val api: 
                                 api.request("POST", "/devices/pairing/approve", JSONObject().put("pairingId", target.id)
                                     .put("subscriptionId", sub.string("id")).put("requestId", requestId).put("encryptedSettings", envelope))
                                 p.body.removeAllViews()
-                                style.add(p.body, style.label("Настройки отправлены. На телевизоре появится кнопка подключения; при первом запуске подтвердите системный запрос VPN.", color = style.mint))
+                                style.add(p.body, style.label("Настройки отправлены. Телевизор начнёт подключение; при первом запуске подтвердите системный запрос VPN.", color = style.mint))
                                 p.message.text = ""; style.closeButton(p)
                             } catch (e: CancellationException) { throw e }
                             catch (e: Exception) { explain(p, e) }
