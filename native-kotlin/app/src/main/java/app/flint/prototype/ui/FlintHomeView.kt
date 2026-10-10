@@ -50,6 +50,7 @@ class FlintHomeView(context: Context, private val isTv: Boolean, private val cal
     private var safeRight = 0
     private var popup: FlintStyle.Panel? = null
     private val serverRows = mutableMapOf<String, Button>()
+    private var serversOpen = false
     init {
         setBackgroundColor(s.dark)
         addView(ImageView(context).apply {
@@ -142,6 +143,7 @@ class FlintHomeView(context: Context, private val isTv: Boolean, private val cal
         super.onMeasure(w, h)
     }
     fun render(next: FlintUiState) {
+        val rebuildServers = serversOpen && (state.servers.map { it.id } != next.servers.map { it.id } || state.refreshingServers != next.refreshingServers)
         state = next
         val color = when (next.phase) { FlintPhase.DISCONNECTED -> 0xFF82909E.toInt(); FlintPhase.CONNECTING -> 0xFFF1C75B.toInt(); FlintPhase.CONNECTED -> s.mint; FlintPhase.ERROR -> 0xFFEF626B.toInt() }
         title.text = when (next.phase) { FlintPhase.CONNECTING -> "Подключаемся…"; FlintPhase.CONNECTED -> "Вы защищены"; else -> "Вы не защищены" }
@@ -170,6 +172,7 @@ class FlintHomeView(context: Context, private val isTv: Boolean, private val cal
             button.setTextColor(if (selected && item.available != false) 0xFF052A20.toInt() else s.ink)
         } }
         qr.isEnabled = !next.busy; clipboard.isEnabled = !next.busy; requestLayout()
+        if (rebuildServers) showServers(false)
     }
     private fun showImportActions() {
         popup?.dialog?.dismiss()
@@ -183,10 +186,12 @@ class FlintHomeView(context: Context, private val isTv: Boolean, private val cal
     }
     private fun serverHint(item: FlintServerUi) = (if (item.available == false) "Недоступен" else item.latencyMs?.let { "$it мс" } ?: "Не проверен") +
         (item.loadPercent?.let { " · Загрузка $it%" } ?: " · Загрузка: нет данных")
-    private fun showServers() {
+    private fun showServers(refresh: Boolean = true) {
         serverRows.clear()
         popup?.dialog?.dismiss()
+        serversOpen = true
         popup = s.panel("Выбор сервера", showClose = false).also { p ->
+            p.dialog.setOnDismissListener { serversOpen = false }
             fun entry(name: String, id: String?, hint: String, unavailable: Boolean = false) {
                 val b = s.button("$name\n$hint") { p.dialog.dismiss(); callbacks.onSelectServer(id) }
                 b.gravity = Gravity.CENTER_VERTICAL or Gravity.START; b.setPadding(s.dp(16), s.dp(8), s.dp(16), s.dp(8))
@@ -200,10 +205,11 @@ class FlintHomeView(context: Context, private val isTv: Boolean, private val cal
             state.servers.forEach { item -> entry(item.name, item.id,
                 (if (item.available == false) "Недоступен" else item.latencyMs?.let { "$it мс" } ?: "Не проверен") +
                     (item.loadPercent?.let { " · Загрузка $it%" } ?: " · Загрузка: нет данных"), item.available == false) }
-            s.buttons(p.footer, s.button("Проверить") { callbacks.onProbe(false) },
+            s.buttons(p.footer, s.button(if (state.refreshingServers) "Обновляем…" else "Обновить") { callbacks.onRefreshServers() }.apply { isEnabled = !state.refreshingServers },
                 s.button("Автонастройка") { p.dialog.dismiss(); callbacks.onProbe(true) })
             s.closeButton(p)
         }
+        if (refresh) callbacks.onRefreshServers()
     }
     override fun onDetachedFromWindow() { popup?.dialog?.dismiss(); super.onDetachedFromWindow() }
 }

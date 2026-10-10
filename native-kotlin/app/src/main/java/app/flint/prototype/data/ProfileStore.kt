@@ -8,6 +8,8 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.RandomAccessFile
+import org.json.JSONObject
+import org.json.JSONArray
 
 /** The application manifest disables backups; this file never goes to shared storage. */
 class ProfileStore(context: Context) {
@@ -18,9 +20,27 @@ class ProfileStore(context: Context) {
     fun load(): List<ServerProfile> = locked { read() }
 
     /** Existing subscriptions remain present. Importing an identical ID updates that entry. */
-    fun merge(profiles: List<ServerProfile>): List<ServerProfile> = locked {
-        val merged = ProfileCollection.merge(read(), profiles)
-        val bytes = ProfileCollection.encode(merged)
+    fun sources(): List<String> = locked { sourceMap().keys().asSequence().toList() }
+
+    private fun sourceMap(): JSONObject = try {
+        file.openRead().use { JSONObject(it.readBytes().toString(Charsets.UTF_8)).optJSONObject("sources") ?: JSONObject() }
+    } catch (e: FileNotFoundException) { JSONObject() }
+
+    fun merge(profiles: List<ServerProfile>, source: String = ""): List<ServerProfile> = locked {
+        val existing = read()
+        val sources = sourceMap()
+        val uri = runCatching { java.net.URI(source) }.getOrNull()
+        val url = source.takeIf { uri?.scheme in setOf("https", "http") && uri?.host != null && uri.userInfo == null }
+        val previous = url?.let { sources.optJSONArray(it) }
+        val removed = (0 until (previous?.length() ?: 0)).map { previous!!.getString(it) }.toSet()
+        val retainedByOtherSources = sources.keys().asSequence().filter { it != url }.flatMap { key ->
+            val ids = sources.getJSONArray(key); (0 until ids.length()).map { ids.getString(it) }.asSequence()
+        }.toSet()
+        val merged = ProfileCollection.merge(existing.filter { it.id !in removed || it.id in retainedByOtherSources }, profiles)
+        if (url != null) sources.put(url, JSONArray(profiles.map { it.id }))
+        val document = JSONObject(ProfileCollection.encode(merged).toString(Charsets.UTF_8)).put("sources", sources)
+        val bytes = document.toString().toByteArray(Charsets.UTF_8)
+        if (bytes.size > ProfileCollection.MAX_BYTES) throw ImportException("Список серверов слишком большой для сохранения")
         val stream = try { file.startWrite() }
             catch (_: Exception) { throw ImportException("Не удалось сохранить серверы. Проверьте свободное место") }
         try {

@@ -50,7 +50,13 @@ object DirectApps {
     }
 
     /** Recheck installation on every connect, including widget, recovery and failover. */
-    fun applyInstalled(context: Context, config: JSONObject) {
+    fun applyInstalled(context: Context, config: JSONObject, lockdown: Boolean = false) {
+        // Android blocks excluded applications in lockdown mode. Keep them inside
+        // the VPN and let the existing Russian domain/IP rules select direct routes.
+        if (lockdown) {
+            config.put("appSplitTunnelType",0).put("splitTunnelApps",JSONArray()).put("flintRussianAppsDirect",false)
+            return
+        }
         val policy = config.optJSONObject(CONFIG_KEY) ?: if (config.optBoolean("flintRussianAppsDirect", false))
             JSONObject().put("automatic", true).put("overrides", JSONObject()).also { config.put(CONFIG_KEY, it) }
         else return

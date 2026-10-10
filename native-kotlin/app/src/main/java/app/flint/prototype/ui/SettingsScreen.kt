@@ -13,6 +13,7 @@ class SettingsScreen(private val activity: Activity) {
         s.add(p.body, action("Обновление приложения", updates), 48)
         s.add(p.body, s.label("Настройки Flint", 21f, true))
         s.add(p.body, s.label("Flint Android ${BuildConfig.VERSION_NAME}", color = s.muted))
+        s.add(p.body, action("Автоподключение и защита при обрыве") { VpnProtectionSettings.show(activity) }, 48)
         s.add(p.body, action("Диагностика подключения", diagnostics), 48)
         if (!BuildConfig.IS_TV) s.buttons(p.body, action("Добавить виджет на экран", widget),
             action("Добавить кнопку в шторку") { app.flint.prototype.home.FlintTileService.setup(activity) })

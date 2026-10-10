@@ -26,6 +26,7 @@ data class FlintUiState(
     val message: String = "",
     val hasProfile: Boolean = false,
     val busy: Boolean = false,
+    val refreshingServers: Boolean = false,
 )
 
 interface FlintUiCallbacks {
@@ -44,6 +45,7 @@ interface FlintUiCallbacks {
     fun onSupport() {}
     fun onRouting() {}
     fun onProbe(initialize: Boolean) {}
+    fun onRefreshServers() {}
     fun onScanCamera() {}
     fun onTvPair() {}
 }

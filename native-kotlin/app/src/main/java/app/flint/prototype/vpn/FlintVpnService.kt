@@ -150,11 +150,11 @@ class FlintVpnService : VpnService() {
             watchNativeDeadline(request, 30_000)
         } else if (intent == null || intent.action == SERVICE_INTERFACE) {
             // Process recovery is permitted only for a connection the user left on.
-            if (prefs.getBoolean("desired", false)) {
+            if (prefs.getBoolean("desired", false) || (isAlwaysOn && File(filesDir, "last-vpn-config.json").isFile)) {
                 val request = generation.incrementAndGet()
                 pendingGeneration = request
                 if (!startForegroundSafely(startId)) return START_NOT_STICKY
-                commands.trySend(Command.Connect(request, null, recover = true))
+                commands.trySend(Command.Connect(request, null, fromWidget = isAlwaysOn, recover = !isAlwaysOn))
                 watchNativeDeadline(request, 30_000)
             } else {
                 stopSelfResult(startId)
@@ -200,7 +200,7 @@ class FlintVpnService : VpnService() {
         var attemptedConfig: JSONObject? = null
         try {
             check(prepare(this) == null) { "permission" }
-            val config = withContext(nativeDispatcher) { readConfig(command).also { app.flint.prototype.routing.DirectApps.applyInstalled(this@FlintVpnService, it) } }
+            val config = withContext(nativeDispatcher) { readConfig(command).also { app.flint.prototype.routing.DirectApps.applyInstalled(this@FlintVpnService, it, isLockdownEnabled) } }
             attemptedConfig = config
             require(config.optString("protocol").equals("xray", true)) { "protocol" }
             require(config.optJSONObject("xray_config_data")?.optString("config")?.isNotBlank() == true) { "config" }
@@ -287,6 +287,7 @@ class FlintVpnService : VpnService() {
                         return
                     }
                 }
+                if (retryAlwaysOn(command.generation)) return
                 prefs.edit().putBoolean("desired", false).commit()
                 recoveryFile.delete()
                 val message = if (prepare(this) != null) "Откройте Flint и разрешите подключение VPN один раз. Затем кнопка на экране будет работать самостоятельно."
@@ -311,7 +312,7 @@ class FlintVpnService : VpnService() {
         val next = (0 until candidates.length()).mapNotNull { candidates.optJSONObject(it) }
             .firstOrNull { it.optString("id") != config.optString("flintServerId") }
         if (!config.optBoolean("flintAutomatic") || !prefs.getBoolean("desired", false) || prepare(this) != null || next == null) {
-            requestStop(); return
+            if (!retryAlwaysOn(expected)) requestStop(); return
         }
         val replacement = AutomaticMonitor.switchConfig(config, next)
         replacement.put("flintTried", org.json.JSONArray().put(config.optString("flintServerId")))
@@ -336,7 +337,22 @@ class FlintVpnService : VpnService() {
         }
     }
 
+    private var alwaysOnRetry: Job? = null
+    private fun retryAlwaysOn(expected: Long): Boolean {
+        if (!isAlwaysOn || prepare(this) != null || !File(filesDir,"last-vpn-config.json").isFile || !prefs.getBoolean("desired",false)) return false
+        stateJob?.cancel(); monitorJob?.cancel(); pendingGeneration=null
+        publish(snapshot.copy(state="connecting", message=if(isLockdownEnabled) "VPN недоступен. Интернет заблокирован; повторяем подключение…" else "Повторяем подключение VPN…"))
+        alwaysOnRetry?.cancel()
+        alwaysOnRetry=scope.launch {
+            delay(15_000)
+            if(expected!=generation.get() || destroyed || !isAlwaysOn || !prefs.getBoolean("desired",false)) return@launch
+            val request=generation.incrementAndGet();pendingGeneration=request
+            commands.trySend(Command.Connect(request,null,fromWidget=true));watchNativeDeadline(request,30_000)
+        }
+        return true
+    }
     private suspend fun disconnect(request: Long) {
+        alwaysOnRetry?.cancel()
         stateJob?.cancel()
         monitorJob?.cancel()
         if (request == generation.get()) publish(snapshot.copy(state = "disconnecting", generation = request))

@@ -480,8 +480,9 @@ class MainActivity : Activity(), FlintUiCallbacks {
             try {
                 // A document result can arrive immediately after Activity recreation.
                 profilesReady.await()
-                val result = runInterruptible(Dispatchers.IO) { FlintSubscriptionImport.import(this@MainActivity, readInput()) }
-                manualProfiles = withContext(Dispatchers.IO) { profilesStore.merge(result.profiles) }
+                val input = withContext(Dispatchers.IO) { readInput().trim() }
+                val result = runInterruptible(Dispatchers.IO) { FlintSubscriptionImport.import(this@MainActivity, input) }
+                manualProfiles = withContext(Dispatchers.IO) { profilesStore.merge(result.profiles, input) }
                 combineProfiles()
                 if (state.selectedServerId != null && profiles.none { it.id == state.selectedServerId }) {
                     state = state.copy(selectedServerId = null)
@@ -609,7 +610,7 @@ class MainActivity : Activity(), FlintUiCallbacks {
         if (target == accountCache()) accountProfiles = cached
         loadedAccountId = account.me.string("id")
     }
-    private suspend fun refreshAccountProfiles(reload: Boolean) {
+    private suspend fun refreshAccountProfiles(reload: Boolean, reconnect: Boolean = true) {
         val revision = ++accountProfileGeneration
         val oldIds = accountProfiles.map { it.id }
         val user = account.me.string("id")
@@ -639,7 +640,7 @@ class MainActivity : Activity(), FlintUiCallbacks {
         combineProfiles()
         if (state.selectedServerId != null && profiles.none { it.id == state.selectedServerId }) { state = state.copy(selectedServerId = null); prefs.edit().remove("selected").apply() }
         render()
-        if (reload && oldIds != accountProfiles.map { it.id } && state.phase == FlintPhase.CONNECTED) { automaticAttempts.clear(); connectSelected() }
+        if (reconnect && reload && oldIds != accountProfiles.map { it.id } && state.phase == FlintPhase.CONNECTED) { automaticAttempts.clear(); connectSelected() }
         else if (reload && accountProfiles.any { it.id !in oldIds && it.id !in fingerprints } && state.phase != FlintPhase.CONNECTING) onProbe(true)
         else if (reload) checkServers()
     }
@@ -652,6 +653,25 @@ class MainActivity : Activity(), FlintUiCallbacks {
     override fun onDevices() = accountScreens.devices()
     override fun onSupport() = accountScreens.support()
     override fun onTvPair() = accountScreens.telegram()
+    override fun onRefreshServers() {
+        if (state.refreshingServers || loadingProfiles || importing) return
+        state = state.copy(refreshingServers = true); render()
+        scope.launch {
+            try {
+                profilesReady.await()
+                if (account.loggedIn) { account.refresh(); refreshAccountProfiles(true, reconnect = false) }
+                val sources = withContext(Dispatchers.IO) { profilesStore.sources() }
+                for (url in sources) {
+                    val result = runInterruptible(Dispatchers.IO) { FlintSubscriptionImport.import(this@MainActivity, url) }
+                    manualProfiles = withContext(Dispatchers.IO) { profilesStore.merge(result.profiles, url) }
+                }
+                combineProfiles(); refreshLoads(); checkServers()
+                report("Подписки обновлены")
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { report("Не удалось обновить подписку. Сохранённые серверы доступны; попробуйте ещё раз.") }
+            finally { state = state.copy(refreshingServers = false); render() }
+        }
+    }
     override fun onProbe(initialize: Boolean) {
         if (!initialize) { checkServers(); scope.launch { runCatching { refreshLoads() } }; return }
         probeJob?.cancel()
