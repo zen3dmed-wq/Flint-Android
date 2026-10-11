@@ -1302,7 +1302,7 @@ void FlintController::preparePairing(const QString &requestId,const QString &sub
             const auto o=item.toObject();if(o.value("id").toString()==subscriptionId&&o.value("status").toString()=="active"){sub=o;break;}
         }
         const auto source=sub.value("subscriptionUrl").toString();
-        if(!validSubscriptionUrl(source)){emit pairingPrepared(requestId,{},QStringLiteral("Активная подписка не найдена"));return;}
+        if(!validSubscriptionUrl(source)||QUrl(source).scheme()!="https"){emit pairingPrepared(requestId,{},QStringLiteral("Активная подписка не найдена"));return;}
         new FlintSubscriptionFetch(this,QUrl(source),[this](const QByteArray &content){return !parseSubscriptionProfiles(content).isEmpty();},[this,requestId,sub,source,epoch](QByteArray content){
             if(epoch!=m_apiEpoch)return;
             const auto profiles=parseSubscriptionProfiles(content);
@@ -1317,7 +1317,7 @@ void FlintController::preparePairing(const QString &requestId,const QString &sub
 }
 bool FlintController::acceptPairing(const QVariantMap &payload) {
     const auto p=QJsonObject::fromVariantMap(payload);const auto source=p.value("subscriptionUrl").toString();const auto content=p.value("subscriptionContent").toString().toUtf8();
-    if(p.value("version").toInt()!=1||!validSubscriptionUrl(source)||source.size()>8192||content.size()>512*1024||!p.value("directSites").isArray()||p.value("directSites").toArray().size()>500||!p.value("automaticRouting").isBool())return false;
+    if(p.value("version").toInt()!=1||!validSubscriptionUrl(source)||QUrl(source).scheme()!="https"||source.size()>8192||content.size()>512*1024||!p.value("directSites").isArray()||p.value("directSites").toArray().size()>500||!p.value("automaticRouting").isBool())return false;
     const auto profiles=parseSubscriptionProfiles(content);if(profiles.isEmpty())return false;
     QVariantMap sites=m_settings->value("Conf/ExceptSites").toMap();
     for(const auto &site:p.value("directSites").toArray()){const auto value=site.toString();if(!site.isString()||FlintDirectSites::normalize(value)!=value)return false;sites.insert(value,QStringList{});}
