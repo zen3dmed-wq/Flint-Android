@@ -16,6 +16,7 @@ func main() {
 	upstream := flag.String("upstream", "https://flintmain.ru/api/v1", "authoritative HTTPS account API")
 	proxy := flag.Bool("trust-loopback-proxy", false, "trust overwritten X-Real-IP only from loopback reverse proxy")
 	apk := flag.String("android-apk", "", "public phone APK file for QR installation page")
+	windows := flag.String("windows-setup", "", "public universal Windows setup for QR installation page")
 	cert := flag.String("android-certificate-sha256", "", "colon-separated release certificate fingerprint for Android App Links")
 	ios := flag.String("ios-url", "", "HTTPS App Store or TestFlight URL, empty until published")
 	apple := flag.String("apple-application-id", "", "Apple Team ID.app.flint.vpn, empty until signed")
@@ -26,7 +27,7 @@ func main() {
 		os.Exit(1)
 	}
 	handler := pairing.New(auth, *proxy)
-	if err := handler.ConfigureDistribution(pairing.Distribution{AndroidAPK: *apk, IOSURL: *ios, AndroidCertificateSHA256: *cert, AppleApplicationID: *apple}); err != nil {
+	if err := handler.ConfigureDistribution(pairing.Distribution{AndroidAPK: *apk, WindowsSetup: *windows, IOSURL: *ios, AndroidCertificateSHA256: *cert, AppleApplicationID: *apple}); err != nil {
 		fmt.Fprintln(os.Stderr, "Invalid distribution configuration")
 		os.Exit(1)
 	}

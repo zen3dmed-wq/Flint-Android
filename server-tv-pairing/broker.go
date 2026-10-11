@@ -207,7 +207,7 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == Prefix+"capabilities" && r.Method == "GET" {
-		write(w, 200, map[string]any{"enabled": b.auth != nil, "version": 1, "platforms": []string{"android", "android-tv", "windows", "ios"}})
+		write(w, 200, map[string]any{"enabled": b.auth != nil, "version": 1, "ownerSharing": true, "installPage": true, "platforms": []string{"android", "android-tv", "windows", "ios"}})
 		return
 	}
 	if r.Method != "POST" {

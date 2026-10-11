@@ -70,6 +70,7 @@ public:
     Q_INVOKABLE bool acceptPairing(const QVariantMap &payload);
     Q_INVOKABLE QString takePairingLink() { auto s=m_pairingLink;m_pairingLink.clear();return s; }
     Q_INVOKABLE void handlePairingUrl(const QUrl &url);
+    Q_INVOKABLE void handleHttpsUrl(const QUrl &url);
     bool eventFilter(QObject *object,QEvent *event) override;
 
     bool loggedIn() const;

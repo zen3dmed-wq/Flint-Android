@@ -14,11 +14,12 @@
     .then(r => { if (!r.ok) throw new Error("unavailable"); return r.json(); })
     .then(config => {
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-      const value = isIOS ? config.iosUrl : config.androidUrl;
+      const isWindows=/Windows NT/.test(navigator.userAgent);
+      const value = isIOS ? config.iosUrl : isWindows ? config.windowsUrl : config.androidUrl;
       if (!value) { if(isIOS) hint.textContent = "Версия для iPhone требует подписи Apple и публикации владельцем Flint. Если она уже установлена, откройте подключение кнопкой выше."; return; }
       const url = new URL(value, location.origin);
       if (url.protocol !== "https:" || url.username || url.password) return;
       const download = document.getElementById("download");
-      download.href = url.href;download.textContent = isIOS ? "Установить Flint для iPhone" : "Скачать Flint для Android";download.hidden=false;
+      download.href = url.href;download.textContent = isIOS ? "Установить Flint для iPhone" : isWindows ? "Скачать установщик Flint для Windows" : "Скачать Flint для Android";download.hidden=false;
     }).catch(() => { hint.textContent += " Загрузка пока не настроена владельцем сервиса."; });
 })();

@@ -225,6 +225,7 @@ FlintController::FlintController(SecureQSettings *settings, QObject *parent)
     if (m_settings->value("Conf/flintHealthScope").toString() == subscriptionUrl()) m_health=m_settings->value("Conf/flintHealth").toMap();
     QCoreApplication::instance()->installEventFilter(this);
     QDesktopServices::setUrlHandler("flint",this,"handlePairingUrl");
+    QDesktopServices::setUrlHandler("https",this,"handleHttpsUrl");
     m_subscriptionActive = validSubscriptionUrl(subscriptionUrl());
     m_email = m_settings->value("Conf/flintEmail").toString();
     m_telegramUsername = m_settings->value("Conf/flintTelegramUsername").toString();
@@ -1279,6 +1280,17 @@ void FlintController::prepareExternalImport(const QString &value) {
 }
 void FlintController::commitExternalImport() {auto profiles=m_pendingManualProfiles;m_pendingManualProfiles.clear();if(!profiles.isEmpty())emit manualProfilesReady(profiles);}
 
+void FlintController::handleHttpsUrl(const QUrl &url) {
+    if (!FlintPairing::parse(url.toString(QUrl::FullyEncoded)).isEmpty()) {
+        handlePairingUrl(url);
+        return;
+    }
+    // Qt iOS delivers Universal Links through QDesktopServices. Other HTTPS
+    // links (login, payment, downloads) must still open in the system browser.
+    QDesktopServices::unsetUrlHandler("https");
+    QDesktopServices::openUrl(url);
+    QDesktopServices::setUrlHandler("https",this,"handleHttpsUrl");
+}
 void FlintController::handlePairingUrl(const QUrl &url) {
     const auto value=url.toString(QUrl::FullyEncoded);
     if(FlintPairing::parse(value).isEmpty())return;

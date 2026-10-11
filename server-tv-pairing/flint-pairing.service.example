@@ -1,5 +1,5 @@
 [Unit]
-Description=Flint TV QR pairing relay
+Description=Flint QR pairing and installation links
 After=network-online.target
 Wants=network-online.target
 
@@ -8,6 +8,8 @@ Type=simple
 User=flint-pairing
 Group=flint-pairing
 ExecStart=/opt/flint-pairing/flint-pairing-linux-amd64 -listen 127.0.0.1:8099 -upstream https://flintmain.ru/api/v1 -trust-loopback-proxy
+# Add -android-apk, -windows-setup and association flags from README.md
+# to enable public downloads and verified app links.
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true

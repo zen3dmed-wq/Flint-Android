@@ -78,8 +78,10 @@ def apply(root, bundle_id, team, render_icons=True):
          '                    break;\n                }\n            }\n\n            if (!m_currentTunnel)',
          '                    m_currentTunnel.localizedDescription = tunnelName.toNSString();\n'
          '                    break;\n                }\n            }\n\n            if (!m_currentTunnel)')
-    # Forward custom links delivered by both legacy and scene-based iOS lifecycle.
-    for rel, needle in [('client/platforms/ios/QtAppDelegate.mm','    if (url.fileURL) {'),('client/platforms/ios/AmneziaSceneDelegateHooks.mm','    if (!url || !url.isFileURL) {')]:
+    # The legacy delegate overrides Qt's implementation. Scene callbacks keep
+    # Qt 6.10's original handler, including cold-launch URLContexts and HTTPS
+    # NSUserActivity delivery, and must not deliver the same link twice.
+    for rel, needle in [('client/platforms/ios/QtAppDelegate.mm','    if (url.fileURL) {')]:
         p=root/rel;code=p.read_text(encoding='utf-8');code='#include <QCoreApplication>\n#include <QFileOpenEvent>\n#include <QUrl>\n'+code
         forwarding='''    if(url && [url.scheme isEqualToString:@"flint"]) {
         const QUrl link(QString::fromUtf8(url.absoluteString.UTF8String));

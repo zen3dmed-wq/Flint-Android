@@ -18,16 +18,19 @@ var connectFiles embed.FS
 // Optional, explicitly configured distribution. No existing website is edited.
 type Distribution struct {
 	AndroidAPK               string
+	WindowsSetup             string
 	IOSURL                   string
 	AndroidCertificateSHA256 string
 	AppleApplicationID       string // Apple Team ID + ".app.flint.vpn"; empty until signed.
 }
 
 func (b *Broker) ConfigureDistribution(config Distribution) error {
-	if config.AndroidAPK != "" {
-		f, e := os.Stat(config.AndroidAPK)
-		if e != nil || !f.Mode().IsRegular() || f.Size() == 0 || f.Size() > 300*1024*1024 {
-			return errors.New("invalid Android APK")
+	for _, path := range []string{config.AndroidAPK, config.WindowsSetup} {
+		if path != "" {
+			f, e := os.Stat(path)
+			if e != nil || !f.Mode().IsRegular() || f.Size() == 0 || f.Size() > 300*1024*1024 {
+				return errors.New("invalid public application file")
+			}
 		}
 	}
 	if config.IOSURL != "" {
@@ -55,7 +58,11 @@ func (b *Broker) webRequest(w http.ResponseWriter, r *http.Request) bool {
 		if b.distribution.AndroidAPK != "" {
 			android = "https://flintmain.ru" + Prefix + "download/android"
 		}
-		write(w, 200, map[string]any{"androidUrl": android, "iosUrl": b.distribution.IOSURL})
+		windows := ""
+		if b.distribution.WindowsSetup != "" {
+			windows = "https://flintmain.ru" + Prefix + "download/windows"
+		}
+		write(w, 200, map[string]any{"androidUrl": android, "windowsUrl": windows, "iosUrl": b.distribution.IOSURL})
 		return true
 	}
 	if path == Prefix+"download/android" {
@@ -68,6 +75,18 @@ func (b *Broker) webRequest(w http.ResponseWriter, r *http.Request) bool {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
 		http.ServeFile(w, r, b.distribution.AndroidAPK)
+		return true
+	}
+	if path == Prefix+"download/windows" {
+		if b.distribution.WindowsSetup == "" {
+			http.NotFound(w, r)
+			return true
+		}
+		w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
+		w.Header().Set("Content-Disposition", `attachment; filename="Flint-Setup.exe"`)
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
+		http.ServeFile(w, r, b.distribution.WindowsSetup)
 		return true
 	}
 	if path == "/.well-known/assetlinks.json" {
@@ -104,6 +123,9 @@ func (b *Broker) webRequest(w http.ResponseWriter, r *http.Request) bool {
 	} else if path == Prefix+"web/connect.css" {
 		file = "web/connect.css"
 		contentType = "text/css; charset=utf-8"
+	} else if path == Prefix+"web/flint-emblem.jpg" {
+		file = "web/flint-emblem.jpg"
+		contentType = "image/jpeg"
 	}
 	if file == "" {
 		return false
@@ -117,7 +139,7 @@ func (b *Broker) webRequest(w http.ResponseWriter, r *http.Request) bool {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
 	if r.Method == "GET" {
 		_, _ = w.Write(data)
 	}

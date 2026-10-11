@@ -47,4 +47,9 @@ assert 'if !protocolConfiguration.includeAllNetworks' in (root/'client/platforms
 assert 'FlintController.refreshServers();' in home
 assert 'autoConnectEnabled' in home and 'killSwitchEnabled' in home
 assert 'void FlintController::refreshServers()' in controller
+assert 'setUrlHandler("https",this,"handleHttpsUrl")' in controller
+assert 'QDesktopServices::unsetUrlHandler("https")' in controller
+assert v['CFBundleURLTypes'][0]['CFBundleURLSchemes'] == ['flint']
+assert plistlib.loads((root/'client/ios/app/main.entitlements').read_bytes())['com.apple.developer.associated-domains'] == ['applinks:flintmain.ru']
+assert 'g_originalSceneOpenURLContexts(self, _cmd, scene, contexts)' in (root/'client/platforms/ios/AmneziaSceneDelegateHooks.mm').read_text()
 print('iOS identity, shared API, tunnel sources, App Groups and capabilities checked')

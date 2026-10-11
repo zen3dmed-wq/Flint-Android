@@ -20,6 +20,9 @@ func (b *Broker) shareStart(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	if account.ID == "" {
+		return Fault{401, "unauthorized"}
+	}
 	var input struct {
 		Subscription string `json:"subscriptionId"`
 		Challenge    string `json:"claimChallenge"`

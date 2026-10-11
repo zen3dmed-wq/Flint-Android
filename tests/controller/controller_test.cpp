@@ -3,6 +3,7 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QRegularExpression>
+#include <QDesktopServices>
 #include "flintController.h"
 #include "flintDirectSites.h"
 #include "flintRouting.h"
@@ -29,6 +30,10 @@ private slots:
         QVERIFY(c.acceptPairing(payload));QCOMPARE(imported.size(),1);QVERIFY(!c.loggedIn());QVERIFY(c.subscriptionActive());
         QCOMPARE(c.subscriptionUrl(),QString("https://subscription.example.com/sub"));
         payload["subscriptionUrl"]="http://insecure.example/sub";QVERIFY(!c.acceptPairing(payload));
+        QSignalSpy received(&c,&FlintController::pairingLinkReceived);
+        QVERIFY(QDesktopServices::openUrl(QUrl(link)));
+        QCOMPARE(received.size(),1);
+        QCOMPARE(c.takePairingLink(),link);
     }
     void supportV1RoutesAndIdempotency() {
         QTemporaryDir dir; SecureQSettings settings(dir.filePath("support.ini"), QSettings::IniFormat);
