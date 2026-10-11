@@ -27,7 +27,7 @@ def apply(root, bundle_id, team, render_icons=True):
         p.write_text(s.replace(old, new), encoding='utf-8')
 
     group = 'group.' + bundle_id
-    edit('CMakeLists.txt', 'set(AMNEZIAVPN_VERSION 8.10.28 CACHE', 'set(AMNEZIAVPN_VERSION 8.10.28.2198 CACHE')
+    edit('CMakeLists.txt', 'set(AMNEZIAVPN_VERSION 8.10.29 CACHE', 'set(AMNEZIAVPN_VERSION 8.10.29.2199 CACHE')
     edit('cmake/platform_settings.cmake', 'set(CONAN_INSTALL_BUILD_CONFIGURATIONS Release Debug MinSizeRel RelWithDebInfo)',
          'set(CONAN_INSTALL_BUILD_CONFIGURATIONS ${CMAKE_CONFIGURATION_TYPES})')
     apple = 'client/cmake/branding/apple.cmake'
@@ -46,6 +46,8 @@ def apply(root, bundle_id, team, render_icons=True):
         values = plistlib.loads(p.read_bytes())
         values['com.apple.security.application-groups'] = [group]
         values['keychain-access-groups'] = ['$(AppIdentifierPrefix)' + group]
+        if rel.endswith('app/main.entitlements'):
+            values['com.apple.developer.associated-domains'] = ['applinks:flintmain.ru']
         values.pop('com.apple.security.files.user-selected.read-write', None)
         p.write_bytes(plistlib.dumps(values, sort_keys=False))
 
@@ -54,7 +56,8 @@ def apply(root, bundle_id, team, render_icons=True):
     values['CFBundleDisplayName'] = 'Flint'
     values['CFBundleName'] = 'Flint'
     values['NSCameraUsageDescription'] = 'Flint использует камеру только для сканирования QR-кода подключения.'
-    values['LSApplicationQueriesSchemes'] = ['tg']
+    values['LSApplicationQueriesSchemes'] = ['tg','flint']
+    values['CFBundleURLTypes'] = [{'CFBundleURLName':bundle_id+'.connect','CFBundleURLSchemes':['flint'],'CFBundleTypeRole':'Editor'}]
     values['UIUserInterfaceStyle'] = 'Dark'
     p.write_bytes(plistlib.dumps(values, sort_keys=False))
     p = root / 'client/ios/networkextension/Info.plist.in'
@@ -75,11 +78,23 @@ def apply(root, bundle_id, team, render_icons=True):
          '                    break;\n                }\n            }\n\n            if (!m_currentTunnel)',
          '                    m_currentTunnel.localizedDescription = tunnelName.toNSString();\n'
          '                    break;\n                }\n            }\n\n            if (!m_currentTunnel)')
+    # Forward custom links delivered by both legacy and scene-based iOS lifecycle.
+    for rel, needle in [('client/platforms/ios/QtAppDelegate.mm','    if (url.fileURL) {'),('client/platforms/ios/AmneziaSceneDelegateHooks.mm','    if (!url || !url.isFileURL) {')]:
+        p=root/rel;code=p.read_text(encoding='utf-8');code='#include <QCoreApplication>\n#include <QFileOpenEvent>\n#include <QUrl>\n'+code
+        forwarding='''    if(url && [url.scheme isEqualToString:@"flint"]) {
+        const QUrl link(QString::fromUtf8(url.absoluteString.UTF8String));
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+            QFileOpenEvent event(link);QCoreApplication::sendEvent(QCoreApplication::instance(),&event);
+        });
+'''
+        forwarding += '        return YES;\n    }\n' if 'QtAppDelegate' in rel else '        return;\n    }\n'
+        if needle not in code:raise RuntimeError('URL delegate anchor changed: '+rel)
+        p.write_text(code.replace(needle,forwarding+needle),encoding='utf-8')
     apply_connection_policy(root)
     # Each platform identifies itself correctly to the configurable account API.
     edit('client/ui/controllers/flintController.cpp', '"android"', '"ios"')
     edit('client/ui/controllers/flintController.cpp', '"android/"', '"ios/"')
-    edit('client/ui/qml/Pages2/PageHome.qml', 'Flint Android 8.10.28', 'Flint iOS 8.10.28')
+    edit('client/ui/qml/Pages2/PageHome.qml', 'Flint Android 8.10.29', 'Flint iOS 8.10.29')
     edit('client/ui/qml/Pages2/PageHome.qml', 'import Style 1.0', 'import Style 1.0\nimport PageEnum 1.0')
     edit('client/ui/qml/Pages2/PageHome.qml', '        ImportController.startDecodingQr()',
          '        ImportController.startDecodingQr()\n        PageController.goToPage(PageEnum.PageSetupWizardQrReader)')

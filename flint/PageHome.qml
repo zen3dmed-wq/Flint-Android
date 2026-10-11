@@ -43,7 +43,7 @@ PageType {
     property color warning: "#FFC56D"
     FlintAccount { id: servicePopup; parent: root }
     FlintIdentity { id: identityPopup; parent: root }
-    FlintDevices { id: devicesPopup; parent: root; onAddDeviceRequested: familyQrPopup.open() }
+    FlintDevices { id: devicesPopup; parent: root; onAddDeviceRequested: pairingPopup.owner(devicesPopup.subscriptionId) }
     FlintSites { id: sitesPopup; parent: root; onRoutingEdited: root.requestRoutingApply() }
     FlintSubscriptions { id: subscriptionsPopup; parent: root }
     FlintUpdates { id: updatesPopup; parent: root }
@@ -79,7 +79,7 @@ PageType {
         traceConnection("REQUESTED")
     }
     function connectionReport() {
-        return "Flint 8.10.28 / 2198\nmode=" + (autoConnection ? "auto" : "manual") +
+        return "Flint 8.10.29 / 2199\nmode=" + (autoConnection ? "auto" : "manual") +
             "\nruDirect=" + FlintController.ruDirectEnabled + "\ncore.error=" + lastConnectionError +
             "\n" + connectionEvents.join("\n") + "\n" + (lastNativeAttempt || FlintController.vpnDiagnostics())
     }
@@ -325,6 +325,7 @@ PageType {
             id: sourceColumn; spacing: 12
             Text { text: "Добавить по QR-коду"; color: root.ink; font.bold: true; font.pixelSize: 20; Layout.fillWidth: true; wrapMode: Text.Wrap }
             FlintButton { Layout.fillWidth: true; text: "Сканировать камерой"; onClicked: { qrSourcePopup.close(); root.scanQr() } }
+            FlintButton { Layout.fillWidth:true;text:"Получить настройки по QR";onClicked:{qrSourcePopup.close();pairingPopup.receiver()} }
             FlintButton { objectName: "qrImageSourceButton"; Layout.fillWidth: true; text: "Выбрать изображение"; onClicked: { qrSourcePopup.close(); qrImagePicker.open() } }
             FlintButton { Layout.fillWidth: true; text: "Отмена"; subtle: true; onClicked: qrSourcePopup.close() }
         }
@@ -336,6 +337,7 @@ PageType {
         var value = importText.text.trim()
         if (!value) { importError = "Вставьте ключ подключения."; return }
         externalImportCount = 0
+        if (pairingPopup.invite(value)) { importPopup.close(); return }
         if (/^https:\/\//i.test(value)) { importBusy=true; FlintController.prepareExternalImport(value); return }
         if (ImportController.extractConfigFromData(value)) {
             importReady = true
@@ -416,68 +418,15 @@ PageType {
         if(event.key === Qt.Key_Down || event.key === Qt.Key_Right) event.accepted = moveHomeFocus(1)
         else if(event.key === Qt.Key_Up || event.key === Qt.Key_Left) event.accepted = moveHomeFocus(-1)
     }
-    function startTvPairing() {
-        if (FlintController.loggedIn) { beginConnect(); return }
-        tvPairWaiting = true; tvPairReceivedLogin = false; tvPairMessage = ""
-        telegramRequested = false
-        tvPairPopup.open()
-        FlintController.startTelegramLogin()
-    }
-    function finishTvPairing() {
-        if(!tvPairWaiting || !tvPairReceivedLogin || !FlintController.loggedIn || !FlintController.subscriptionActive || !FlintController.subscriptionUrl) return
-        tvPairWaiting = false; tvPairTimer.stop(); tvPairPopup.close()
-        FlintController.selectedCountry = "AUTO"
-        connectionFailed = false; cancellingConnection = false; lastConnectionError = -1
-        resetConnectionDiagnostics()
-        connectRequested = true; autoConnection = true; awaitingProfile = true
-        FlintController.importSubscription()
-    }
-    Timer {
-        id: tvPairTimer; interval: 45000
-        onTriggered: { root.tvPairWaiting = false; root.tvPairMessage = "Вход выполнен, но активная подписка пока не получена. Проверьте тариф или повторите обновление." }
-    }
-    Connections {
-        target: FlintController
-        function onAuthChanged() {
-            if(root.tvPairWaiting && FlintController.loggedIn) {
-                root.tvPairReceivedLogin = true; tvPairTimer.restart()
-            }
-        }
-        function onSubscriptionChanged() { root.finishTvPairing() }
-    }
-    Popup {
-        id: tvPairPopup
-        Shortcut { sequence: "Back"; enabled: tvPairPopup.activeFocus; onActivated: tvPairPopup.close() }
- objectName: "tvPairPopup"; parent: root
-        onOpened: Qt.callLater(function() { FlintFocus.firstButton(tvPairPopup.contentItem) })
-        width: Math.min(root.width - 32, 560); height: Math.min(root.height - 24, 690)
-        anchors.centerIn: parent; padding: 22; modal: true; focus: true
-        background: Rectangle { radius: 24; color: "#081827"; border.color: root.line }
-        onClosed: { root.tvPairWaiting = false; tvPairTimer.stop() }
-        contentItem: ColumnLayout {
-        property bool flintFocusScope: true
-            spacing: 14
-            Text { text: "Подключить телевизор"; color: root.ink; font.pixelSize: 25; font.bold: true; Layout.fillWidth: true; wrapMode: Text.Wrap }
-            Text { text: "Сканируйте QR камерой телефона и подтвердите вход в Telegram. После этого телевизор подключится по вашей подписке."; color: root.muted; Layout.fillWidth: true; wrapMode: Text.Wrap }
-            Rectangle {
-                Layout.fillWidth: true; Layout.fillHeight: true; Layout.minimumHeight: 90
-                color: "white"; radius: 18
-                Image {
-                    anchors.fill: parent; anchors.margins: 18; fillMode: Image.PreserveAspectFit
-                    source: root.tvPairWaiting && !root.tvPairReceivedLogin && FlintController.telegramPending && FlintController.telegramBotUrl ? MtProxyConfigModel.generateQrCode(FlintController.telegramBotUrl) : ""
-                }
-                Text { anchors.centerIn: parent; text: root.tvPairReceivedLogin ? "Получаем подписку…" : "Готовим QR…"; color: "#142E40"; visible: root.tvPairReceivedLogin || !FlintController.telegramPending }
-            }
-            Text { Layout.fillWidth: true; wrapMode: Text.Wrap; color: root.warning; text: root.tvPairMessage || FlintController.lastError }
-            Text { Layout.fillWidth: true; wrapMode: Text.Wrap; color: root.muted; text: "При первом подключении разрешите VPN в системном окне на телевизоре."; font.pixelSize: 12 }
-            RowLayout {
-                Layout.fillWidth: true
-                FlintButton { Layout.fillWidth: true; text: "Новый QR"; onClicked: root.startTvPairing() }
-                FlintButton { Layout.fillWidth: true; text: "Закрыть"; onClicked: tvPairPopup.close() }
-            }
-        }
-    }
-
+    function startTvPairing() { pairingPopup.receiver() }
+    FlintPairing { id:pairingPopup;parent:root;onReceived:{
+        if(ConnectionController.isConnected || root.connectionPending){PageController.showNotificationMessage("Настройки добавлены. Выберите новый сервер в «Локациях».");return}
+        FlintController.selectedCountry="AUTO"
+        root.connectionFailed=false;root.cancellingConnection=false;root.lastConnectionError=-1;root.resetConnectionDiagnostics()
+        root.connectRequested=true;root.autoConnection=true;root.awaitingProfile=true;FlintController.importSubscription()
+    }}
+    Connections {target:FlintController;function onPairingLinkReceived(){var link=FlintController.takePairingLink();if(link)pairingPopup.invite(link)}}
+    Timer {interval:100;running:true;onTriggered:{var link=FlintController.takePairingLink();if(link)pairingPopup.invite(link)}}
     Popup {
         id: diagnosticsPopup
         objectName: "connectionDiagnosticsPopup"
@@ -1535,93 +1484,6 @@ PageType {
     }
 
     Popup {
-        id: familyQrPopup
-        Shortcut { sequence: "Back"; enabled: familyQrPopup.activeFocus; onActivated: familyQrPopup.close() }
-        onOpened: Qt.callLater(function() { FlintFocus.firstButton(familyQrPopup.contentItem) })
-        x: Math.round((root.width - width) / 2)
-        y: Math.round((root.height - height) / 2)
-        width: Math.min(root.width - 28, 430)
-        height: Math.min(root.height * 0.72, 560)
-        modal: true
-        focus: true
-
-        background: Rectangle {
-            radius: 23
-            color: "#FC081827"
-            border.width: 1
-            border.color: root.line
-        }
-
-        contentItem: ColumnLayout {
-        property bool flintFocusScope: true
-            spacing: 9
-
-            Text {
-                Layout.fillWidth: true
-                text: "Добавить устройство"
-                color: root.ink
-                font.pixelSize: 21
-                font.bold: true
-                horizontalAlignment: Text.AlignHCenter
-            }
-
-            Text {
-                Layout.fillWidth: true
-                text: "Отсканируйте QR на своём телефоне, планшете или телевизоре."
-                color: root.muted
-                font.pixelSize: 11
-                wrapMode: Text.Wrap
-                horizontalAlignment: Text.AlignHCenter
-            }
-
-            Rectangle {
-                Layout.preferredWidth: Math.min(familyQrPopup.width - 70, 310)
-                Layout.preferredHeight: Layout.preferredWidth
-                Layout.alignment: Qt.AlignHCenter
-                radius: 18
-                color: "white"
-                visible: FlintController.subscriptionUrl.length > 0
-
-                Image {
-                    anchors.fill: parent
-                    anchors.margins: 12
-                    source: FlintController.subscriptionUrl.length > 0
-                          ? MtProxyConfigModel.generateQrCode(FlintController.subscriptionUrl)
-                          : ""
-                    fillMode: Image.PreserveAspectFit
-                    cache: false
-                }
-            }
-
-            Text {
-                Layout.fillWidth: true
-                text: "QR содержит секретную ссылку подписки Flint. Не отправляйте его посторонним."
-                color: root.warning
-                font.pixelSize: 11
-                wrapMode: Text.Wrap
-                horizontalAlignment: Text.AlignHCenter
-            }
-
-            Text {
-                Layout.fillWidth: true
-                text: "Это общий ключ подписки. Устройства с этим ключом нельзя отключить по отдельности."
-                color: root.muted
-                font.pixelSize: 11
-                wrapMode: Text.Wrap
-                horizontalAlignment: Text.AlignHCenter
-            }
-
-            Item { Layout.fillHeight: true }
-
-            FlintButton {
-                text: "Закрыть"
-                Layout.alignment: Qt.AlignHCenter
-                onClicked: familyQrPopup.close()
-            }
-        }
-    }
-
-    Popup {
         id: settingsPopup
         Shortcut { sequence: "Back"; enabled: settingsPopup.activeFocus; onActivated: settingsPopup.close() }
         onOpened: Qt.callLater(function() { FlintFocus.firstButton(settingsPopup.contentItem) })
@@ -1679,7 +1541,7 @@ PageType {
                 text: "Применяются при следующем подключении. Автоподключение использует системный VPN по требованию."
             }
 
-            Text { text: "Flint Android 8.10.28"; color: root.muted }
+            Text { text: "Flint Android 8.10.29"; color: root.muted }
             FlintButton {
                 Layout.fillWidth: true
                 text: "Диагностика подключения"

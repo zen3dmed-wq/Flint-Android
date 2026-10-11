@@ -4,6 +4,7 @@
 
 #include <QObject>
 #include "flintBalance.h"
+#include "flintPairingCodec.h"
 #include <QVariantList>
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
@@ -60,6 +61,17 @@ public:
     void setAutoConnectEnabled(bool enabled);
     void setKillSwitchEnabled(bool enabled);
     Q_INVOKABLE void refreshServers();
+    Q_INVOKABLE QVariantMap newPairingState() const { return FlintPairing::state(); }
+    Q_INVOKABLE QVariantMap parsePairingLink(const QString &link) const { return FlintPairing::parse(link); }
+    Q_INVOKABLE QVariantMap sealPairing(const QString &id,const QString &key,const QVariantMap &payload) const { return FlintPairing::seal(id,key,payload); }
+    Q_INVOKABLE QVariantMap openPairing(const QString &id,const QString &key,const QVariantMap &envelope) const { return FlintPairing::open(id,key,envelope); }
+    Q_INVOKABLE QVariantMap pairingDevice() { ensureDeviceId(); return QJsonDocument::fromJson(deviceJson()).object().toVariantMap(); }
+    Q_INVOKABLE void preparePairing(const QString &requestId,const QString &subscriptionId);
+    Q_INVOKABLE bool acceptPairing(const QVariantMap &payload);
+    Q_INVOKABLE QString takePairingLink() { auto s=m_pairingLink;m_pairingLink.clear();return s; }
+    Q_INVOKABLE void handlePairingUrl(const QUrl &url);
+    bool eventFilter(QObject *object,QEvent *event) override;
+
     bool loggedIn() const;
     QString email() const { return m_email; }
     QString telegramUsername() const { return m_telegramUsername; }
@@ -130,6 +142,8 @@ public slots:
     void askAssist(const QString &message);
 
 signals:
+    void pairingPrepared(const QString &requestId,const QVariantMap &payload,const QString &error);
+    void pairingLinkReceived();
     void connectionPolicyChanged();
     void externalImportPrepared(int count, const QString &error);
     void manualProfilesReady(const QStringList &profiles);
@@ -159,6 +173,7 @@ signals:
     void qrImageDecoded(const QString &requestId, const QString &text, const QString &error);
 
 private:
+    QString m_pairingLink;
     bool m_russianRoutingInitialized = false;
     void runServerHealth(bool initialize);
     QString healthKey(const QString &key) const;

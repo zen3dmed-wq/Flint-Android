@@ -1,3 +1,6 @@
+#include <QCoreApplication>
+#include <QFileOpenEvent>
+#include <QDesktopServices>
 #include "flintController.h"
 #include "flintSubscriptionFetch.h"
 #include "flintDirectSites.h"
@@ -123,7 +126,7 @@ void FlintController::requestHomeWidget()
 
 namespace {
 const QString kApiBase = QStringLiteral("https://flintmain.ru/api/v1");
-const QString kVersion = QStringLiteral("8.10.28");
+const QString kVersion = QStringLiteral("8.10.29");
 
 bool isProfileUri(const QString &s)
 {
@@ -220,6 +223,8 @@ FlintController::FlintController(SecureQSettings *settings, QObject *parent)
     m_subscriptions = QJsonDocument::fromJson(m_settings->value("Conf/flintSubscriptions").toByteArray()).array().toVariantList();
     ensureDeviceId();
     if (m_settings->value("Conf/flintHealthScope").toString() == subscriptionUrl()) m_health=m_settings->value("Conf/flintHealth").toMap();
+    QCoreApplication::instance()->installEventFilter(this);
+    QDesktopServices::setUrlHandler("flint",this,"handlePairingUrl");
     m_subscriptionActive = validSubscriptionUrl(subscriptionUrl());
     m_email = m_settings->value("Conf/flintEmail").toString();
     m_telegramUsername = m_settings->value("Conf/flintTelegramUsername").toString();
@@ -358,13 +363,13 @@ QString FlintController::newRequestKey() const { return QUuid::createUuid().toSt
 
 QVariantMap FlintController::clientDraft(const QString &name) const
 {
-    if (name != "purchase" && name != "support") return {};
+    if (name != "purchase" && name != "support" && name != "pairing") return {};
     return QJsonDocument::fromJson(m_settings->value("Conf/flintDraft/" + name).toByteArray()).object().toVariantMap();
 }
 
 void FlintController::saveClientDraft(const QString &name, const QVariantMap &value)
 {
-    if (name != "purchase" && name != "support") return;
+    if (name != "purchase" && name != "support" && name != "pairing") return;
     const QString key = "Conf/flintDraft/" + name;
     if (value.isEmpty()) m_settings->remove(key);
     else m_settings->setValue(key, QJsonDocument(QJsonObject::fromVariantMap(value)).toJson(QJsonDocument::Compact));
@@ -379,12 +384,13 @@ void FlintController::accountRequest(const QString &id, const QString &method, c
     static const QRegularExpression sessionDelete(QStringLiteral("^/me/sessions/[A-Za-z0-9_-]{1,128}$"));
     static const QRegularExpression supportGet(QStringLiteral("^/support/(categories|tickets(\\?(status=(all|open|closed)))?|tickets/[A-Za-z0-9_-]{1,128}(\\?afterMessageId=[A-Za-z0-9_-]{1,128})?)$"));
     static const QRegularExpression supportPost(QStringLiteral("^/support/tickets(/[A-Za-z0-9_-]{1,128}/(messages|read|close|rating))?$"));
+    const bool isPairing = QRegularExpression("^/devices/pairing/(start|inspect|approve|complete|ack|cancel|share/(start|claim|cancel))$").match(path).hasMatch() && method=="POST";
     const bool isSupport = path.startsWith("/support/");
     const bool supportAllowed = (method == "GET" && supportGet.match(path).hasMatch()) || (method == "POST" && supportPost.match(path).hasMatch());
     const bool isSession = sessionDelete.match(path).hasMatch();
     const bool isIdentity = path == "/me/email-login" || path == "/me/telegram/bot/start" || path == "/me/telegram/bot/complete";
     if (isIdentity && method != "POST") { emit accountResponse(id, 400, {}, QStringLiteral("Операция API не поддерживается")); return; }
-    if ((isSupport ? !supportAllowed : !allowed.match(path).hasMatch()) || (isSession && method != "DELETE") || (method != "GET" && method != "POST" && !(method == "DELETE" && (deviceDelete.match(path).hasMatch() || isSession)))) {
+    if ((!isPairing && (isSupport ? !supportAllowed : !allowed.match(path).hasMatch())) || (isSession && method != "DELETE") || (method != "GET" && method != "POST" && !(method == "DELETE" && (deviceDelete.match(path).hasMatch() || isSession)))) {
         emit accountResponse(id, 400, {}, QStringLiteral("Операция API не поддерживается")); return;
     }
     if (method == "POST" && (path == "/orders" || path == "/support/tickets" || (isSupport && path.endsWith("/messages"))) && key.isEmpty()) {
@@ -414,7 +420,8 @@ void FlintController::accountRequest(const QString &id, const QString &method, c
 void FlintController::accountRequestImpl(const QString &id, const QString &method, const QString &path,
                                          const QVariantMap &body, const QString &key, bool retry)
 {
-    const bool authorized = path != "/config";
+    const bool publicPairing = QRegularExpression("^/devices/pairing/(start|complete|ack|cancel|share/claim)$").match(path).hasMatch();
+    const bool authorized = path != "/config" && !publicPairing;
     if (authorized && !loggedIn()) { emit accountResponse(id, 401, {}, QStringLiteral("Войдите в аккаунт Flint")); return; }
     auto request = apiRequest(path, authorized);
     if (!key.isEmpty()) request.setRawHeader("Idempotency-Key", key.toUtf8());
@@ -1271,6 +1278,62 @@ void FlintController::prepareExternalImport(const QString &value) {
     });
 }
 void FlintController::commitExternalImport() {auto profiles=m_pendingManualProfiles;m_pendingManualProfiles.clear();if(!profiles.isEmpty())emit manualProfilesReady(profiles);}
+
+void FlintController::handlePairingUrl(const QUrl &url) {
+    const auto value=url.toString(QUrl::FullyEncoded);
+    if(FlintPairing::parse(value).isEmpty())return;
+    if(m_pairingLink==value)return;
+    m_pairingLink=value;emit pairingLinkReceived();
+}
+bool FlintController::eventFilter(QObject *object,QEvent *event) {
+    if(event->type()==QEvent::FileOpen) {
+        const auto url=static_cast<QFileOpenEvent*>(event)->url();
+        if(!FlintPairing::parse(url.toString(QUrl::FullyEncoded)).isEmpty()){handlePairingUrl(url);return true;}
+    }
+    return QObject::eventFilter(object,event);
+}
+void FlintController::preparePairing(const QString &requestId,const QString &subscriptionId) {
+    const int epoch=m_apiEpoch;
+    authorizedGet("/subscriptions",[this,requestId,subscriptionId,epoch](int status,const QByteArray &raw,const QString &error){
+        if(epoch!=m_apiEpoch)return;
+        if(status!=200){emit pairingPrepared(requestId,{},error.isEmpty()?QStringLiteral("Не удалось проверить подписку"):error);return;}
+        QJsonObject sub;
+        for(const auto &item:QJsonDocument::fromJson(raw).object().value("items").toArray()) {
+            const auto o=item.toObject();if(o.value("id").toString()==subscriptionId&&o.value("status").toString()=="active"){sub=o;break;}
+        }
+        const auto source=sub.value("subscriptionUrl").toString();
+        if(!validSubscriptionUrl(source)){emit pairingPrepared(requestId,{},QStringLiteral("Активная подписка не найдена"));return;}
+        new FlintSubscriptionFetch(this,QUrl(source),[this](const QByteArray &content){return !parseSubscriptionProfiles(content).isEmpty();},[this,requestId,sub,source,epoch](QByteArray content){
+            if(epoch!=m_apiEpoch)return;
+            const auto profiles=parseSubscriptionProfiles(content);
+            if(profiles.isEmpty()){emit pairingPrepared(requestId,{},QStringLiteral("Не удалось получить серверы подписки"));return;}
+            QJsonArray sites;const auto custom=m_settings->value("Conf/ExceptSites").toMap();
+            for(auto it=custom.begin();it!=custom.end();++it)if(!FlintDirectSites::normalize(it.key()).isEmpty())sites.append(FlintDirectSites::normalize(it.key()));
+            auto policy=QJsonDocument::fromJson(m_settings->value("Conf/flintRouting").toByteArray()).object();if(!FlintRouting::valid(policy))policy=FlintRouting::defaults();
+            QJsonObject payload{{"version",1},{"subscriptionContent",profiles.join('\n')},{"subscriptionUrl",source},{"title",sub.value("plan").toObject().value("name").toString().left(120)},{"directSites",sites},{"automaticRouting",automaticRoutingEnabled()},{"russianPolicy",policy}};
+            emit pairingPrepared(requestId,payload.toVariantMap(),{});
+        });
+    });
+}
+bool FlintController::acceptPairing(const QVariantMap &payload) {
+    const auto p=QJsonObject::fromVariantMap(payload);const auto source=p.value("subscriptionUrl").toString();const auto content=p.value("subscriptionContent").toString().toUtf8();
+    if(p.value("version").toInt()!=1||!validSubscriptionUrl(source)||source.size()>8192||content.size()>512*1024||!p.value("directSites").isArray()||p.value("directSites").toArray().size()>500||!p.value("automaticRouting").isBool())return false;
+    const auto profiles=parseSubscriptionProfiles(content);if(profiles.isEmpty())return false;
+    QVariantMap sites=m_settings->value("Conf/ExceptSites").toMap();
+    for(const auto &site:p.value("directSites").toArray()){const auto value=site.toString();if(!site.isString()||FlintDirectSites::normalize(value)!=value)return false;sites.insert(value,QStringList{});}
+    const auto policy=p.value("russianPolicy").toObject();if(!policy.isEmpty()&&!FlintRouting::valid(policy))return false;
+    m_settings->setValue("Conf/ExceptSites",sites);
+    m_settings->setValue("Conf/flintSubscriptionUrl",source);
+    m_settings->setValue("Conf/flintCachedProfilesUrl",source);
+    m_settings->setValue("Conf/flintCachedProfiles",content);
+    m_settings->setValue("Conf/flintAutomaticRouting",p.value("automaticRouting").toBool());
+    m_settings->setValue("Conf/sitesSplitTunnelingEnabled",true);
+    if(!policy.isEmpty())m_settings->setValue("Conf/flintRouting",QJsonDocument(policy).toJson(QJsonDocument::Compact));
+    m_settings->setValue("Conf/flintSelectedCountry","AUTO");
+    m_settings->remove("Conf/flintSelectedSavedServerId");
+    m_subscriptionActive=true;updateCountriesFromProfiles(profiles);
+    emit manualProfilesReady(profiles);emit subscriptionChanged();emit routingChanged();emit ruDirectEnabledChanged();return true;
+}
 
 void FlintController::askAssist(const QString &message)
 {

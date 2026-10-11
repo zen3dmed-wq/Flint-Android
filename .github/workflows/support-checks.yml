@@ -10,5 +10,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update -qq && sudo apt-get install -y qt6-base-dev cmake ninja-build
+      - run: sudo apt-get update -qq && sudo apt-get install -y qt6-base-dev libssl-dev cmake ninja-build
       - run: cmake -S tests/controller -B /tmp/support-checks -G Ninja && cmake --build /tmp/support-checks && ctest --test-dir /tmp/support-checks --output-on-failure

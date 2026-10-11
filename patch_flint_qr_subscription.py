@@ -12,7 +12,7 @@ def apply(root: Path):
     anchor='bool ImportUiController::parseQrCodeChunk(const QString &code)\n{'
     assert anchor in text
     text=text.replace(anchor,anchor+'''
-    if(code.trimmed().startsWith("https://",Qt::CaseInsensitive)) {
+    if(code.trimmed().startsWith("https://",Qt::CaseInsensitive) || code.trimmed().startsWith("flint://pair") || code.trimmed().startsWith("flint://connect/")) {
         emit flintSubscriptionQr(code.trimmed());
         stopDecodingQr();
         return true;
