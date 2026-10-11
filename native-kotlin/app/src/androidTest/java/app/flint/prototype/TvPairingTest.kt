@@ -21,12 +21,13 @@ class TvPairingTest {
         context.getSharedPreferences("flint-token-vault",0).edit().clear().commit()
         try {
             ActivityScenario.launch<PairingHarnessActivity>(Intent(context,PairingHarnessActivity::class.java)).use {
-                UiTestSupport.awaitWindowContaining("Ожидаем подтверждения на телефоне")
+                UiTestSupport.awaitWindowContaining("Ожидаем подтверждения на другом устройстве")
                 val bitmap=inst.uiAutomation.takeScreenshot()!!
                 val pixels=IntArray(bitmap.width*bitmap.height);bitmap.getPixels(pixels,0,bitmap.width,0,0,bitmap.width,bitmap.height)
                 val qr=MultiFormatReader().decode(BinaryBitmap(HybridBinarizer(RGBLuminanceSource(bitmap.width,bitmap.height,pixels))),
                     mapOf(DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE),DecodeHintType.TRY_HARDER to true)).text
                 assertTrue(qr.startsWith("flint://pair?"));assertFalse(qr.contains("t.me"))
+                assertEquals("android",PairingFixture.receiverPlatform)
                 // ActivityScenario clears the target task. Model the phone in a
                 // separate task so launching it does not destroy the fake TV.
                 ActivityScenario.launch<PairingHarnessActivity>(Intent(context,PairingHarnessActivity::class.java)
@@ -55,7 +56,7 @@ class TvPairingTest {
     @Test fun missingServerMethodExplainsDependencyWithoutOpeningTelegram() {
         PairingFixture.reset()
         ActivityScenario.launch<PairingHarnessActivity>(Intent(UiTestSupport.instrumentation.targetContext,PairingHarnessActivity::class.java).putExtra("missing",true)).use {
-            UiTestSupport.awaitWindowContaining("Добавление ТВ без Telegram ещё не включено на сервере Flint.")
+            UiTestSupport.awaitWindowContaining("Передача настроек по QR ещё не включена на сервере Flint.")
             assertEquals(listOf("/devices/pairing/start"),PairingFixture.requests.map {it.first})
             assertEquals(0,PairingFixture.connected.get())
         }
@@ -66,7 +67,7 @@ class TvPairingTest {
         PairingFixture.reset();PairingFixture.holdAck=true
         try {
             ActivityScenario.launch<PairingHarnessActivity>(Intent(context,PairingHarnessActivity::class.java)).use { scenario ->
-                UiTestSupport.awaitWindowContaining("Ожидаем подтверждения на телефоне")
+                UiTestSupport.awaitWindowContaining("Ожидаем подтверждения на другом устройстве")
                 val bitmap=inst.uiAutomation.takeScreenshot()!!
                 val pixels=IntArray(bitmap.width*bitmap.height);bitmap.getPixels(pixels,0,bitmap.width,0,0,bitmap.width,bitmap.height)
                 val qr=MultiFormatReader().decode(BinaryBitmap(HybridBinarizer(RGBLuminanceSource(bitmap.width,bitmap.height,pixels))),

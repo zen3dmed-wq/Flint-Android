@@ -27,7 +27,8 @@ import java.util.UUID
 
 /** Each Qt popup remains a separate screen; no purchase/support tabs in settings. */
 class AccountScreens(private val activity: Activity, private val api: FlintAccount,
-                     private val scope: CoroutineScope, private val changed: suspend (Boolean) -> Unit) {
+                     private val scope: CoroutineScope, private val shareDevice: ((JSONObject) -> Unit)? = null,
+                     private val changed: suspend (Boolean) -> Unit) {
     private val s = FlintStyle(activity)
     private val panels = mutableListOf<FlintStyle.Panel>()
     private val polls = mutableMapOf<FlintStyle.Panel, Job>()
@@ -425,6 +426,7 @@ class AccountScreens(private val activity: Activity, private val api: FlintAccou
         }
     }
     fun shareSubscription(sub: JSONObject) {
+        if (shareDevice != null) { shareDevice.invoke(sub); return }
         val url = sub.string("subscriptionUrl")
         val p = panel("Добавить устройство")
         if (url.isBlank()) { p.error("У этой подписки пока нет ссылки подключения."); return }

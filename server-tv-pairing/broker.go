@@ -1,4 +1,4 @@
-// Package pairing provides the isolated TV rendezvous handlers. It does not
+// Package pairing provides the isolated cross-platform device rendezvous handlers. It does not
 // issue account tokens or make any changes to the existing Flint API/database.
 package pairing
 
@@ -20,6 +20,15 @@ import (
 
 const Prefix = "/api/v1/devices/pairing/"
 const Lifetime = 5 * time.Minute
+
+func supportedPlatform(value string) bool {
+	switch value {
+	case "android", "android-tv", "windows", "ios":
+		return true
+	}
+	return false
+}
+
 const MaxCiphertext = 512*1024 + 16
 
 var identifier = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
@@ -53,6 +62,8 @@ type Fault struct {
 func (f Fault) Error() string { return f.Code }
 
 type entry struct {
+	senderInitiated                   bool
+	shareChallenge                    string
 	challenge                         string
 	device                            Device
 	expires                           time.Time
@@ -67,6 +78,7 @@ type rateBucket struct {
 	count int
 }
 type Broker struct {
+	distribution       Distribution
 	mu                 sync.Mutex
 	sessions           map[string]*entry
 	rates              map[string]rateBucket
@@ -191,8 +203,11 @@ func body(w http.ResponseWriter, r *http.Request, value any) error {
 	return nil
 }
 func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if b.webRequest(w, r) {
+		return
+	}
 	if r.URL.Path == Prefix+"capabilities" && r.Method == "GET" {
-		write(w, 200, map[string]any{"enabled": b.auth != nil, "version": 1})
+		write(w, 200, map[string]any{"enabled": b.auth != nil, "version": 1, "platforms": []string{"android", "android-tv", "windows", "ios"}})
 		return
 	}
 	if r.Method != "POST" {
@@ -211,6 +226,12 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		err = b.inspect(w, r)
 	case Prefix + "approve":
 		err = b.approve(w, r)
+	case Prefix + "share/start":
+		err = b.shareStart(w, r)
+	case Prefix + "share/claim":
+		err = b.shareClaim(w, r)
+	case Prefix + "share/cancel":
+		err = b.shareCancel(w, r)
 	case Prefix + "complete", Prefix + "ack", Prefix + "cancel":
 		err = b.deviceRequest(w, r)
 	default:
@@ -232,7 +253,7 @@ func (b *Broker) start(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	d := input.Device
-	if !validID(input.Challenge) || d.Platform != "android-tv" || d.ID == "" || len(d.ID) > 128 || d.Model == "" || len(d.Model) > 120 || len(d.OS) > 40 || len(d.Version) > 32 {
+	if !validID(input.Challenge) || !supportedPlatform(d.Platform) || d.ID == "" || len(d.ID) > 128 || d.Model == "" || len(d.Model) > 120 || len(d.OS) > 40 || len(d.Version) > 32 {
 		return Fault{400, "invalid_request"}
 	}
 	id, err := secret()
@@ -276,6 +297,9 @@ func (b *Broker) inspect(w http.ResponseWriter, r *http.Request) error {
 		e, err := b.session(input.ID)
 		if err != nil {
 			return reply{}, err
+		}
+		if e.senderInitiated {
+			return reply{}, Fault{409, "use_share_claim"}
 		}
 		if e.envelope != nil {
 			return reply{}, Fault{409, "device_pairing_already_approved"}
@@ -323,6 +347,9 @@ func (b *Broker) approve(w http.ResponseWriter, r *http.Request) error {
 		e, err := b.session(input.ID)
 		if err != nil {
 			return reply{}, err
+		}
+		if e.senderInitiated && (e.approver != account.ID || e.subscription != input.Subscription) {
+			return reply{}, Fault{403, "share_not_owned"}
 		}
 		if e.envelope != nil {
 			if e.approver != account.ID || e.subscription != input.Subscription || e.requestID != input.Request || e.digest != digest {

@@ -56,6 +56,13 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="flint" android:host="pair" />
+                <data android:scheme="flint" android:host="connect" />
+            </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="flintmain.ru" android:pathPrefix="/connect/" />
             </intent-filter>
         </activity>
         <activity android:name=".ui.FlintQrCaptureActivity" android:exported="false" android:screenOrientation="portrait" android:theme="@style/FlintTheme" />

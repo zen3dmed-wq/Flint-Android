@@ -19,7 +19,7 @@ import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.util.UUID
 
-/** HTTPS first-party rendezvous. No Telegram, shared router or TV account login. */
+/** HTTPS first-party rendezvous. No Telegram, shared router or receiving-device account login. */
 internal class TvPairingScreen(private val activity: Activity, private val api: FlintAccount,
     private val scope: CoroutineScope, private val accept: suspend (PairingProtocol.Transfer) -> Unit,
     private val prepare: suspend (JSONObject) -> JSONObject, private val login: (() -> Unit) -> Unit,
@@ -32,9 +32,9 @@ internal class TvPairingScreen(private val activity: Activity, private val api: 
     private fun panel(title: String): FlintStyle.Panel = style.panel(title, maxWidth = 560).also { panels.add(it) }
     private fun explain(p: FlintStyle.Panel, error: Exception) {
         p.error(when {
-            error is ApiError && error.status in setOf(404, 405, 501, 503) -> "Добавление ТВ без Telegram ещё не включено на сервере Flint. Пока можно войти на ТВ по почте."
-            error is ApiError && error.status == 410 -> "QR истёк или уже использован. Откройте новый QR на телевизоре."
-            error is ApiError && error.status == 409 -> "Этот QR уже подтверждён. Проверьте телевизор или откройте новый QR."
+            error is ApiError && error.status in setOf(404, 405, 501, 503) -> "Передача настроек по QR ещё не включена на сервере Flint. Пока можно войти в аккаунт по почте или импортировать подписку."
+            error is ApiError && error.status == 410 -> "QR истёк или уже использован. Откройте новый QR на новом устройстве."
+            error is ApiError && error.status == 409 -> "Этот QR уже подтверждён. Проверьте новое устройство или откройте новый QR."
             error is ApiError && error.status == 429 -> "Слишком много попыток. Подождите немного и создайте новый QR."
             error is ApiError -> error.message.orEmpty()
             error is ImportException -> error.message.orEmpty()
@@ -43,7 +43,7 @@ internal class TvPairingScreen(private val activity: Activity, private val api: 
     }
     fun receive() {
         if (receiving?.dialog?.isShowing == true) return
-        val p = panel("Добавить телевизор")
+        val p = panel("Получить настройки по QR")
         receiving = p
         val verifier = PairingProtocol.secret()
         val key = PairingProtocol.secret()
@@ -56,8 +56,8 @@ internal class TvPairingScreen(private val activity: Activity, private val api: 
                 api.request("POST", "/devices/pairing/cancel", JSONObject().put("pairingId", id).put("codeVerifier", verifier), false)
             } }
         }
-        style.add(p.body, style.label("На телефоне откройте Flint → QR-код → Камера и отсканируйте код. Выберите подписку и подтвердите добавление. Телефон и ТВ могут быть в разных сетях.", color = style.muted))
-        val qr = ImageView(activity).apply { scaleType = ImageView.ScaleType.FIT_CENTER; contentDescription = "Одноразовый QR для подключения телевизора без Telegram" }
+        style.add(p.body, style.label("На устройстве с подпиской откройте Flint → QR-код, считайте этот код и подтвердите передачу. Устройства могут быть в разных сетях. Вход на этом устройстве не требуется.", color = style.muted))
+        val qr = ImageView(activity).apply { scaleType = ImageView.ScaleType.FIT_CENTER; contentDescription = "Одноразовый QR для получения настроек Flint" }
         val status = style.label("Создаём QR…", color = style.muted)
         style.add(p.body, qr, if (activity.resources.displayMetrics.heightPixels / activity.resources.displayMetrics.density < 600) 210 else 280)
         style.add(p.body, status)
@@ -66,7 +66,7 @@ internal class TvPairingScreen(private val activity: Activity, private val api: 
             try {
                 val start = api.request("POST", "/devices/pairing/start", JSONObject()
                     .put("codeChallenge", PairingProtocol.challenge(verifier))
-                    .put("device", api.device().put("platform", "android-tv")), false).data
+                    .put("device", api.device().put("platform", if (BuildConfig.IS_TV) "android-tv" else "android")), false).data
                 id = start.getString("pairingId")
                 val value = PairingProtocol.qr(id, key)
                 val matrix = QRCodeWriter().encode(value, BarcodeFormat.QR_CODE, 640, 640, mapOf(EncodeHintType.MARGIN to 4))
@@ -77,7 +77,7 @@ internal class TvPairingScreen(private val activity: Activity, private val api: 
                 val interval = start.optLong("intervalSeconds", 2).coerceIn(2, 10) * 1000
                 while (isActive && p.dialog.isShowing && SystemClock.elapsedRealtime() < deadline) {
                     val seconds = ((deadline - SystemClock.elapsedRealtime()) / 1000).coerceAtLeast(0)
-                    status.text = "Ожидаем подтверждения на телефоне · ${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')}"
+                    status.text = "Ожидаем подтверждения на другом устройстве · ${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')}"
                     delay(interval)
                     val result = try { api.request("POST", "/devices/pairing/complete", JSONObject().put("pairingId", id).put("codeVerifier", verifier), false) }
                     catch (e: ApiError) {
@@ -105,9 +105,8 @@ internal class TvPairingScreen(private val activity: Activity, private val api: 
         }
     }
     fun scanned(value: String) {
-        if (BuildConfig.IS_TV) return
         val target = try { PairingProtocol.parse(value) } catch (e: Exception) {
-            style.notice("Добавить телевизор", e.message ?: "Неверный QR"); return
+            style.notice("Передать настройки", e.message ?: "Неверный QR"); return
         }
         if (pendingTarget != null) return
         if (!api.loggedIn) {
@@ -115,7 +114,7 @@ internal class TvPairingScreen(private val activity: Activity, private val api: 
             return
         }
         pendingTarget = target
-        val p = panel("Добавить телевизор")
+        val p = panel("Передать настройки")
         var job: Job? = null
         p.dialog.setOnDismissListener { panels.remove(p); pendingTarget = null; job?.cancel() }
         p.message.text = "Проверяем QR…"
@@ -123,8 +122,8 @@ internal class TvPairingScreen(private val activity: Activity, private val api: 
             try {
                 val info = api.request("POST", "/devices/pairing/inspect", JSONObject().put("pairingId", target.id)).data
                 api.refresh()
-                style.add(p.body, style.label(info.optJSONObject("device")?.string("model")?.take(120)?.ifBlank { "Android TV" } ?: "Android TV", 19f, true))
-                style.add(p.body, style.label("Выберите подписку для этого телевизора. Передадим её серверы и настройки «Сайты РФ». VPN и Telegram на телевизоре не нужны.", color = style.muted))
+                style.add(p.body, style.label(info.optJSONObject("device")?.string("model")?.take(120)?.ifBlank { "Устройство Flint" } ?: "Устройство Flint", 19f, true))
+                style.add(p.body, style.label("Выберите подписку для нового устройства. Передадим её серверы и настройки «Сайты РФ». Telegram и общий роутер не нужны. Пароли и вход в аккаунт не переносятся.", color = style.muted))
                 val subscriptions = api.subscriptions.filter { it.string("status") == "active" && it.string("subscriptionUrl").startsWith("https://") }
                 p.message.text = if (subscriptions.isEmpty()) "Нет активной подписки. Сначала оформите её на главной странице." else ""
                 val buttons = mutableListOf<android.widget.Button>()
@@ -143,7 +142,7 @@ internal class TvPairingScreen(private val activity: Activity, private val api: 
                                 api.request("POST", "/devices/pairing/approve", JSONObject().put("pairingId", target.id)
                                     .put("subscriptionId", sub.string("id")).put("requestId", requestId).put("encryptedSettings", envelope))
                                 p.body.removeAllViews()
-                                style.add(p.body, style.label("Настройки отправлены. Телевизор начнёт подключение; при первом запуске подтвердите системный запрос VPN.", color = style.mint))
+                                style.add(p.body, style.label("Настройки отправлены. Новое устройство начнёт подключение; при первом запуске подтвердите системный запрос VPN.", color = style.mint))
                                 p.message.text = ""; style.closeButton(p)
                             } catch (e: CancellationException) { throw e }
                             catch (e: Exception) { explain(p, e) }

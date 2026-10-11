@@ -18,8 +18,8 @@ class SubscriptionClient(
     fun import(input: String): ImportResult {
         val value = input.trim()
         return if (value.startsWith("https://", true) || value.startsWith("http://", true)) {
-            SubscriptionParser.parse(fetch(value))
-        } else SubscriptionParser.parse(value)
+            fetch(value).let { SubscriptionParser.parse(it).copy(sourceText = it) }
+        } else SubscriptionParser.parse(value).copy(sourceText = value)
     }
 
     fun fetch(address: String): String {

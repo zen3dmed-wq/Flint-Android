@@ -20,18 +20,33 @@ internal object PairingProtocol {
     private val random = SecureRandom()
     fun secret(): String = encode(ByteArray(32).also(random::nextBytes))
     fun challenge(verifier: String): String = encode(MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(Charsets.US_ASCII)))
-    fun isPairing(value: String): Boolean = value.trim().startsWith("flint://pair", true)
+    fun isPairing(value: String): Boolean = value.trim().startsWith("flint://pair", true) ||
+        value.trim().startsWith("https://flintmain.ru/connect/", true) || value.trim().startsWith("flint://connect/", true)
+    fun shareSecret(key: String): String = challenge("Flint-share-claim-v1:" + key)
+    fun shareQr(id: String, key: String): String {
+        require(validSecret(id) && validSecret(key))
+        return "https://flintmain.ru/connect/$id#key=$key"
+    }
     fun qr(id: String, key: String): String {
         require(validSecret(id) && validSecret(key))
         return "flint://pair?v=1&id=$id#key=$key"
     }
-    class Target(val id: String, val key: String) {
+    class Target(val id: String, val key: String, val shared: Boolean = false) {
         override fun toString() = "Flint TV pairing (redacted)"
     }
     fun parse(value: String): Target {
         try {
             require(value.length < 512)
             val uri = URI(value.trim())
+            val httpsShare = uri.scheme == "https" && uri.host == "flintmain.ru" && uri.path.startsWith("/connect/")
+            val appShare = uri.scheme == "flint" && uri.host == "connect" && uri.path.startsWith("/")
+            if ((httpsShare || appShare) && uri.port == -1 && uri.userInfo == null && uri.rawQuery == null) {
+                val prefix = if(httpsShare) "/connect/" else "/"
+                val id = uri.path.removePrefix(prefix)
+                val key = uri.rawFragment.orEmpty().removePrefix("key=")
+                require(uri.path == "$prefix$id" && uri.rawFragment?.startsWith("key=") == true && validSecret(id) && validSecret(key))
+                return Target(id, key, true)
+            }
             require(uri.scheme.equals("flint", true) && uri.host == "pair" && uri.path.isNullOrEmpty() && uri.userInfo == null && uri.port == -1)
             val entries = uri.rawQuery.orEmpty().split('&')
             require(entries.size == 2)
@@ -42,7 +57,7 @@ internal object PairingProtocol {
             val key = fragment.removePrefix("key=")
             require(validSecret(id) && validSecret(key))
             return Target(id, key)
-        } catch (_: Exception) { throw ImportException("Неверный QR добавления телевизора. Откройте новый QR на телевизоре.") }
+        } catch (_: Exception) { throw ImportException("Неверный QR передачи настроек. Откройте новый QR на устройстве.") }
     }
     fun seal(id: String, key: String, value: JSONObject): JSONObject {
         val bytes = value.toString().toByteArray(Charsets.UTF_8)
@@ -64,7 +79,9 @@ internal object PairingProtocol {
             cipher.updateAAD(("Flint-TV-pairing-v1:" + id).toByteArray(Charsets.US_ASCII))
             val root = JSONObject(cipher.doFinal(bytes).toString(Charsets.UTF_8))
             require(root.getInt("version") == 1)
-            val profiles = ProfileCollection.decode(root.getJSONObject("collection").toString().toByteArray(Charsets.UTF_8))
+            val profiles = root.optJSONObject("collection")?.let {
+                ProfileCollection.decode(it.toString().toByteArray(Charsets.UTF_8))
+            } ?: app.flint.prototype.imports.SubscriptionParser.parse(root.getString("subscriptionContent")).profiles
             require(profiles.isNotEmpty())
             val source = root.getString("subscriptionUrl")
             val uri = URI(source)
@@ -76,7 +93,7 @@ internal object PairingProtocol {
             require(policy == null || policy.toString().length <= 128 * 1024)
             val selected = root.optString("selectedServerId").takeIf { id -> profiles.any { it.id == id } }
             return Transfer(profiles, source, title, sites, root.optBoolean("automaticRouting", true), policy, selected)
-        } catch (_: Exception) { throw ImportException("Не удалось проверить настройки телевизора. Создайте новый QR и повторите добавление.") }
+        } catch (_: Exception) { throw ImportException("Не удалось проверить настройки устройства. Создайте новый QR и повторите передачу.") }
     }
     class Transfer(val profiles: List<ServerProfile>, val source: String, val title: String,
                    val sites: List<String>, val automaticRouting: Boolean, val policy: JSONObject?, val selectedId: String?)

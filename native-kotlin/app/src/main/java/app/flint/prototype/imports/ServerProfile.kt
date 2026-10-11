@@ -24,4 +24,4 @@ class ServerProfile(
 
 class ImportException(message: String) : Exception(message)
 
-data class ImportResult(val profiles: List<ServerProfile>, val warnings: List<String> = emptyList())
+data class ImportResult(val profiles: List<ServerProfile>, val warnings: List<String> = emptyList(), val sourceText: String? = null)

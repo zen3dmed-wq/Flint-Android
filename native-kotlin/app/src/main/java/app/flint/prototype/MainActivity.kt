@@ -25,6 +25,7 @@ import app.flint.prototype.vpn.ProfileProbe
 import app.flint.prototype.vpn.ServerBalance
 import app.flint.prototype.pairing.PairingProtocol
 import app.flint.prototype.pairing.TvPairingScreen
+import app.flint.prototype.pairing.SharePairingScreen
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -46,6 +47,12 @@ class MainActivity : Activity(), FlintUiCallbacks {
     private lateinit var accountScreens: AccountScreens
     private val tvPairing by lazy { TvPairingScreen(this, account, scope, ::acceptTvSettings, ::prepareTvSettings,
         { after -> accountScreens.login(after) }, ::connectSelected) }
+    private val sharedPairing by lazy { SharePairingScreen(this, account, scope, ::acceptTvSettings, ::prepareTvSettings,
+        { after -> accountScreens.login(after) }, ::connectSelected) }
+    private fun openPairing(value: String) {
+        val target = runCatching { PairingProtocol.parse(value) }.getOrNull()
+        if (target?.shared == true) sharedPairing.receive(target) else tvPairing.scanned(value)
+    }
     private val fingerprints = mutableMapOf<String, String>()
     private val loads = mutableMapOf<String, Pair<Int?, Long>>()
     private var manualProfiles = emptyList<ServerProfile>()
@@ -136,7 +143,7 @@ class MainActivity : Activity(), FlintUiCallbacks {
         profilesStore = ProfileStore(this)
         runCatching { JSONObject(prefs.getString("fingerprints", "{}").orEmpty()).let { json -> json.keys().forEach { fingerprints[it] = json.getString(it) } } }
         account = FlintAccount.shared(this)
-        accountScreens = AccountScreens(this, account, scope) { reload -> refreshAccountProfiles(reload) }
+        accountScreens = AccountScreens(this, account, scope, { sub -> sharedPairing.share(sub) }) { reload -> refreshAccountProfiles(reload) }
         accountScreens.supportChanged = { state = state.copy(supportUnread = account.unreadSupportTickets); render() }
         state = state.copy(selectedServerId = prefs.getString("selected", null),
             ruDirect = savedInstanceState?.getBoolean("ruDirect", true) ?: true)
@@ -145,7 +152,7 @@ class MainActivity : Activity(), FlintUiCallbacks {
         if (pendingFile != null) state = state.copy(phase = FlintPhase.CONNECTING, message = "Ожидаем разрешения VPN…")
         home = FlintHomeView(this, BuildConfig.IS_TV, this)
         setContentView(home)
-        intent.data?.toString()?.takeIf(PairingProtocol::isPairing)?.let { tvPairing.scanned(it) }
+        intent.data?.toString()?.takeIf(PairingProtocol::isPairing)?.let { openPairing(it) }
         intent.data = null
         scope.launch {
             try {
@@ -177,7 +184,7 @@ class MainActivity : Activity(), FlintUiCallbacks {
     override fun onStart() { super.onStart(); resumed = true; accountScreens.foreground(true); bindVpn() }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        intent.data?.toString()?.takeIf(PairingProtocol::isPairing)?.let { tvPairing.scanned(it) }
+        intent.data?.toString()?.takeIf(PairingProtocol::isPairing)?.let { openPairing(it) }
         intent.data = null
         setIntent(intent)
     }
@@ -196,6 +203,7 @@ class MainActivity : Activity(), FlintUiCallbacks {
     override fun onStop() { accountScreens.foreground(false); resumed = false; unbindVpn(); super.onStop() }
     override fun onDestroy() {
         tvPairing.close()
+        sharedPairing.close()
         if (::accountScreens.isInitialized) accountScreens.close()
         scope.cancel()
         if (isFinishing) clearPendingFile()
@@ -494,7 +502,7 @@ class MainActivity : Activity(), FlintUiCallbacks {
                 // A document result can arrive immediately after Activity recreation.
                 profilesReady.await()
                 val input = withContext(Dispatchers.IO) { readInput().trim() }
-                if (PairingProtocol.isPairing(input)) { tvPairing.scanned(input); return@launch }
+                if (PairingProtocol.isPairing(input)) { openPairing(input); return@launch }
                 val result = runInterruptible(Dispatchers.IO) { FlintSubscriptionImport.import(this@MainActivity, input) }
                 manualProfiles = withContext(Dispatchers.IO) { profilesStore.merge(result.profiles, input) }
                 combineProfiles()
@@ -672,10 +680,12 @@ class MainActivity : Activity(), FlintUiCallbacks {
         val source = sub.string("subscriptionUrl")
         // /subscriptions may rotate the URL while the phone's running tunnel
         // still uses its cached profile. Transfer the current source, not that cache.
-        val list = runInterruptible(Dispatchers.IO) { FlintSubscriptionImport.import(this@MainActivity, source).profiles }
+        val result = runInterruptible(Dispatchers.IO) { FlintSubscriptionImport.import(this@MainActivity, source) }
+        val list = result.profiles
         if (list.isEmpty()) throw ImportException("У подписки нет доступных конфигураций. Обновите список серверов.")
         return withContext(Dispatchers.Default) { PairingProtocol.payload(list, source, AccountScreens.subTitle(sub),
-            customSites(), prefs.getBoolean("automaticRouting", true), routingPolicy(), state.selectedServerId) }
+            customSites(), prefs.getBoolean("automaticRouting", true), routingPolicy(), state.selectedServerId)
+            .put("subscriptionContent", result.sourceText) }
     }
     private suspend fun acceptTvSettings(transfer: PairingProtocol.Transfer) {
         profilesReady.await()
@@ -687,7 +697,7 @@ class MainActivity : Activity(), FlintUiCallbacks {
         DirectSites.save(prefs, transfer.sites)
         state = state.copy(selectedServerId = transfer.selectedId, ruDirect = true)
         automaticAttempts.clear(); combineProfiles(); render()
-        report("Настройки получены с телефона. Подключаем телевизор…")
+        report("Настройки получены. Подключаем Flint…")
     }
     override fun onRefreshServers() {
         if (state.refreshingServers || loadingProfiles || importing) return

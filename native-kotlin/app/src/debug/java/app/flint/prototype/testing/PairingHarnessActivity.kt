@@ -8,6 +8,7 @@ import app.flint.prototype.data.ProfileStore
 import app.flint.prototype.imports.ServerProfile
 import app.flint.prototype.pairing.PairingProtocol
 import app.flint.prototype.pairing.TvPairingScreen
+import app.flint.prototype.pairing.SharePairingScreen
 import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.util.Collections
@@ -18,6 +19,8 @@ object PairingFixture {
     val requests = Collections.synchronizedList(mutableListOf<Pair<String, Boolean>>())
     val saved = AtomicInteger()
     val connected = AtomicInteger()
+    @Volatile var receiverPlatform = ""
+    @Volatile var shareClaimChallenge = ""
     @Volatile var envelope: JSONObject? = null
     @Volatile var challenge = ""
     @Volatile var acknowledged = false
@@ -32,6 +35,7 @@ object PairingFixture {
 class PairingHarnessActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
     private lateinit var screen: TvPairingScreen
+    private lateinit var sharedScreen: SharePairingScreen
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(TextView(this).apply {text="Flint pairing fixture"})
@@ -40,6 +44,18 @@ class PairingHarnessActivity : Activity() {
             PairingFixture.requests.add(path to (token!=null))
             delay(25)
             when(path) {
+                "/me/sessions" -> ApiReply(200,JSONObject().put("items",org.json.JSONArray()))
+                "/subscriptions/test-sub/devices" -> ApiReply(200,JSONObject().put("items",org.json.JSONArray()).put("canManage",true))
+                "/devices/pairing/share/start" -> {
+                    check(token!=null);PairingFixture.shareClaimChallenge=body!!.getString("claimChallenge")
+                    ApiReply(201,JSONObject().put("pairingId",PairingFixture.id).put("expiresInSeconds",900))
+                }
+                "/devices/pairing/share/claim" -> {
+                    check(token==null);check(PairingProtocol.challenge(body!!.getString("claimSecret"))==PairingFixture.shareClaimChallenge)
+                    PairingFixture.challenge=body.getString("codeChallenge")
+                    ApiReply(200,JSONObject().put("encryptedSettings",PairingFixture.envelope!!))
+                }
+                "/devices/pairing/share/cancel" -> ApiReply(204,JSONObject())
                 "/auth/login" -> ApiReply(200,JSONObject("""{"accessToken":"pairing-test-only-access","refreshToken":"pairing-test-only-refresh"}"""))
                 "/me" -> ApiReply(200,JSONObject("""{"id":"pairing-test-owner","email":"test@example.invalid"}"""))
                 "/subscriptions" -> ApiReply(200,JSONObject().put("items",org.json.JSONArray().put(JSONObject()
@@ -47,7 +63,7 @@ class PairingHarnessActivity : Activity() {
                     .put("subscriptionUrl",PairingFixture.source))))
                 "/devices/pairing/start" -> {
                     if(missing) throw ApiError(404,"not_found","Not configured")
-                    check(token==null);PairingFixture.challenge=body!!.getString("codeChallenge")
+                    check(token==null);PairingFixture.receiverPlatform=body!!.getJSONObject("device").getString("platform");PairingFixture.challenge=body.getString("codeChallenge")
                     ApiReply(201,JSONObject().put("pairingId",PairingFixture.id).put("expiresInSeconds",300).put("intervalSeconds",2))
                 }
                 "/devices/pairing/inspect" -> {check(token!=null);ApiReply(200,JSONObject().put("device",JSONObject().put("model","Тестовый телевизор")))}
@@ -74,9 +90,19 @@ class PairingHarnessActivity : Activity() {
             PairingFixture.saved.incrementAndGet()
         },{PairingProtocol.payload(listOf(PairingFixture.profile),PairingFixture.source,"Тестовая подписка",
             listOf("gosuslugi.ru","yandex.ru"),true,null,PairingFixture.profile.id)}, {error("Fixture already signed in")}, {PairingFixture.connected.incrementAndGet()})
+        sharedScreen=SharePairingScreen(this,api,scope,{ transfer ->
+            withContext(Dispatchers.IO){ProfileStore(this@PairingHarnessActivity).merge(transfer.profiles,transfer.source)}
+            PairingFixture.saved.incrementAndGet()
+        },{PairingProtocol.payload(listOf(PairingFixture.profile),PairingFixture.source,"Тестовая подписка",
+            listOf("gosuslugi.ru","yandex.ru"),true,null,PairingFixture.profile.id)}, {error("Fixture already signed in")}, {PairingFixture.connected.incrementAndGet()})
         val qr=intent.getStringExtra("qr")
-        if(qr==null) screen.receive() else scope.launch {api.login("test@example.invalid","test-only",false);screen.scanned(qr)}
+        if(intent.getBooleanExtra("owner",false)) scope.launch {
+            api.login("test@example.invalid","test-only",false)
+            AccountScreens(this@PairingHarnessActivity,api,scope,{sub -> sharedScreen.share(sub)}) {}.devices()
+        } else if(qr==null) screen.receive()
+        else if(PairingProtocol.parse(qr).shared) sharedScreen.receive(PairingProtocol.parse(qr))
+        else scope.launch {api.login("test@example.invalid","test-only",false);screen.scanned(qr)}
     }
     fun closePairing() {screen.close()}
-    override fun onDestroy() {if(::screen.isInitialized)screen.close();scope.cancel();super.onDestroy()}
+    override fun onDestroy() {if(::screen.isInitialized)screen.close();if(::sharedScreen.isInitialized)sharedScreen.close();scope.cancel();super.onDestroy()}
 }

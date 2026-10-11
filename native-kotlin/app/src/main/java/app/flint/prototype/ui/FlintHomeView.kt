@@ -177,8 +177,8 @@ class FlintHomeView(context: Context, private val isTv: Boolean, private val cal
     private fun showImportActions() {
         popup?.dialog?.dismiss()
         popup = s.panel("Добавить сервер").also { p ->
-            if (isTv) s.add(p.body, s.button("Добавить с помощью телефона") { p.dialog.dismiss(); callbacks.onTvPair() }, 50)
-            else s.add(p.body, s.button("Сканировать QR-код") { p.dialog.dismiss(); callbacks.onScanCamera() }, 50)
+            s.add(p.body, s.button("Получить настройки по QR") { p.dialog.dismiss(); callbacks.onTvPair() }, 50)
+            if (!isTv) s.add(p.body, s.button("Сканировать QR-код") { p.dialog.dismiss(); callbacks.onScanCamera() }, 50)
             listOf("QR-код на картинке" to { callbacks.onImportQrImage() }, "Ввести ссылку" to { callbacks.onImportText() }, "Открыть файл" to { callbacks.onImportFile() }).forEach { (name, action) ->
                 s.add(p.body, s.button(name) { p.dialog.dismiss(); action() }, 50)
             }
