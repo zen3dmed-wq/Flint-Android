@@ -19,24 +19,25 @@ struct State {
     void reset() { badSamples=0; lastSample=0; reason.clear(); }
     QString choose(const QStringList &keys, const QVariantMap &health, const QString &active,
                    bool enabled, qint64 connectedAt, qint64 now) {
-        if (!enabled || active.isEmpty() || connectedAt<=0 || now-connectedAt<180000) {reset();return {};}
+        if (!enabled || active.isEmpty() || connectedAt<=0) {reset();return {};}
         const auto current=health.value(active).toMap();
         const bool down=current.value("available").isValid()&&!current.value("available").toBool()
             && FlintTelemetry::fresh(current.value("checkedAt").toLongLong(),now);
         const bool loaded=loadFresh(current,now)&&current.value("loadPercent").toDouble()>=85;
+        if (!down && now-connectedAt<180000) {reset();return {};}
         if (!down&&!loaded) {reset();return {};}
         const QString kind=down?"down":"load";
         const qint64 sample=current.value(down?"checkedAt":"loadAt").toLongLong();
         if (reason!=kind) {reset();reason=kind;}
         if(sample<=lastSample)return {}; // Cached API replies are not independent measurements.
         lastSample=sample; ++badSamples;
-        if(badSamples<3)return {};
+        if(badSamples<(down?2:3))return {};
         QString best;double bestScore=10000;
         for(const auto &key:keys) {
             const auto h=health.value(key).toMap();
             if(key==active || (!current.value("node").toString().isEmpty() && h.value("node")==current.value("node")))continue;
             const bool knownLoad=loadFresh(h,now);
-            if((!down&&!knownLoad)||(knownLoad&&h.value("loadPercent").toDouble()>=70))continue;
+            if((!down&&!knownLoad)||(!down&&knownLoad&&h.value("loadPercent").toDouble()>=70))continue;
             const double candidate=score(h,now);
             if(candidate<bestScore && candidate+200<score(current,now)) {best=key;bestScore=candidate;}
         }

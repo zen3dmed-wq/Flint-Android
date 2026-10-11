@@ -56,7 +56,6 @@ Popup {
             request("plans", "GET", "/plans"); request("methods", "GET", "/payment-methods")
         }
         if (section === 2 && config.referralsEnabled) request("referrals", "GET", "/referrals")
-        if (section === 3 && config.flintIntegration && config.flintIntegration.supportEnabled) request("tickets", "GET", "/support/tickets")
     }
     function pay() {
         error = ""; message = ""
@@ -73,16 +72,6 @@ Popup {
         if (!/^https:\/\//i.test(url)) { error = "Ссылка на оплату отсутствует. Обновите её."; return }
         if (!Qt.openUrlExternally(url)) error = "Не удалось открыть форму оплаты"
     }
-    function sendTicket() {
-        error = ""; message = ""
-        var text = supportText.text.trim()
-        if (!text) { error = "Опишите проблему"; return }
-        var draft = FlintController.clientDraft("support")
-        if (draft.text && draft.text !== text) { error = "Сначала повторите отправку сохранённого сообщения, чтобы проверить его доставку."; supportText.text = draft.text; return }
-        if (!draft.key) draft = { key: FlintController.newRequestKey(), text: text }
-        FlintController.saveClientDraft("support", draft)
-        request("sendTicket", "POST", "/support/tickets", { text: draft.text, platform: "android" }, draft.key)
-    }
     function copyText(value) { clipboard.text = value; clipboard.selectAll(); clipboard.copy(); clipboard.text = ""; message = "Скопировано" }
     function referralText() {
         var template = config.flintIntegration ? config.flintIntegration.referralUrlTemplate : ""
@@ -96,7 +85,7 @@ Popup {
         var value = referralText()
         return /^https:\/\//i.test(value) ? value : "Приглашаю во Flint! Зарегистрируйтесь в приложении по почте, затем откройте Настройки → Пригласить друга и введите код: " + value
     }
-    onOpened: { Qt.callLater(function() { FlintFocus.firstButton(panel.contentItem) }); purchase = FlintController.clientDraft("purchase"); supportText.text = FlintController.clientDraft("support").text || ""; reload() }
+    onOpened: { Qt.callLater(function() { FlintFocus.firstButton(panel.contentItem) }); purchase = FlintController.clientDraft("purchase"); reload() }
     onSectionChanged: { error = ""; message = ""; if (opened) reload() }
     TextEdit { id: clipboard; visible: false }
     Connections {
@@ -128,11 +117,7 @@ Popup {
                 } else if (order.status === "cancelled") { panel.message = "Заказ отменён"; panel.purchase = {}; FlintController.saveClientDraft("purchase", {}) }
                 else if (id === "purchase" || id === "paymentLink") panel.openPayment()
             }
-            if (id === "sendTicket") {
-                FlintController.saveClientDraft("support", {}); supportText.text = ""
-                panel.message = "Обращение сохранено. Ответ появится здесь."
-                panel.request("tickets", "GET", "/support/tickets")
-            }
+
         }
     }
     Timer {
@@ -150,8 +135,10 @@ Popup {
         }
         Text { Layout.fillWidth: true; visible: panel.error.length > 0; text: panel.error; color: "#FFAAAA"; wrapMode: Text.Wrap }
         Text { Layout.fillWidth: true; visible: panel.message.length > 0; text: panel.message; color: panel.mint; wrapMode: Text.Wrap }
+        FlintSupport { Layout.fillWidth: true; Layout.fillHeight: true; visible: panel.section === 3; active: panel.opened && panel.section === 3 && FlintController.loggedIn }
         ScrollView {
             id: scroll
+            visible: panel.section !== 3
             Layout.fillWidth: true; Layout.fillHeight: true; clip: true; contentWidth: availableWidth
             ColumnLayout {
                 width: scroll.availableWidth; spacing: 14
@@ -203,21 +190,7 @@ Popup {
                     FlintField { id: referralCode; Layout.fillWidth: true; placeholderText: "Код пригласившего друга"; visible: panel.config.referralsEnabled === true }
                     FlintButton { visible: panel.config.referralsEnabled === true; text: "Применить код"; enabled: referralCode.text.trim().length > 0 && !panel.pending.applyReferral; onClicked: panel.request("applyReferral", "POST", "/referrals/apply", {code: referralCode.text.trim()}) }
                 }
-                ColumnLayout {
-                    objectName: "supportContent"; visible: FlintController.loggedIn && panel.section === 3; Layout.fillWidth: true
-                    Text { Layout.fillWidth: true; visible: !(panel.config.flintIntegration && panel.config.flintIntegration.supportEnabled); text: "Доставка обращений ещё не подключена. Администратор сможет включить её через API и админку."; color: panel.muted; wrapMode: Text.Wrap }
-                    TextArea { id: supportText; activeFocusOnTab: true; Keys.onPressed: function(event) { if (!FlintFocus.isTv()) return; if (event.key===Qt.Key_Select) { Qt.inputMethod.show();event.accepted=true } else if ((event.key===Qt.Key_Up || event.key===Qt.Key_Down) && !Qt.inputMethod.visible) event.accepted=FlintFocus.move(supportText,event.key===Qt.Key_Down) }; padding: 16; font.pixelSize: 14; Layout.topMargin: 10; Layout.fillWidth: true; Layout.preferredHeight: 140; color: panel.ink; placeholderTextColor: panel.muted; placeholderText: "Опишите проблему"; wrapMode: TextEdit.Wrap; enabled: !panel.pending.sendTicket; background: Rectangle { radius: 14; color: "#102635"; border.color: supportText.activeFocus ? panel.mint : "#2B4A5E" } }
-                    FlintButton { primary: true; text: "Отправить в поддержку"; enabled: panel.config.flintIntegration !== undefined && panel.config.flintIntegration.supportEnabled === true && !panel.pending.sendTicket; onClicked: panel.sendTicket() }
-                    FlintButton { text: "Обновить ответы"; enabled: panel.config.flintIntegration !== undefined && panel.config.flintIntegration.supportEnabled === true && !panel.pending.tickets; onClicked: panel.request("tickets", "GET", "/support/tickets") }
-                    Repeater { model: panel.tickets
-                        ColumnLayout { required property var modelData; Layout.fillWidth: true
-                            Text { text: "Обращение " + modelData.id.slice(0,10); color: panel.mint }
-                            Repeater { model: modelData.messages
-                                Text { required property var modelData; Layout.fillWidth: true; text: (modelData.author === "support" ? "Поддержка: " : "Вы: ") + modelData.text; color: panel.ink; textFormat: Text.PlainText; wrapMode: Text.Wrap }
-                            }
-                        }
-                    }
-                }
+
             }
         }
     }

@@ -15,7 +15,7 @@ controller=(root/'client/ui/controllers/flintController.cpp').read_text(encoding
 assert '"android/"' not in controller and '"ios/"' in controller
 assert 'd["platform"] = "ios";' in controller
 home=(root/'client/ui/qml/Pages2/PageHome.qml').read_text(encoding='utf-8')
-assert 'Flint iOS 8.10.25' in home
+assert 'Flint iOS 8.10.29' in home
 assert 'FlintDevices {' in home and 'cancelConnection' in home
 assert 'profilePreparationFinished' in controller and 'markProfileConnected' in controller
 assert 'FlintDevices.qml' in (root/'client/ui/qml/qml.qrc').read_text(encoding='utf-8')
@@ -39,4 +39,17 @@ assert extension['CFBundleDisplayName'] == 'Flint VPN'
 tunnel = (root/'client/platforms/ios/ios_controller.mm').read_text(encoding='utf-8')
 assert 'QStringLiteral("Flint · ") + tunnelName' in tunnel
 assert 'legacyTunnelName.toNSString()' in tunnel
+assert 'tunnelProtocol.includeAllNetworks=FlintKillSwitchEnabled()' in tunnel
+assert 'tunnel.onDemandEnabled=FlintAutoConnectEnabled()' in tunnel
+assert 'tunnel.onDemandEnabled=NO' in tunnel
+assert 'FlintSetConnectionPolicy(bool automatic,bool protection)' in tunnel
+assert 'if !protocolConfiguration.includeAllNetworks' in (root/'client/platforms/ios/PacketTunnelProvider+Xray.swift').read_text()
+assert 'FlintController.refreshServers();' in home
+assert 'autoConnectEnabled' in home and 'killSwitchEnabled' in home
+assert 'void FlintController::refreshServers()' in controller
+assert 'setUrlHandler("https",this,"handleHttpsUrl")' in controller
+assert 'QDesktopServices::unsetUrlHandler("https")' in controller
+assert v['CFBundleURLTypes'][0]['CFBundleURLSchemes'] == ['flint']
+assert plistlib.loads((root/'client/ios/app/main.entitlements').read_bytes())['com.apple.developer.associated-domains'] == ['applinks:flintmain.ru']
+assert 'g_originalSceneOpenURLContexts(self, _cmd, scene, contexts)' in (root/'client/platforms/ios/AmneziaSceneDelegateHooks.mm').read_text()
 print('iOS identity, shared API, tunnel sources, App Groups and capabilities checked')

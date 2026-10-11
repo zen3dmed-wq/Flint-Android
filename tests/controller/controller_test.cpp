@@ -3,6 +3,7 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QRegularExpression>
+#include <QDesktopServices>
 #include "flintController.h"
 #include "flintDirectSites.h"
 #include "flintRouting.h"
@@ -10,6 +11,52 @@
 class ControllerTests : public QObject {
     Q_OBJECT
 private slots:
+    void universalPairingAuthenticatesAndKeepsAccountSeparate() {
+        const auto state=FlintPairing::state();const auto id=FlintPairing::random(),key=state.value("key").toString();
+        QVERIFY(FlintPairing::secret(id));QVERIFY(FlintPairing::secret(key));
+        const QString link="https://flintmain.ru/connect/"+id+"#key="+key;
+        QCOMPARE(FlintPairing::parse(link).value("key").toString(),key);
+        QVERIFY(FlintPairing::parse(link).value("shared").toBool());
+        QVERIFY(FlintPairing::parse(QString(link).replace("flintmain.ru","evil.example")).isEmpty());
+        const QString profile="vless://00000000-0000-0000-0000-000000000001@vpn.example.com:443?security=tls&type=tcp#Test";
+        QVariantMap payload{{"version",1},{"subscriptionContent",profile},{"subscriptionUrl","https://subscription.example.com/sub"},{"title","Flint"},{"directSites",QVariantList{"example.ru"}},{"automaticRouting",true}};
+        auto sealed=FlintPairing::seal(id,key,payload);QVERIFY(!sealed.isEmpty());
+        QCOMPARE(FlintPairing::open(id,key,sealed),payload);
+        QVERIFY(FlintPairing::open(FlintPairing::random(),key,sealed).isEmpty());
+        auto ciphertext=FlintPairing::decode(sealed.value("ciphertext").toString());ciphertext[0]=ciphertext.at(0)^1;sealed["ciphertext"]=FlintPairing::encode(ciphertext);
+        QVERIFY(FlintPairing::open(id,key,sealed).isEmpty());
+        QTemporaryDir dir;SecureQSettings settings(dir.filePath("pairing.ini"),QSettings::IniFormat);settings.setValue("Conf/flintStartupSchema",999);
+        FlintController c(&settings);QSignalSpy imported(&c,&FlintController::manualProfilesReady);
+        QVERIFY(c.acceptPairing(payload));QCOMPARE(imported.size(),1);QVERIFY(!c.loggedIn());QVERIFY(c.subscriptionActive());
+        QCOMPARE(c.subscriptionUrl(),QString("https://subscription.example.com/sub"));
+        payload["subscriptionUrl"]="http://insecure.example/sub";QVERIFY(!c.acceptPairing(payload));
+        QSignalSpy received(&c,&FlintController::pairingLinkReceived);
+        QVERIFY(QDesktopServices::openUrl(QUrl(link)));
+        QCOMPARE(received.size(),1);
+        QCOMPARE(c.takePairingLink(),link);
+    }
+    void supportV1RoutesAndIdempotency() {
+        QTemporaryDir dir; SecureQSettings settings(dir.filePath("support.ini"), QSettings::IniFormat);
+        settings.setValue("Conf/flintStartupSchema",999);
+        FlintController c(&settings); QSignalSpy response(&c, &FlintController::accountResponse);
+        const QList<QPair<QString,QString>> allowed {
+            {"GET","/support/categories"},{"GET","/support/tickets?status=open"},
+            {"GET","/support/tickets/ticket-1?afterMessageId=9007199254740993"},
+            {"POST","/support/tickets"},{"POST","/support/tickets/ticket-1/messages"},
+            {"POST","/support/tickets/ticket-1/read"},{"POST","/support/tickets/ticket-1/close"},
+            {"POST","/support/tickets/ticket-1/rating"}
+        };
+        for (const auto &entry : allowed) {
+            response.clear(); c.accountRequest("test",entry.first,entry.second,{},"test-key");
+            QCOMPARE(response.size(),1); QCOMPARE(response.last().at(1).toInt(),401);
+        }
+        for (const auto &entry : QList<QPair<QString,QString>>{{"POST","/support/categories"},{"DELETE","/support/tickets/ticket-1"},{"GET","/support/tickets/ticket-1/messages"},{"GET","/support/tickets/ticket-1?afterMessageId=x&token=secret"}}) {
+            response.clear(); c.accountRequest("test",entry.first,entry.second,{},"test-key");
+            QCOMPARE(response.size(),1); QCOMPARE(response.last().at(1).toInt(),400);
+        }
+        response.clear(); c.accountRequest("test","POST","/support/tickets/ticket-1/messages",{},"");
+        QCOMPARE(response.last().at(1).toInt(),400);
+    }
     void russianRoutingEnabledOncePerApplicationLaunch() {
         QTemporaryDir dir; SecureQSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
         settings.setValue("Conf/flintStartupSchema",999);

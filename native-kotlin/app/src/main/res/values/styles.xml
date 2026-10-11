@@ -1,0 +1,18 @@
+<resources>
+    <style name="FlintTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">@font/flint_ui</item>
+        <item name="android:colorAccent">#4AE0AB</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowBackground">#071724</item>
+        <item name="android:statusBarColor">#071724</item>
+        <item name="android:navigationBarColor">#071724</item>
+    </style>
+    <style name="FlintToggleTheme" parent="android:style/Theme.Translucent.NoTitleBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
+</resources>

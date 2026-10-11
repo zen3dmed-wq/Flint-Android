@@ -1,0 +1,115 @@
+name: Flint Android and TV
+on:
+  pull_request:
+    paths: ['native-kotlin/**', 'server-tv-pairing/**', '.github/workflows/kotlin-prototype.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: flint-kotlin-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  pairing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.0'
+          cache: false
+      - name: Test isolated TV pairing relay
+        working-directory: server-tv-pairing
+        run: go test -race -count=1 ./...
+      - name: Build deployment binaries
+        working-directory: server-tv-pairing
+        run: |
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o dist/flint-pairing-linux-amd64 ./cmd/flint-pairing
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags='-s -w' -o dist/flint-pairing-linux-arm64 ./cmd/flint-pairing
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o dist/flint-pairing-windows-amd64.exe ./cmd/flint-pairing
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Flint-TV-Pairing-Server
+          path: server-tv-pairing/dist/
+          retention-days: 14
+  native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.0'
+          cache: false
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0 ndk;27.0.11718014'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+          cache-read-only: false
+      - uses: actions/cache@v4
+        id: core
+        with:
+          path: native-kotlin/engine/libs
+          key: flint-kotlin-core-v2-${{ hashFiles('native-kotlin/tools/build_xray.sh') }}
+      - name: Build pinned Xray JNI for ARM32, ARM64 and emulator
+        if: steps.core.outputs.cache-hit != 'true'
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.0.11718014
+          FLINT_BUILD_TEST_SERVER: '1'
+        run: bash native-kotlin/tools/build_xray.sh
+      - uses: actions/cache/save@v4
+        if: steps.core.outputs.cache-hit != 'true'
+        with:
+          path: native-kotlin/engine/libs
+          key: flint-kotlin-core-v2-${{ hashFiles('native-kotlin/tools/build_xray.sh') }}
+      - name: Compile, test and package
+        working-directory: native-kotlin
+        run: gradle --no-daemon :app:testPhoneDebugUnitTest :app:assemblePhoneRelease :app:assembleTvRelease :app:assemblePhoneDebug :app:assemblePhoneDebugAndroidTest
+      - name: Upload APKs and unit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Flint-Native-build
+          path: |
+            native-kotlin/app/build/outputs/apk/
+            native-kotlin/app/build/reports/tests/
+            native-kotlin/engine/libs/libxray.provenance.json
+          retention-days: 14
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Native UI / QR / TV instrumentation
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          script: bash native-kotlin/tools/run_emulator_tests.sh
+      - name: Collect emulator evidence
+        if: always()
+        run: |
+          mkdir -p native-kotlin/evidence
+          timeout 15s adb pull /sdcard/Android/data/app.flint.vpn/files/ui-evidence native-kotlin/evidence/ || true
+          timeout 10s adb logcat -d -s AndroidRuntime:E > native-kotlin/evidence/android-runtime.txt || true
+      - name: Upload emulator evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Flint-Native-device-tests
+          path: |
+            native-kotlin/app/build/reports/androidTests/
+            native-kotlin/app/build/outputs/androidTest-results/
+            native-kotlin/evidence/
+            native-kotlin/build/vpn-fixture/
+            native-kotlin/build/vpn-fixture-launch.log
+          retention-days: 14
